@@ -25,7 +25,10 @@ export async function ensureMyProfile() {
 
   // Generate username from email prefix
   const baseUsername = (user.email?.split("@")[0] ?? "user").toLowerCase().replace(/[^a-z0-9_]/g, "");
-  let username = baseUsername.slice(0, 32) || `user${Date.now()}`;
+  // Reserve 2 chars for the numeric retry suffix so a 31-char base + "10"
+  // doesn't blow past the schema's varchar(32) limit.
+  const baseTruncated = baseUsername.slice(0, 30);
+  let username = (baseUsername.slice(0, 32) || `user${Date.now()}`).slice(0, 32);
 
   // Ensure unique — append numeric suffix if collision
   for (let i = 0; i < 10; i++) {
@@ -33,12 +36,28 @@ export async function ensureMyProfile() {
       where: eq(schema.profiles.username, username),
     });
     if (!conflict) break;
-    username = `${baseUsername}${i + 1}`;
+    username = `${baseTruncated}${i + 1}`;
   }
 
-  const [created] = await db
-    .insert(schema.profiles)
-    .values({ userId: user.id, username, displayName: user.email ?? username })
-    .returning();
-  return created;
+  // Postgres unique-violation SQLSTATE — handles the TOCTOU race between the
+  // findFirst loop above and the insert below (two near-simultaneous signups
+  // with the same email prefix). Same pattern as createLog in lib/logs.
+  const PG_UNIQUE_VIOLATION = "23505";
+  try {
+    const [created] = await db
+      .insert(schema.profiles)
+      .values({ userId: user.id, username, displayName: user.email ?? username })
+      .returning();
+    return created;
+  } catch (err) {
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === PG_UNIQUE_VIOLATION) {
+      // Either another request inserted our (userId) row first, or another
+      // user grabbed our username. Re-fetch the row that exists for this user.
+      const winner = await db.query.profiles.findFirst({
+        where: eq(schema.profiles.userId, user.id),
+      });
+      return winner ?? null;
+    }
+    throw err;
+  }
 }
