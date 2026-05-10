@@ -54,6 +54,7 @@ export function AvatarUploader({ onResult, children }: Props) {
     }
     const reader = new FileReader();
     reader.onload = () => setImageDataUrl(reader.result as string);
+    reader.onerror = () => setError("Could not read the file. Please try another.");
     reader.readAsDataURL(file);
   };
 
@@ -63,9 +64,14 @@ export function AvatarUploader({ onResult, children }: Props) {
 
   const handleConfirm = async () => {
     if (!imageDataUrl || !croppedAreaPixels) return;
-    const blob = await cropImage(imageDataUrl, croppedAreaPixels);
-    onResult(blob, "static");
-    setImageDataUrl(null);
+    try {
+      const blob = await cropImage(imageDataUrl, croppedAreaPixels);
+      onResult(blob, "static");
+      setImageDataUrl(null);
+    } catch {
+      setError("Could not process the image. Please try another file.");
+      setImageDataUrl(null);
+    }
   };
 
   const handleCancel = () => setImageDataUrl(null);
@@ -151,13 +157,15 @@ export function AvatarUploader({ onResult, children }: Props) {
 async function cropImage(imageSrc: string, area: Area): Promise<Blob> {
   const img = new Image();
   img.src = imageSrc;
-  await new Promise((res) => {
-    img.onload = res;
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("Failed to load image for cropping"));
   });
   const canvas = document.createElement("canvas");
   canvas.width = area.width;
   canvas.height = area.height;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D context unavailable");
   ctx.drawImage(
     img,
     area.x,
@@ -169,7 +177,14 @@ async function cropImage(imageSrc: string, area: Area): Promise<Blob> {
     area.width,
     area.height,
   );
-  return await new Promise<Blob>((resolve) => {
-    canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.92);
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) => {
+        if (b) resolve(b);
+        else reject(new Error("Canvas toBlob returned null"));
+      },
+      "image/jpeg",
+      0.92,
+    );
   });
 }
