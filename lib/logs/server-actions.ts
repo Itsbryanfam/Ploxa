@@ -1,11 +1,11 @@
 "use server";
 
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getGameDetail } from "@/lib/games/server-actions";
-import { LOG_STATUSES } from "@/lib/db/schema-types";
+import { LOG_STATUSES, type LogStatus } from "@/lib/db/schema-types";
 
 const createLogInput = z.object({
   rawgId: z.number().int().positive(),
@@ -91,4 +91,147 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   }
 
   return { ok: true, logId: inserted.id, gameSlug: game.slug };
+}
+
+export interface LibraryItem {
+  logId: string;
+  status: LogStatus;
+  rating: number | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  hoursPlayed: number | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  game: {
+    id: number;
+    slug: string;
+    title: string;
+    coverUrl: string | null;
+    released: Date | null;
+    genres: string[] | null;
+    platforms: string[] | null;
+  };
+}
+
+export type SortKey = "rating-desc" | "rating-asc" | "recent" | "title-asc" | "released-desc";
+
+interface GetLibraryArgs {
+  status?: LogStatus | "all";
+  sort?: SortKey;
+}
+
+export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<LibraryItem[]> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const orderBy = (() => {
+    switch (args.sort) {
+      case "rating-asc":
+        return asc(schema.logs.rating);
+      case "rating-desc":
+        return desc(schema.logs.rating);
+      case "title-asc":
+        return asc(schema.games.title);
+      case "released-desc":
+        return desc(schema.games.released);
+      case "recent":
+      default:
+        return desc(schema.logs.updatedAt);
+    }
+  })();
+
+  const rows = await db
+    .select({
+      logId: schema.logs.id,
+      status: schema.logs.status,
+      rating: schema.logs.rating,
+      startedAt: schema.logs.startedAt,
+      finishedAt: schema.logs.finishedAt,
+      hoursPlayed: schema.logs.hoursPlayed,
+      notes: schema.logs.notes,
+      createdAt: schema.logs.createdAt,
+      updatedAt: schema.logs.updatedAt,
+      game_id: schema.games.id,
+      game_slug: schema.games.slug,
+      game_title: schema.games.title,
+      game_coverUrl: schema.games.coverUrl,
+      game_released: schema.games.released,
+      game_genres: schema.games.genres,
+      game_platforms: schema.games.platforms,
+    })
+    .from(schema.logs)
+    .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
+    .where(
+      and(
+        eq(schema.logs.userId, user.id),
+        args.status && args.status !== "all" ? eq(schema.logs.status, args.status) : undefined,
+      ),
+    )
+    .orderBy(orderBy);
+
+  return rows.map((r) => ({
+    logId: r.logId,
+    status: r.status as LogStatus,
+    rating: r.rating ? Number(r.rating) : null,
+    startedAt: r.startedAt,
+    finishedAt: r.finishedAt,
+    hoursPlayed: r.hoursPlayed ? Number(r.hoursPlayed) : null,
+    notes: r.notes,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    game: {
+      id: r.game_id,
+      slug: r.game_slug,
+      title: r.game_title,
+      coverUrl: r.game_coverUrl,
+      released: r.game_released,
+      genres: r.game_genres ?? [],
+      platforms: r.game_platforms ?? [],
+    },
+  }));
+}
+
+const updateStatusInput = z.object({
+  logId: z.string().uuid(),
+  status: z.enum(LOG_STATUSES as [LogStatus, ...LogStatus[]]),
+});
+
+export async function updateLogStatus(input: unknown): Promise<{ ok: boolean; error?: string }> {
+  const parsed = updateStatusInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const result = await db
+    .update(schema.logs)
+    .set({ status: parsed.data.status, updatedAt: new Date() })
+    .where(and(eq(schema.logs.id, parsed.data.logId), eq(schema.logs.userId, user.id)))
+    .returning({ id: schema.logs.id });
+
+  if (result.length === 0) return { ok: false, error: "Log not found" };
+  return { ok: true };
+}
+
+export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const result = await db
+    .delete(schema.logs)
+    .where(and(eq(schema.logs.id, logId), eq(schema.logs.userId, user.id)))
+    .returning({ id: schema.logs.id });
+
+  if (result.length === 0) return { ok: false, error: "Log not found" };
+  return { ok: true };
 }
