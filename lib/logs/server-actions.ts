@@ -241,3 +241,87 @@ export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: s
   if (result.length === 0) return { ok: false, error: "Log not found" };
   return { ok: true };
 }
+
+export interface UserStats {
+  total: number;
+  byStatus: Record<LogStatus, number>;
+  averageRating: number | null;
+}
+
+export async function getUserStats(): Promise<UserStats | null> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const rows = await db
+    .select({
+      status: schema.logs.status,
+      rating: schema.logs.rating,
+    })
+    .from(schema.logs)
+    .where(eq(schema.logs.userId, user.id));
+
+  const byStatus: Record<LogStatus, number> = {
+    backlog: 0, playing: 0, completed: 0, dropped: 0, on_hold: 0, wishlist: 0,
+  };
+  let ratingSum = 0;
+  let ratingCount = 0;
+  for (const r of rows) {
+    byStatus[r.status as LogStatus]++;
+    if (r.rating != null) {
+      ratingSum += Number(r.rating);
+      ratingCount++;
+    }
+  }
+
+  return {
+    total: rows.length,
+    byStatus,
+    averageRating: ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
+  };
+}
+
+export interface ActivityEvent {
+  type: "logged";
+  logId: string;
+  status: LogStatus;
+  rating: number | null;
+  gameTitle: string;
+  gameSlug: string;
+  at: Date;
+}
+
+export async function getRecentActivity(limit = 10): Promise<ActivityEvent[]> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const rows = await db
+    .select({
+      logId: schema.logs.id,
+      status: schema.logs.status,
+      rating: schema.logs.rating,
+      title: schema.games.title,
+      slug: schema.games.slug,
+      at: schema.logs.updatedAt,
+    })
+    .from(schema.logs)
+    .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
+    .where(eq(schema.logs.userId, user.id))
+    .orderBy(desc(schema.logs.updatedAt))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    type: "logged" as const,
+    logId: r.logId,
+    status: r.status as LogStatus,
+    rating: r.rating ? Number(r.rating) : null,
+    gameTitle: r.title,
+    gameSlug: r.slug,
+    at: r.at,
+  }));
+}
