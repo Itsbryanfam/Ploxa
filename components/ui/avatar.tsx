@@ -40,7 +40,6 @@ export function Avatar({ user, size, className }: AvatarProps) {
   // Static image (jpg/png/webp): plain <img>.
   if (user.profilePictureUrl && user.profilePictureKind === "static") {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={user.profilePictureUrl}
         alt={user.username ?? user.email}
@@ -63,7 +62,6 @@ export function Avatar({ user, size, className }: AvatarProps) {
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const src = hovered && !reducedMotion ? user.profilePictureUrl : poster;
     return (
-      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt={user.username ?? user.email}
