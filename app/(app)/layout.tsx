@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+import { HeaderSearchInput } from "@/components/palette/header-search-input";
+import { PaletteKeyboardShortcut } from "@/components/palette/keyboard-shortcut";
 import { LogoutButton } from "./logout-button";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -23,20 +25,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-[var(--border-soft)]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/dashboard" className="flex items-center gap-2 text-sm font-semibold">
-            <span className="font-mono text-xs tracking-[0.2em] text-[var(--pixel)]">
-              ▓ L4G ▓
-            </span>
-            <span className="text-[var(--text-dim)]">Letterboxd for Games</span>
+      <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--bg)]/80 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
+          <Link href="/" className="flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
+            <span className="font-mono text-xs tracking-[0.2em] text-[var(--pixel)]">▓ L4G ▓</span>
+            <span className="hidden sm:inline text-[var(--text-dim)]">Letterboxd for Games</span>
           </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            <span className="text-[var(--text-faint)]">{user.email}</span>
+          <div className="flex-1 flex justify-center">
+            <HeaderSearchInput />
+          </div>
+          <nav className="flex items-center gap-3 text-sm whitespace-nowrap">
+            <span className="hidden md:inline text-[var(--text-faint)]">{user.email}</span>
             <LogoutButton />
           </nav>
         </div>
       </header>
+      <PaletteKeyboardShortcut />
       <main className="flex-1">{children}</main>
     </div>
   );
