@@ -1,42 +1,42 @@
 {
   "planPath": "docs/superpowers/plans/2026-05-10-phase1.5-polish-plan.md",
-  "lastUpdated": "2026-05-10T18:25:56.080Z",
+  "lastUpdated": "2026-05-10T19:15:00.000Z",
   "tasks": [
     {
       "id": 1,
       "subject": "Task 1: Mapper-dedup — extract mapRowToLibraryItem helper",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Single source of truth for the Drizzle-row → LibraryItem mapping. No behavior change. Replaces the dropped claude/elegant-margulis-62618a branch with all current Phase 1.31 fields and all 4 mapper sites.\n\n**Files:**\n- Create: lib/logs/library-item.ts\n- Modify: lib/logs/server-actions.ts (use helper in getUserLibrary; type-only re-export LibraryItem)\n- Modify: app/(app)/games/[slug]/page.tsx, app/(app)/@modal/(.)games/[slug]/page.tsx, app/(app)/u/[username]/page.tsx (use helper)\n\n**See plan:** Task 1\n\n```json:metadata\n{\"files\": [\"lib/logs/library-item.ts\", \"lib/logs/server-actions.ts\", \"app/(app)/games/[slug]/page.tsx\", \"app/(app)/@modal/(.)games/[slug]/page.tsx\", \"app/(app)/u/[username]/page.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"lib/logs/library-item.ts exports LibraryItem with all Phase 1.31 fields\", \"All 4 mapper sites use the helper\", \"getUserLibrary uses Drizzle nested-object .select()\", \"Type-only re-export keeps existing imports working\", \"Manual gate: 4 pages render unchanged\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Heart visuals re-pixel",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Re-author half-heart and full-heart sprites in components/pixel/hearts.tsx so the upper red fill is solid. Independent of all other tasks — parallel-safe.\n\n**Files:**\n- Modify: components/pixel/hearts.tsx\n\n**See plan:** Task 2\n\n```json:metadata\n{\"files\": [\"components/pixel/hearts.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Empty/half/full heart visually distinct\", \"Upper half of half/full clearly filled with red\", \"Outline matches other pixel sprites\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Avatar component (display only, no upload)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Foundational Avatar component with initials fallback, static-image rendering, and GIF hover-swap. No upload UI yet.\n\n**Files:**\n- Create: lib/design/avatar-palette.ts\n- Create: components/ui/avatar.tsx\n\n**See plan:** Task 3\n\n```json:metadata\n{\"files\": [\"lib/design/avatar-palette.ts\", \"components/ui/avatar.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Static images render as <img>\", \"GIFs poster-on-rest, animated-on-hover/focus, honors prefers-reduced-motion\", \"Initials fallback with deterministic palette color\", \"Three sizes (sm=24, md=40, lg=96)\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: PFP backing infra — DB migration + Storage bucket + RLS",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Land the database columns and storage bucket the PFP upload feature will write to. No UI yet.\n\n**Files:**\n- Create: lib/db/migrations/000X_add_profile_picture.sql\n- Modify: lib/db/schema.ts (+ profilePictureUrl + profilePictureKind)\n- Storage: avatars bucket via Supabase MCP execute_sql\n\n**See plan:** Task 4\n\n```json:metadata\n{\"files\": [\"lib/db/schema.ts\", \"lib/db/migrations/\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"profile_picture_url + profile_picture_kind columns exist on profiles\", \"profile_picture_kind has CHECK ('static','gif')\", \"avatars bucket public-read with owner-only write RLS\", \"Strip CREATE TABLE auth.users from generated migration before db:migrate\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: AppHeader scaffold + nav tabs + mobile menu + profile dropdown",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4],
       "description": "**Goal:** Replace inline header in app/(app)/layout.tsx with shared AppHeader. Top-bar nav (Home/Library/Profile), mobile hamburger drawer, profile-avatar dropdown.\n\n**Files:**\n- Create: components/layout/{app-header,nav-tabs,mobile-menu,profile-dropdown}.tsx\n- Modify: app/(app)/layout.tsx\n- Modify: lib/profile/server-actions.ts (add getHeaderUser)\n- shadcn add: dropdown-menu, sheet (if missing)\n\n**See plan:** Task 5\n\n```json:metadata\n{\"files\": [\"components/layout/app-header.tsx\", \"components/layout/nav-tabs.tsx\", \"components/layout/mobile-menu.tsx\", \"components/layout/profile-dropdown.tsx\", \"app/(app)/layout.tsx\", \"lib/profile/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Nav visible on every authenticated route\", \"Active tab uses theme primary accent\", \"Profile tab routes to /u/[currentUsername]\", \"Mobile drawer opens; logout works\", \"Settings link points to /settings (404s until Task 6 — expected)\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: /settings page scaffold + empty Profile section",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 5],
       "description": "**Goal:** Land /settings route. Section-based layout. Phase 1.5 ships only Profile section with Avatar slot (no upload yet) and placeholder for username editing.\n\n**Files:**\n- Create: app/(app)/settings/page.tsx\n- Create: app/(app)/settings/_sections/profile-section.tsx\n\n**See plan:** Task 6\n\n```json:metadata\n{\"files\": [\"app/(app)/settings/page.tsx\", \"app/(app)/settings/_sections/profile-section.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"/settings renders, auth-gated\", \"Profile section: large Avatar + username + email\", \"Avatar slot disabled with 'click to upload' hint\", \"Sidebar nav lists only Profile (Future sections deferred)\"]}\n```"
     },
