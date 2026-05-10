@@ -7,7 +7,7 @@ interface Props {
 
 export function ProfileSection({ user }: Props) {
   return (
-    <section>
+    <section id="profile">
       <h2 className="text-xl font-semibold mb-6">Profile</h2>
       <div className="space-y-6">
         <div>
