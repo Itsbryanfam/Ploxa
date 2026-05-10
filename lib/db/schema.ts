@@ -75,6 +75,8 @@ export const profiles = pgTable("profiles", {
   displayName: varchar("display_name", { length: 64 }),
   bio: text("bio"),
   avatarUrl: text("avatar_url"),
+  profilePictureUrl: text("profile_picture_url"),
+  profilePictureKind: text("profile_picture_kind", { enum: ["static", "gif"] }),
   mascotVariant: varchar("mascot_variant", { length: 32 }).default("default"),
   isPublic: boolean("is_public").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
