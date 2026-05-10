@@ -9,7 +9,13 @@ import { HeaderSearchInput } from "@/components/palette/header-search-input";
 import { PaletteKeyboardShortcut } from "@/components/palette/keyboard-shortcut";
 import { LogoutButton } from "./logout-button";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+  modal,
+}: {
+  children: React.ReactNode;
+  modal: React.ReactNode;
+}) {
   // Pre-Supabase setup: bounce to home with a helpful path back.
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     redirect("/");
@@ -44,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <PaletteKeyboardShortcut />
       <main className="flex-1">{children}</main>
       <CommandPalette />
+      {modal}
     </div>
   );
 }
