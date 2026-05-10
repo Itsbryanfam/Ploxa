@@ -15,15 +15,24 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [mounted, setMounted] = useState(false);
 
+  // SSR-safe portal guard: defer createPortal until after first client render.
+  // The set-state-in-effect lint rule targets logic loops; this is the
+  // hydration mount pattern, not a state-sync issue.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
-  // Auto-focus on open
+  // Auto-focus on open. The 50ms delay lets Framer Motion attach the card
+  // to the DOM before we focus the input (especially needed on iOS Safari).
+  // The cleanup clears the pending timer if the palette closes mid-animation.
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setQuery("");
+      const id = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(id);
     }
+    // Reset query when the palette closes. setState-in-effect is intentional —
+    // local input state should not survive across opens.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuery("");
   }, [isOpen]);
 
   if (!mounted) return null;
