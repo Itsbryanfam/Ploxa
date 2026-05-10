@@ -74,7 +74,6 @@ function ShelfItem({ item }: { item: LibraryItem }) {
             fill
             sizes="140px"
             className="object-cover"
-            unoptimized
           />
         )}
       </div>

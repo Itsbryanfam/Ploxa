@@ -34,7 +34,6 @@ export function GameDetail({ game, screenshots, log }: Props) {
             sizes="100vw"
             className="object-cover"
             priority
-            unoptimized
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/60 to-transparent" />

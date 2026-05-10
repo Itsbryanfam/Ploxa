@@ -30,7 +30,6 @@ export function LibraryPoster({ item }: { item: LibraryItem }) {
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 140px"
             className="object-cover"
-            unoptimized
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-xs text-[var(--text-faint)] p-2 text-center">

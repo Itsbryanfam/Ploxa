@@ -47,7 +47,6 @@ export function LibraryList({ items, filter }: Props) {
                     fill
                     sizes="48px"
                     className="object-cover"
-                    unoptimized
                   />
                 )}
               </div>
