@@ -1,22 +1,36 @@
 import { z } from "zod";
 
+// Treat empty-string env vars (e.g. `CEREBRAS_API_KEY=` in .env) as absent.
+// Zod's `.min(1)` / `.url()` would otherwise reject them at build time even
+// though `.optional()` is set, because the value is "" rather than undefined.
+const optionalString = z
+  .string()
+  .optional()
+  .transform((v) => (v === "" ? undefined : v));
+
+const optionalUrl = z
+  .string()
+  .url()
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
 const serverSchema = z.object({
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
-  DATABASE_URL: z.string().url().optional(),
-  RAWG_API_KEY: z.string().min(1).optional(),
-  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
-  CEREBRAS_API_KEY: z.string().min(1).optional(),
-  GROQ_API_KEY: z.string().min(1).optional(),
-  CLOUDFLARE_ACCOUNT_ID: z.string().min(1).optional(),
-  CLOUDFLARE_API_TOKEN: z.string().min(1).optional(),
-  DEEPSEEK_API_KEY: z.string().min(1).optional(),
-  RESEND_API_KEY: z.string().min(1).optional(),
+  SUPABASE_SERVICE_ROLE_KEY: optionalString,
+  DATABASE_URL: optionalUrl,
+  RAWG_API_KEY: optionalString,
+  UPSTASH_REDIS_REST_URL: optionalUrl,
+  UPSTASH_REDIS_REST_TOKEN: optionalString,
+  CEREBRAS_API_KEY: optionalString,
+  GROQ_API_KEY: optionalString,
+  CLOUDFLARE_ACCOUNT_ID: optionalString,
+  CLOUDFLARE_API_TOKEN: optionalString,
+  DEEPSEEK_API_KEY: optionalString,
+  RESEND_API_KEY: optionalString,
 });
 
 const clientSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_SUPABASE_URL: optionalUrl,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalString,
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
 });
 
