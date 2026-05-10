@@ -10,6 +10,9 @@ import { LOG_STATUSES, STATUS_LABELS, type LogStatus } from "@/lib/db/schema-typ
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createLog } from "@/lib/logs/server-actions";
+import { toast } from "sonner";
+import { LogSuccessToast } from "@/components/ui/log-success-toast";
+import { useMascotStore } from "@/components/mascot/mascot-store";
 
 export function QuickLogForm() {
   const selectedGame = usePaletteStore((s) => s.selectedGame);
@@ -21,6 +24,7 @@ export function QuickLogForm() {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const celebrate = useMascotStore((s) => s.celebrate);
 
   if (!selectedGame) return null;
 
@@ -61,6 +65,10 @@ export function QuickLogForm() {
       queryClient.invalidateQueries({ queryKey: ["library"] });
       queryClient.invalidateQueries({ queryKey: ["status-shelf"] });
       queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      toast.custom(() => <LogSuccessToast title={snapshot.title} status={snapshot.status} />, {
+        duration: 3500,
+      });
+      celebrate();
       close();
     });
   }
