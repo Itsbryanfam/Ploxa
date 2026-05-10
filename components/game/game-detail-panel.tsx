@@ -4,6 +4,12 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
+// TODO Phase 2: mobile bottom-sheet variant.
+// Spec called for `<md` to render as a bottom sheet (y-axis animation +
+// rounded-t-2xl + partial height). Phase 1 ships a full-width side panel on
+// all viewports — usable, but not the spec'd mobile UX. Also deferred:
+// focus trap and body-scroll lock.
+
 export function GameDetailPanel({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
