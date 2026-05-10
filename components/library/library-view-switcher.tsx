@@ -3,23 +3,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { getUserLibrary, type LibraryItem, type SortKey } from "@/lib/logs/server-actions";
-import { LibraryGrid } from "./library-grid";
+import { LibraryShelf } from "./library-shelf";
 import { LibraryList } from "./library-list";
-import { StatusShelf } from "./status-shelf";
+import { StatusStacks } from "./status-stacks";
 import { ShelfFrame } from "@/components/pixel/shelf-frame";
 import { FilterChips } from "./filter-chips";
 import { SortDropdown } from "./sort-dropdown";
 import type { LogStatus } from "@/lib/db/schema-types";
 import { cn } from "@/lib/utils";
 
-type View = "grid" | "list" | "shelf";
+type View = "shelf" | "list" | "stacks";
 
-const VALID_VIEWS = ["grid", "list", "shelf"] as const;
+const VALID_VIEWS = ["shelf", "list", "stacks"] as const;
 const VALID_FILTERS = ["all", "backlog", "playing", "completed", "dropped", "on_hold", "wishlist"] as const;
 const VALID_SORTS = ["recent", "rating-desc", "rating-asc", "title-asc", "released-desc"] as const;
 
 function asView(s: string | null): View {
-  return (VALID_VIEWS as readonly string[]).includes(s ?? "") ? (s as View) : "grid";
+  return (VALID_VIEWS as readonly string[]).includes(s ?? "") ? (s as View) : "shelf";
 }
 function asFilter(s: string | null): LogStatus | "all" {
   return (VALID_FILTERS as readonly string[]).includes(s ?? "") ? (s as LogStatus | "all") : "all";
@@ -50,7 +50,7 @@ export function LibraryViewSwitcher({ initialData, initialFilter, initialSort }:
 
   function setView(v: View) {
     const next = new URLSearchParams(params);
-    if (v === "grid") next.delete("view");
+    if (v === "shelf") next.delete("view");
     else next.set("view", v);
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   }
@@ -87,14 +87,14 @@ export function LibraryViewSwitcher({ initialData, initialFilter, initialSort }:
         </div>
       </div>
 
-      {view === "grid" ? (
+      {view === "shelf" ? (
         <ShelfFrame>
-          <LibraryGrid items={items} filter={filter} />
+          <LibraryShelf items={items} filter={filter} />
         </ShelfFrame>
       ) : view === "list" ? (
         <LibraryList items={items} filter={filter} />
       ) : (
-        <StatusShelf items={items} />
+        <StatusStacks items={items} />
       )}
     </div>
   );

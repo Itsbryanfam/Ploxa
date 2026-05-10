@@ -1,6 +1,6 @@
 import { getUserLibrary, getUserStats, getRecentActivity } from "@/lib/logs/server-actions";
 import { MascotGreeting } from "@/components/dashboard/mascot-greeting";
-import { StatusShelf } from "@/components/library/status-shelf";
+import { StatusStacks } from "@/components/library/status-stacks";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -51,7 +51,7 @@ export async function CockpitDashboard() {
     <div className="mx-auto max-w-6xl px-6 py-8 space-y-10">
       <MascotGreeting context={greetingCtx} />
       {stats && <StatsStrip stats={stats} />}
-      <StatusShelf items={library} />
+      <StatusStacks items={library} />
       {activity.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold mb-3 text-[var(--text)]">Recent activity</h2>

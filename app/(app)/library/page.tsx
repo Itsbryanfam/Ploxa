@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { getUserLibrary, type SortKey } from "@/lib/logs/server-actions";
 import { LibraryViewSwitcher } from "@/components/library/library-view-switcher";
 import type { LogStatus } from "@/lib/db/schema-types";
@@ -21,6 +22,17 @@ export default async function LibraryPage({
   searchParams: Promise<{ status?: string; sort?: string; view?: string }>;
 }) {
   const sp = await searchParams;
+
+  // Phase 1.5.13: old ?view=grid → new ?view=shelf (which is now the default,
+  // so we just drop the param). Preserves any other query params.
+  if (sp.view === "grid") {
+    const others = new URLSearchParams();
+    if (sp.status) others.set("status", sp.status);
+    if (sp.sort) others.set("sort", sp.sort);
+    const qs = others.toString();
+    redirect(qs ? `/library?${qs}` : "/library");
+  }
+
   const filter = asFilter(sp.status);
   const sort = asSort(sp.sort);
   const initialData = await getUserLibrary({ status: filter, sort });

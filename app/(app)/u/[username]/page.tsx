@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getProfileByUsername } from "@/lib/profile/server-actions";
-import { LibraryGrid } from "@/components/library/library-grid";
+import { LibraryShelf } from "@/components/library/library-shelf";
 import { ShelfFrame } from "@/components/pixel/shelf-frame";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { Mascot } from "@/components/mascot/mascot";
@@ -96,7 +96,7 @@ export default async function ProfilePage({
       <StatsStrip stats={stats} />
 
       <ShelfFrame>
-        <LibraryGrid items={items} filter="all" />
+        <LibraryShelf items={items} filter="all" />
       </ShelfFrame>
     </div>
   );

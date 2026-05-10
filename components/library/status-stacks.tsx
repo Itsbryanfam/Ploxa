@@ -14,7 +14,7 @@ const SHELF_ORDER: { status: LogStatus; label: string }[] = [
   { status: "wishlist", label: "Wishlist" },
 ];
 
-export function StatusShelf({ items }: { items: LibraryItem[] }) {
+export function StatusStacks({ items }: { items: LibraryItem[] }) {
   // Items arrive pre-sorted from getUserLibrary; slice top 12 per bucket.
   const byStatus: Record<LogStatus, LibraryItem[]> = {
     backlog: [], playing: [], completed: [], dropped: [], on_hold: [], wishlist: [],

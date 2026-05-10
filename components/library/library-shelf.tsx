@@ -12,7 +12,7 @@ interface Props {
   filter: LogStatus | "all";
 }
 
-export function LibraryGrid({ items, filter }: Props) {
+export function LibraryShelf({ items, filter }: Props) {
   if (items.length === 0) {
     const scenarioKey =
       filter === "all" ? "library.empty.all" : (`library.empty.${filter}` as const);
