@@ -325,3 +325,48 @@ export async function getRecentActivity(limit = 10): Promise<ActivityEvent[]> {
     at: r.at,
   }));
 }
+
+const updateLogFullInput = z.object({
+  logId: z.string().uuid(),
+  status: z.enum(LOG_STATUSES as [LogStatus, ...LogStatus[]]),
+  rating: z.number().min(0).max(10).optional().nullable(),
+  startedAt: z.string().optional().nullable(), // ISO date string
+  finishedAt: z.string().optional().nullable(),
+  hoursPlayed: z.number().min(0).max(99999).optional().nullable(),
+  platformPlayedOn: z.string().max(64).optional().nullable(),
+  isReplay: z.boolean(),
+  isPrivate: z.boolean(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+export async function updateLogFull(input: unknown): Promise<{ ok: boolean; error?: string }> {
+  const parsed = updateLogFullInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const d = parsed.data;
+  const result = await db
+    .update(schema.logs)
+    .set({
+      status: d.status,
+      rating: d.rating != null && d.rating > 0 ? String(d.rating) : null,
+      startedAt: d.startedAt ? new Date(d.startedAt) : null,
+      finishedAt: d.finishedAt ? new Date(d.finishedAt) : null,
+      hoursPlayed: d.hoursPlayed != null ? String(d.hoursPlayed) : null,
+      platformPlayedOn: d.platformPlayedOn || null,
+      isReplay: d.isReplay,
+      isPrivate: d.isPrivate,
+      notes: d.notes?.trim() || null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.logs.id, d.logId), eq(schema.logs.userId, user.id)))
+    .returning({ id: schema.logs.id });
+
+  if (result.length === 0) return { ok: false, error: "Log not found" };
+  return { ok: true };
+}
