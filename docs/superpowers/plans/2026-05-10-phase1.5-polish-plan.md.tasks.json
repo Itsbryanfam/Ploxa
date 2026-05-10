@@ -1,0 +1,112 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-10-phase1.5-polish-plan.md",
+  "lastUpdated": "2026-05-10T18:25:56.080Z",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Mapper-dedup — extract mapRowToLibraryItem helper",
+      "status": "pending",
+      "description": "**Goal:** Single source of truth for the Drizzle-row → LibraryItem mapping. No behavior change. Replaces the dropped claude/elegant-margulis-62618a branch with all current Phase 1.31 fields and all 4 mapper sites.\n\n**Files:**\n- Create: lib/logs/library-item.ts\n- Modify: lib/logs/server-actions.ts (use helper in getUserLibrary; type-only re-export LibraryItem)\n- Modify: app/(app)/games/[slug]/page.tsx, app/(app)/@modal/(.)games/[slug]/page.tsx, app/(app)/u/[username]/page.tsx (use helper)\n\n**See plan:** Task 1\n\n```json:metadata\n{\"files\": [\"lib/logs/library-item.ts\", \"lib/logs/server-actions.ts\", \"app/(app)/games/[slug]/page.tsx\", \"app/(app)/@modal/(.)games/[slug]/page.tsx\", \"app/(app)/u/[username]/page.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"lib/logs/library-item.ts exports LibraryItem with all Phase 1.31 fields\", \"All 4 mapper sites use the helper\", \"getUserLibrary uses Drizzle nested-object .select()\", \"Type-only re-export keeps existing imports working\", \"Manual gate: 4 pages render unchanged\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Heart visuals re-pixel",
+      "status": "pending",
+      "description": "**Goal:** Re-author half-heart and full-heart sprites in components/pixel/hearts.tsx so the upper red fill is solid. Independent of all other tasks — parallel-safe.\n\n**Files:**\n- Modify: components/pixel/hearts.tsx\n\n**See plan:** Task 2\n\n```json:metadata\n{\"files\": [\"components/pixel/hearts.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Empty/half/full heart visually distinct\", \"Upper half of half/full clearly filled with red\", \"Outline matches other pixel sprites\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Avatar component (display only, no upload)",
+      "status": "pending",
+      "description": "**Goal:** Foundational Avatar component with initials fallback, static-image rendering, and GIF hover-swap. No upload UI yet.\n\n**Files:**\n- Create: lib/design/avatar-palette.ts\n- Create: components/ui/avatar.tsx\n\n**See plan:** Task 3\n\n```json:metadata\n{\"files\": [\"lib/design/avatar-palette.ts\", \"components/ui/avatar.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Static images render as <img>\", \"GIFs poster-on-rest, animated-on-hover/focus, honors prefers-reduced-motion\", \"Initials fallback with deterministic palette color\", \"Three sizes (sm=24, md=40, lg=96)\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: PFP backing infra — DB migration + Storage bucket + RLS",
+      "status": "pending",
+      "description": "**Goal:** Land the database columns and storage bucket the PFP upload feature will write to. No UI yet.\n\n**Files:**\n- Create: lib/db/migrations/000X_add_profile_picture.sql\n- Modify: lib/db/schema.ts (+ profilePictureUrl + profilePictureKind)\n- Storage: avatars bucket via Supabase MCP execute_sql\n\n**See plan:** Task 4\n\n```json:metadata\n{\"files\": [\"lib/db/schema.ts\", \"lib/db/migrations/\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"profile_picture_url + profile_picture_kind columns exist on profiles\", \"profile_picture_kind has CHECK ('static','gif')\", \"avatars bucket public-read with owner-only write RLS\", \"Strip CREATE TABLE auth.users from generated migration before db:migrate\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: AppHeader scaffold + nav tabs + mobile menu + profile dropdown",
+      "status": "pending",
+      "blockedBy": [3, 4],
+      "description": "**Goal:** Replace inline header in app/(app)/layout.tsx with shared AppHeader. Top-bar nav (Home/Library/Profile), mobile hamburger drawer, profile-avatar dropdown.\n\n**Files:**\n- Create: components/layout/{app-header,nav-tabs,mobile-menu,profile-dropdown}.tsx\n- Modify: app/(app)/layout.tsx\n- Modify: lib/profile/server-actions.ts (add getHeaderUser)\n- shadcn add: dropdown-menu, sheet (if missing)\n\n**See plan:** Task 5\n\n```json:metadata\n{\"files\": [\"components/layout/app-header.tsx\", \"components/layout/nav-tabs.tsx\", \"components/layout/mobile-menu.tsx\", \"components/layout/profile-dropdown.tsx\", \"app/(app)/layout.tsx\", \"lib/profile/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Nav visible on every authenticated route\", \"Active tab uses theme primary accent\", \"Profile tab routes to /u/[currentUsername]\", \"Mobile drawer opens; logout works\", \"Settings link points to /settings (404s until Task 6 — expected)\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: /settings page scaffold + empty Profile section",
+      "status": "pending",
+      "blockedBy": [3, 5],
+      "description": "**Goal:** Land /settings route. Section-based layout. Phase 1.5 ships only Profile section with Avatar slot (no upload yet) and placeholder for username editing.\n\n**Files:**\n- Create: app/(app)/settings/page.tsx\n- Create: app/(app)/settings/_sections/profile-section.tsx\n\n**See plan:** Task 6\n\n```json:metadata\n{\"files\": [\"app/(app)/settings/page.tsx\", \"app/(app)/settings/_sections/profile-section.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"/settings renders, auth-gated\", \"Profile section: large Avatar + username + email\", \"Avatar slot disabled with 'click to upload' hint\", \"Sidebar nav lists only Profile (Future sections deferred)\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: AvatarUploader component (cropper modal + client validation)",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Self-contained client component for avatar uploads. Validates client-side; static images go through react-easy-crop modal; GIFs skip cropper. Returns Blob to parent.\n\n**Files:**\n- Modify: package.json (add react-easy-crop)\n- Create: components/settings/avatar-uploader.tsx\n- shadcn add: dialog (if missing)\n\n**See plan:** Task 7\n\n```json:metadata\n{\"files\": [\"components/settings/avatar-uploader.tsx\", \"package.json\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Validates type/size client-side (5MB cap, jpg/png/webp/gif)\", \"Static images → cropper modal with drag/zoom 1:1\", \"GIFs → skip cropper, pass through\", \"Cancel resets state\", \"Wrong type / oversize → friendly inline error\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: uploadAvatar server action + Storage helper",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Server-side counterpart to AvatarUploader. Validates auth + mime + size. For GIFs: extracts frame 0 with sharp, uploads both files. Updates DB. revalidatePath('/', 'layout').\n\n**Files:**\n- Create: lib/storage/avatar.ts (Storage helpers + first-frame extraction)\n- Create: lib/profile/avatar-actions.ts (uploadAvatar action)\n- Modify: lib/profile/server-actions.ts (extend HeaderUser with profilePicturePosterUrl)\n\n**See plan:** Task 8\n\n```json:metadata\n{\"files\": [\"lib/storage/avatar.ts\", \"lib/profile/avatar-actions.ts\", \"lib/profile/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"Server-side validation matches client\", \"GIFs: sharp extracts frame 0; uploads both .gif and -poster.png\", \"Updates profile_picture_url + profile_picture_kind in DB\", \"revalidatePath('/', 'layout') after success\", \"Storage failure → no DB write; DB failure → roll back upload\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Wire AvatarUploader into ProfileSection",
+      "status": "pending",
+      "blockedBy": [6, 7, 8],
+      "description": "**Goal:** End-to-end: pick file → cropper (if static) → submit → server upload → revalidate → header + ProfileSection avatar update everywhere.\n\n**Files:**\n- Modify: app/(app)/settings/_sections/profile-section.tsx\n\n**See plan:** Task 9\n\n```json:metadata\n{\"files\": [\"app/(app)/settings/_sections/profile-section.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Avatar slot is clickable; opens file picker\", \"After upload, header avatar updates within 1-2s\", \"Failed uploads show server error inline\", \"Works for jpg, png, webp, gif\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: UsernameInput component + checkUsernameAvailability action",
+      "status": "pending",
+      "description": "**Goal:** Live-validated username input, reused by signup (Task 11) and settings (Task 12). Shared zod schema, reserved-words blocklist, debounced server check.\n\n**Files:**\n- Create: lib/profile/reserved-usernames.ts\n- Create: lib/profile/username-schema.ts\n- Create: components/auth/username-input.tsx\n- Modify: lib/profile/server-actions.ts (add checkUsernameAvailability)\n\n**See plan:** Task 10\n\n```json:metadata\n{\"files\": [\"lib/profile/reserved-usernames.ts\", \"lib/profile/username-schema.ts\", \"components/auth/username-input.tsx\", \"lib/profile/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"usernameSchema: 3-24 chars [a-z0-9_]\", \"RESERVED_USERNAMES covers route names\", \"checkUsernameAvailability returns invalid/reserved/taken/ok\", \"<UsernameInput /> debounces 300ms\", \"Inline status indicator: checking, available, error reasons\", \"valid prop exposed to parent\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Signup form integration + ensureMyProfile update",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Add username field to signup form. Update signup action and ensureMyProfile to take explicit username. Race-condition collision returns 3 suggestion chips.\n\n**Files:**\n- Modify: app/(auth)/signup/page.tsx (UsernameInput + form integration)\n- Modify: app/(auth)/signup/actions.ts (validate + collision handling)\n- Modify: lib/profile/server-actions.ts (ensureMyProfile takes optional username; suggestUsernames helper)\n\n**See plan:** Task 11\n\n```json:metadata\n{\"files\": [\"app/(auth)/signup/page.tsx\", \"app/(auth)/signup/actions.ts\", \"lib/profile/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Username field above email/password\", \"Submit blocked until username valid + email/password valid\", \"New user has explicit username, not email-derived\", \"Race-condition collision → error + 3 suggestions chips\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: Username editing in /settings ProfileSection",
+      "status": "pending",
+      "blockedBy": [9, 10],
+      "description": "**Goal:** Add 'change username' affordance to /settings. Reuses UsernameInput. New updateUsername server action.\n\n**Files:**\n- Modify: lib/profile/server-actions.ts (add updateUsername)\n- Modify: app/(app)/settings/_sections/profile-section.tsx (mount UsernameInput + Save button)\n\n**See plan:** Task 12\n\n```json:metadata\n{\"files\": [\"lib/profile/server-actions.ts\", \"app/(app)/settings/_sections/profile-section.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Edit button switches to UsernameInput\", \"treatInitialAsValid lets user's own name read as available\", \"Save disabled until valid + different from current\", \"updateUsername runs schema + uniqueness check + UPDATE\", \"Revalidates layout + old/new /u/[username]\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: View rename (Shelf / Stacks) + URL redirects",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Rename grid → shelf (pixel-art view); shelf → stacks (carousels). Component file renames. Old ?view=grid redirects.\n\n**Files:**\n- Rename: components/library/library-grid.tsx → library-shelf.tsx (export LibraryGrid → LibraryShelf)\n- Rename: components/library/status-shelf.tsx → status-stacks.tsx (export StatusShelf → StatusStacks)\n- Modify: components/library/library-view-switcher.tsx (labels + view keys)\n- Modify: app/(app)/library/page.tsx (param validation + redirects)\n\n**See plan:** Task 13\n\n```json:metadata\n{\"files\": [\"components/library/library-shelf.tsx\", \"components/library/status-stacks.tsx\", \"components/library/library-view-switcher.tsx\", \"app/(app)/library/page.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Switcher labels: Shelf / Stacks\", \"/library?view=shelf shows pixel-art grid\", \"/library?view=stacks shows status carousels\", \"Default view = shelf\", \"/library?view=grid redirects to /library?view=shelf\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: Performance baseline measurement",
+      "status": "pending",
+      "description": "**Goal:** Capture before-state numbers on /library, /dashboard, ⌘K palette. Document for comparison after fixes. No code changes.\n\n**Files:**\n- Create: docs/superpowers/perf/2026-05-10-phase1.5-baseline.md\n\n**See plan:** Task 14\n\n```json:metadata\n{\"files\": [\"docs/superpowers/perf/2026-05-10-phase1.5-baseline.md\"], \"verifyCommand\": \"\", \"acceptanceCriteria\": [\"Baseline doc with concrete metrics for each surface\", \"TTFB, hydration, TTI, refetch counts, heap size\", \"Each spec-flagged suspect examined: TanStack staleness, next/image unoptimized, in-memory aggregation\", \"Ranked priority for Task 15 fixes\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: Performance fixes — apply ranked by measured impact",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** Apply only the perf fixes the baseline ranked as worth doing. Each fix is its own commit with re-measured numbers. Skip suspects that the baseline showed are non-issues.\n\n**Files:** depends on which fixes apply:\n- app/providers.tsx (TanStack staleTime)\n- next.config.ts + Image consumers (RAWG remotePatterns + remove unoptimized)\n- lib/logs/server-actions.ts (DB-side aggregation)\n- docs/superpowers/perf/2026-05-10-phase1.5-baseline.md (after-numbers + summary)\n\n**See plan:** Task 15\n\n```json:metadata\n{\"files\": [\"app/providers.tsx\", \"next.config.ts\", \"lib/logs/server-actions.ts\", \"docs/superpowers/perf/2026-05-10-phase1.5-baseline.md\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Each applied fix has measured before/after numbers in perf doc\", \"Each fix is a separate commit\", \"Skipped suspects are documented (rationale)\", \"No regressions: site still works\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: Phase 1.5 verification gate",
+      "status": "pending",
+      "blockedBy": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      "description": "**Goal:** Final manual gate. All 14 Phase 1 checks still pass + 23 new Phase 1.5 checks (37 total). Tag phase-1.5-complete.\n\n**Files:**\n- Create: docs/superpowers/gates/2026-05-10-phase1.5-gate.md\n- Tag: phase-1.5-complete\n\n**See plan:** Task 16\n\n```json:metadata\n{\"files\": [\"docs/superpowers/gates/2026-05-10-phase1.5-gate.md\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"All 14 Phase 1 checks still pass\", \"23 new Phase 1.5 checks pass (nav, mobile drawer, dropdown, /settings, avatar upload, GIF hover, reduced-motion, view rename, signup-username, username edit, hearts, perf doc)\", \"Tag phase-1.5-complete on final passing commit\", \"Memory updated: phase_1_polish_backlog.md → completed\"]}\n```"
+    }
+  ]
+}
