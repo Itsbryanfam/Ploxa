@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ensureMyProfile } from "@/lib/profile/server-actions";
+import { UsernameCollisionError } from "@/lib/profile/errors";
 
 /**
  * OAuth + magic link callback handler.
@@ -32,7 +33,20 @@ export async function GET(request: NextRequest) {
         typeof user?.user_metadata?.username === "string"
           ? user.user_metadata.username
           : undefined;
-      await ensureMyProfile(metadataUsername ? { username: metadataUsername } : undefined);
+      try {
+        await ensureMyProfile(metadataUsername ? { username: metadataUsername } : undefined);
+      } catch (err) {
+        // The username the user picked at signup was grabbed by someone
+        // else between signup and email confirmation. Fall back to
+        // email-prefix derivation so they at least get a profile and a
+        // working session — far better than a 500. They can rename in
+        // /settings (Task 12) once they're in.
+        if (err instanceof UsernameCollisionError) {
+          await ensureMyProfile();
+        } else {
+          throw err;
+        }
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

@@ -12,6 +12,11 @@ import { signup, type ActionResult } from "./actions";
 export function SignupForm() {
   const [state, action, pending] = useActionState<ActionResult, FormData>(signup, undefined);
   const [username, setUsername] = useState({ value: "", valid: false });
+  // Bumped each time the user clicks a suggestion chip. Used as part of the
+  // UsernameInput `key` so that chip clicks remount the input (so its internal
+  // value picks up the new initialValue). Bumping only on chip clicks — not on
+  // every keystroke — preserves the in-flight debounce when the user types.
+  const [chipPickNonce, setChipPickNonce] = useState(0);
 
   return (
     <form action={action} className="space-y-4">
@@ -20,12 +25,8 @@ export function SignupForm() {
 
       <div className="space-y-2">
         <Label htmlFor="username">Username</Label>
-        {/*
-          key remounts UsernameInput when suggestion chips update state,
-          ensuring initialValue is picked up after a chip click.
-        */}
         <UsernameInput
-          key={state?.suggestions?.join(",") ?? "x"}
+          key={chipPickNonce}
           id="username"
           name="_username_display"
           initialValue={username.value}
@@ -41,7 +42,10 @@ export function SignupForm() {
             <button
               key={s}
               type="button"
-              onClick={() => setUsername({ value: s, valid: true })}
+              onClick={() => {
+                setUsername({ value: s, valid: true });
+                setChipPickNonce((n) => n + 1);
+              }}
               className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] hover:border-[var(--accent)] transition-colors"
             >
               @{s}
