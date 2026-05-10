@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { ensureMyProfile } from "@/lib/profile/server-actions";
 
 /**
  * OAuth + magic link callback handler.
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      await ensureMyProfile();
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

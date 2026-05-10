@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
+import { ensureMyProfile } from "@/lib/profile/server-actions";
 
 const passwordSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -40,6 +41,7 @@ export async function loginWithPassword(_: ActionResult, formData: FormData): Pr
     return { error: error.message };
   }
 
+  await ensureMyProfile();
   // Only honor relative paths — prevents open-redirect via crafted `next=`.
   const safeNext = parsed.data.next?.startsWith("/") ? parsed.data.next : "/home";
   redirect(safeNext);

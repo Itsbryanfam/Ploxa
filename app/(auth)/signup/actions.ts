@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
+import { ensureMyProfile } from "@/lib/profile/server-actions";
 
 const signupSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -44,5 +45,6 @@ export async function signup(_: ActionResult, formData: FormData): Promise<Actio
     };
   }
 
+  await ensureMyProfile();
   redirect("/home");
 }
