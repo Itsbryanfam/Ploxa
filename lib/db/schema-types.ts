@@ -1,12 +1,18 @@
-// Drizzle pgEnum doesn't directly export the union — these literal unions
-// must stay in sync with lib/db/schema.ts enum definitions.
-export type LogStatus = "backlog" | "playing" | "completed" | "dropped" | "on_hold" | "wishlist";
-export type PlatformKind = "steam" | "xbox" | "psn";
-export type ImportStatus = "queued" | "running" | "completed" | "failed";
+// Type-only imports — fully erased at compile time, so this file stays
+// safe to import from client components without dragging Drizzle/postgres
+// into the client bundle.
+import type { logStatusEnum, platformEnum, importStatusEnum } from "./schema";
 
-export const LOG_STATUSES: LogStatus[] = [
+export type LogStatus = (typeof logStatusEnum.enumValues)[number];
+export type PlatformKind = (typeof platformEnum.enumValues)[number];
+export type ImportStatus = (typeof importStatusEnum.enumValues)[number];
+
+// Hardcoded runtime array (kept hardcoded rather than reading
+// `logStatusEnum.enumValues` so this file remains client-bundle clean).
+// Order matters — used to render UI lists.
+export const LOG_STATUSES: readonly LogStatus[] = [
   "backlog", "playing", "completed", "dropped", "on_hold", "wishlist",
-];
+] as const;
 
 export const STATUS_LABELS: Record<LogStatus, string> = {
   backlog: "Backlog",

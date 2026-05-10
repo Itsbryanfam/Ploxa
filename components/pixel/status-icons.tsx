@@ -4,7 +4,9 @@ interface StatusIconProps extends Omit<SVGProps<SVGSVGElement>, "viewBox"> {
   size?: number;
 }
 
-const COLORS = {
+// Canonical status palette. Exported so consumers (e.g. StatusBadge) can
+// derive matching foreground colors instead of duplicating the hex values.
+export const COLORS = {
   backlog: "#9494a8",
   playing: "#7c5cff",
   completed: "#4ade80",
