@@ -52,6 +52,8 @@ export function HeartRating({
       aria-valuemin={0}
       aria-valuemax={10}
       aria-valuenow={value}
+      aria-valuetext={`${value} out of 10`}
+      aria-disabled={disabled}
       tabIndex={disabled ? -1 : 0}
       onKeyDown={handleKey}
       onMouseLeave={() => setHover(null)}
@@ -78,7 +80,7 @@ export function HeartRating({
                   onClick={() => handleClick(i, "left")}
                   onMouseEnter={() => handleHover(i, "left")}
                   className="absolute inset-y-0 left-0 w-1/2 cursor-pointer"
-                  aria-label={`Set rating to ${i + 0.5}`}
+                  aria-hidden="true"
                   tabIndex={-1}
                 />
                 <button
@@ -86,7 +88,7 @@ export function HeartRating({
                   onClick={() => handleClick(i, "right")}
                   onMouseEnter={() => handleHover(i, "right")}
                   className="absolute inset-y-0 right-0 w-1/2 cursor-pointer"
-                  aria-label={`Set rating to ${i + 1}`}
+                  aria-hidden="true"
                   tabIndex={-1}
                 />
               </>
