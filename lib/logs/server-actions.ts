@@ -109,14 +109,14 @@ export interface LibraryItem {
     title: string;
     coverUrl: string | null;
     released: Date | null;
-    genres: string[] | null;
-    platforms: string[] | null;
+    genres: string[];
+    platforms: string[];
   };
 }
 
 export type SortKey = "rating-desc" | "rating-asc" | "recent" | "title-asc" | "released-desc";
 
-interface GetLibraryArgs {
+export interface GetLibraryArgs {
   status?: LogStatus | "all";
   sort?: SortKey;
 }
@@ -221,6 +221,12 @@ export async function updateLogStatus(input: unknown): Promise<{ ok: boolean; er
 }
 
 export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: string }> {
+  // Reject malformed ids before they reach Postgres — bad UUIDs would otherwise
+  // bubble as an unhandled driver throw rather than a friendly envelope.
+  if (!z.string().uuid().safeParse(logId).success) {
+    return { ok: false, error: "Invalid log ID" };
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
