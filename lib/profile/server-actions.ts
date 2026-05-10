@@ -4,6 +4,8 @@ import type { User } from "@supabase/supabase-js";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { usernameSchema } from "./username-schema";
+import { RESERVED_USERNAMES } from "./reserved-usernames";
 
 export interface HeaderUser {
   id: string;
@@ -53,6 +55,25 @@ export async function getProfileByUsername(username: string) {
     where: eq(schema.profiles.username, username),
   });
   return profile ?? null;
+}
+
+export type CheckUsernameResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid" | "reserved" | "taken" };
+
+export async function checkUsernameAvailability(
+  value: string,
+): Promise<CheckUsernameResult> {
+  // Check reserved first — cheapest, no DB round-trip.
+  if (RESERVED_USERNAMES.has(value)) return { ok: false, reason: "reserved" };
+  const parsed = usernameSchema.safeParse(value);
+  if (!parsed.success) return { ok: false, reason: "invalid" };
+  // Indexed unique lookup on username column.
+  const existing = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.username, value),
+    columns: { userId: true }, // minimal projection — we only need existence
+  });
+  return existing ? { ok: false, reason: "taken" } : { ok: true };
 }
 
 export async function ensureMyProfile() {

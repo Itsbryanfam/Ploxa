@@ -1,0 +1,125 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { checkUsernameAvailability } from "@/lib/profile/server-actions";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+type Status =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "available" }
+  | { kind: "invalid"; message: string }
+  | { kind: "reserved" }
+  | { kind: "taken" };
+
+const REASON_TO_MESSAGE: Record<"invalid" | "reserved" | "taken", string> = {
+  invalid: "must be 3–24 chars: lowercase letters, digits, or _",
+  reserved: "this name is reserved",
+  taken: "already taken",
+};
+
+interface Props {
+  /** Initial value (e.g., the current username when editing). */
+  initialValue?: string;
+  /** Treat the initialValue as already-yours, so it reads as available. */
+  treatInitialAsValid?: boolean;
+  /** Notify parent of value + validity. */
+  onChange: (value: string, valid: boolean) => void;
+  name?: string;
+  id?: string;
+  required?: boolean;
+}
+
+export function UsernameInput({
+  initialValue = "",
+  treatInitialAsValid = false,
+  onChange,
+  name = "username",
+  id = "username",
+  required,
+}: Props) {
+  const [value, setValue] = useState(initialValue);
+  const [status, setStatus] = useState<Status>(
+    treatInitialAsValid && initialValue
+      ? { kind: "available" }
+      : { kind: "idle" },
+  );
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestSeq = useRef(0);
+
+  useEffect(() => {
+    onChange(value, status.kind === "available");
+  }, [value, status, onChange]);
+
+  function handleChange(next: string) {
+    setValue(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (treatInitialAsValid && next === initialValue) {
+      setStatus({ kind: "available" });
+      return;
+    }
+    if (!next) {
+      setStatus({ kind: "idle" });
+      return;
+    }
+    setStatus({ kind: "checking" });
+    const seq = ++requestSeq.current;
+    debounceRef.current = setTimeout(async () => {
+      const res = await checkUsernameAvailability(next);
+      // Drop stale responses — if another keystroke fired a newer check
+      // before this one returned, ignore this result.
+      if (seq !== requestSeq.current) return;
+      if (res.ok) {
+        setStatus({ kind: "available" });
+      } else {
+        setStatus(
+          res.reason === "invalid"
+            ? { kind: "invalid", message: REASON_TO_MESSAGE.invalid }
+            : { kind: res.reason },
+        );
+      }
+    }, 300);
+  }
+
+  const message =
+    status.kind === "checking"
+      ? "…checking"
+      : status.kind === "available"
+        ? `✓ @${value} is available`
+        : status.kind === "invalid"
+          ? `✗ ${status.message}`
+          : status.kind === "reserved"
+            ? `✗ ${REASON_TO_MESSAGE.reserved}`
+            : status.kind === "taken"
+              ? `✗ ${REASON_TO_MESSAGE.taken}`
+              : "";
+
+  const messageColor =
+    status.kind === "available"
+      ? "text-green-500"
+      : status.kind === "checking" || status.kind === "idle"
+        ? "text-[var(--text-dim)]"
+        : "text-red-500";
+
+  return (
+    <div>
+      <Input
+        id={id}
+        name={name}
+        type="text"
+        autoComplete="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        required={required}
+        value={value}
+        onChange={(e) => handleChange(e.target.value.toLowerCase())}
+      />
+      {message && (
+        <p className={cn("text-xs mt-1", messageColor)} aria-live="polite">
+          {message}
+        </p>
+      )}
+    </div>
+  );
+}
