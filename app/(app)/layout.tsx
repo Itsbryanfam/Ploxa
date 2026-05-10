@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+import { CommandPalette } from "@/components/palette/command-palette";
 import { HeaderSearchInput } from "@/components/palette/header-search-input";
 import { PaletteKeyboardShortcut } from "@/components/palette/keyboard-shortcut";
 import { LogoutButton } from "./logout-button";
@@ -42,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
       <PaletteKeyboardShortcut />
       <main className="flex-1">{children}</main>
+      <CommandPalette />
     </div>
   );
 }
