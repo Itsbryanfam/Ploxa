@@ -1,9 +1,23 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Mascot } from "@/components/mascot/mascot";
+import { env } from "@/lib/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Redirect signed-in users to the cockpit
+  if (env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      redirect("/home");
+    }
+  }
+
   return (
     <main className="flex min-h-screen flex-col">
       <header className="border-b border-[var(--border-soft)]">

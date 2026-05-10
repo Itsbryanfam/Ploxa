@@ -44,5 +44,5 @@ export async function signup(_: ActionResult, formData: FormData): Promise<Actio
     };
   }
 
-  redirect("/dashboard");
+  redirect("/home");
 }

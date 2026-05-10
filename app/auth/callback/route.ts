@@ -7,12 +7,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  *
  * Supabase appends ?code=... after the user clicks the email link.
  * We exchange it for a session, then redirect to the originally-requested
- * page (passed in ?next=) or the dashboard.
+ * page (passed in ?next=) or home.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const next = searchParams.get("next") ?? "/home";
 
   if (code) {
     const supabase = await createSupabaseServerClient();

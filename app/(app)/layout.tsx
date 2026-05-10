@@ -34,7 +34,7 @@ export default async function AppLayout({
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--bg)]/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <Link href="/" className="flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
+          <Link href="/home" className="flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
             <span className="font-mono text-xs tracking-[0.2em] text-[var(--pixel)]">▓ L4G ▓</span>
             <span className="hidden sm:inline text-[var(--text-dim)]">Letterboxd for Games</span>
           </Link>

@@ -40,7 +40,7 @@ export async function loginWithPassword(_: ActionResult, formData: FormData): Pr
     return { error: error.message };
   }
 
-  redirect(parsed.data.next || "/dashboard");
+  redirect(parsed.data.next || "/home");
 }
 
 export async function sendMagicLink(_: ActionResult, formData: FormData): Promise<ActionResult> {
