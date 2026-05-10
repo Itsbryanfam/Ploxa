@@ -52,30 +52,39 @@ export function Avatar({ user, size, className }: AvatarProps) {
   }
 
   // GIF: poster on rest, animated on hover/focus.
-  // `prefers-reduced-motion: reduce` users always see the poster (the swap
-  // is gated on the `hovered` state, which we never set true under reduced
-  // motion — see the matchMedia check).
+  // Although `hovered` is set on mouseenter/focus regardless of motion
+  // preference, the src swap is gated on `hovered && !reducedMotion`, so
+  // the animated src is never shown to users who prefer reduced motion.
   if (user.profilePictureUrl && user.profilePictureKind === "gif") {
+    const hintId = `${id}-gif-hint`;
     const poster = user.profilePicturePosterUrl ?? user.profilePictureUrl;
     const reducedMotion =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const src = hovered && !reducedMotion ? user.profilePictureUrl : poster;
     return (
-      <img
-        src={src}
-        alt={user.username ?? user.email}
-        width={px}
-        height={px}
-        className={cn("rounded-full object-cover", className)}
-        style={{ width: px, height: px }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onFocus={() => setHovered(true)}
-        onBlur={() => setHovered(false)}
-        tabIndex={0}
-        aria-describedby={`${id}-gif-hint`}
-      />
+      <>
+        <span id={hintId} className="sr-only">
+          Animated avatar. Hover or focus to play.
+        </span>
+        <img
+          src={src}
+          alt={user.username ?? user.email}
+          width={px}
+          height={px}
+          className={cn(
+            "rounded-full object-cover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]",
+            className,
+          )}
+          style={{ width: px, height: px }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onFocus={() => setHovered(true)}
+          onBlur={() => setHovered(false)}
+          tabIndex={0}
+          aria-describedby={hintId}
+        />
+      </>
     );
   }
 
