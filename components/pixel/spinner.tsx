@@ -7,7 +7,7 @@ export function PixelSpinner({ size = 16, color = "#7c5cff" }: { size?: number; 
       width={size}
       height={size}
       shapeRendering="crispEdges"
-      style={{ animation: "pixel-spin 0.8s steps(8) infinite" }}
+      style={{ animation: "pixel-spin 0.8s steps(8) infinite", transformOrigin: "center" }}
     >
       <rect x="7" y="2" width="2" height="2" fill={color} />
       <rect x="11" y="3" width="2" height="2" fill={color} opacity="0.85" />
