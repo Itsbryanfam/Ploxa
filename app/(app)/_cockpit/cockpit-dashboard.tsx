@@ -1,4 +1,5 @@
-import { getUserLibrary, getUserStats, getRecentActivity } from "@/lib/logs/server-actions";
+import { getUserLibrary, getRecentActivity, type UserStats } from "@/lib/logs/server-actions";
+import type { LibraryItem } from "@/lib/logs/server-actions";
 import { MascotGreeting } from "@/components/dashboard/mascot-greeting";
 import { StatusStacks } from "@/components/library/status-stacks";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
@@ -6,13 +7,39 @@ import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
 import { EmptyState } from "@/components/ui/empty-state";
 import { copy } from "@/lib/mascot/copy";
 import type { GreetingContext } from "@/lib/mascot/copy";
+import type { LogStatus } from "@/lib/db/schema-types";
+
+/**
+ * Compute UserStats from an already-fetched library array, avoiding a second
+ * DB round-trip. getUserStats() in server-actions.ts is kept for future callers
+ * that need stats without first fetching the full library.
+ */
+function computeUserStatsFromLibrary(items: LibraryItem[]): UserStats {
+  const byStatus: Record<LogStatus, number> = {
+    backlog: 0, playing: 0, completed: 0, dropped: 0, on_hold: 0, wishlist: 0,
+  };
+  let ratingSum = 0;
+  let ratingCount = 0;
+  for (const item of items) {
+    byStatus[item.status]++;
+    if (item.rating != null) {
+      ratingSum += item.rating;
+      ratingCount++;
+    }
+  }
+  return {
+    total: items.length,
+    byStatus,
+    averageRating: ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
+  };
+}
 
 export async function CockpitDashboard() {
-  const [library, stats, activity] = await Promise.all([
+  const [library, activity] = await Promise.all([
     getUserLibrary({}),
-    getUserStats(),
     getRecentActivity(10),
   ]);
+  const stats = computeUserStatsFromLibrary(library);
 
   // Build greeting context — Date.now() is safe in an async server component;
   // the purity rule is a false positive here (no re-render lifecycle on server).
@@ -50,7 +77,7 @@ export async function CockpitDashboard() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 space-y-10">
       <MascotGreeting context={greetingCtx} />
-      {stats && <StatsStrip stats={stats} />}
+      <StatsStrip stats={stats} />
       <StatusStacks items={library} />
       {activity.length > 0 && (
         <section>
