@@ -13,6 +13,7 @@ import { createLog } from "@/lib/logs/server-actions";
 import { toast } from "sonner";
 import { LogSuccessToast } from "@/components/ui/log-success-toast";
 import { useMascotStore } from "@/components/mascot/mascot-store";
+import { logSuccessCopy } from "@/lib/mascot/copy";
 
 export function QuickLogForm() {
   const selectedGame = usePaletteStore((s) => s.selectedGame);
@@ -65,10 +66,11 @@ export function QuickLogForm() {
       queryClient.invalidateQueries({ queryKey: ["library"] });
       queryClient.invalidateQueries({ queryKey: ["status-shelf"] });
       queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      const message = logSuccessCopy(snapshot.status, snapshot.rating, snapshot.title);
       toast.custom(() => <LogSuccessToast title={snapshot.title} status={snapshot.status} />, {
         duration: 3500,
       });
-      celebrate();
+      celebrate(message);
       close();
     });
   }

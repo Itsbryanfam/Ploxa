@@ -10,6 +10,7 @@ import { Mascot } from "@/components/mascot/mascot";
 import { PixelSpinner } from "@/components/pixel";
 import { PlatformIcon } from "@/components/ui/platform-icon";
 import { cn } from "@/lib/utils";
+import { copy } from "@/lib/mascot/copy";
 
 export function GameSearchResults({ query }: { query: string }) {
   const debouncedQuery = useDebounced(query, 250);
@@ -61,7 +62,7 @@ export function GameSearchResults({ query }: { query: string }) {
     return (
       <div className="px-5 py-12 text-center">
         <Mascot size="md" mood="idle" silent />
-        <p className="mt-4 text-sm text-[var(--text-dim)]">Start typing to search.</p>
+        <p className="mt-4 text-sm text-[var(--text-dim)]">{copy("palette.idle")}</p>
       </div>
     );
   }
@@ -70,7 +71,7 @@ export function GameSearchResults({ query }: { query: string }) {
     return (
       <div className="px-5 py-12 text-center flex flex-col items-center gap-3">
         <PixelSpinner size={24} />
-        <p className="text-sm text-[var(--text-dim)]">Searching...</p>
+        <p className="text-sm text-[var(--text-dim)]">{copy("palette.searching")}</p>
       </div>
     );
   }
@@ -79,7 +80,7 @@ export function GameSearchResults({ query }: { query: string }) {
     return (
       <div className="px-5 py-12 text-center">
         <Mascot size="md" mood="confused" silent />
-        <p className="mt-4 text-sm text-[var(--text-dim)]">Nothing matches. Try actual spelling?</p>
+        <p className="mt-4 text-sm text-[var(--text-dim)]">{copy("palette.no-results")}</p>
       </div>
     );
   }

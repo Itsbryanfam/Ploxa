@@ -1,0 +1,120 @@
+import type { MascotScenario } from "./scenarios";
+
+type CopyContext = Record<string, string | number | undefined>;
+
+const COPY: Record<MascotScenario, string[]> = {
+  // === Palette ===
+  "palette.idle": ["Start typing to search.", "What are we logging today?", "I'll wait."],
+  "palette.no-results": [
+    "Nothing matches. Try actual spelling?",
+    "No hits. RAWG hasn't heard of it.",
+    "Empty. The search engine, not your taste.",
+  ],
+  "palette.searching": ["Searching...", "Looking...", "Hold on."],
+
+  // === Log success ===
+  "log.success.completed-high": [
+    "{rating} hearts. That's basically a marriage proposal.",
+    "{rating} hearts on {title}. Bold endorsement.",
+    "Logged. {title} clearly hit.",
+  ],
+  "log.success.completed-mid": [
+    "Logged. Solid pick.",
+    "{title} — fair rating.",
+    "Logged. Mid-tier banger.",
+  ],
+  "log.success.completed-low": [
+    "Logged. Closure achieved.",
+    "Done is done.",
+    "{title} survived. So did you.",
+  ],
+  "log.success.playing": [
+    "On the docket.",
+    "Currently playing: noted.",
+    "Good luck out there.",
+  ],
+  "log.success.backlog": [
+    "Backlog +1. Bold.",
+    "Added to The Pile.",
+    "Maybe someday.",
+  ],
+  "log.success.wishlist": [
+    "Wishlisted. Sale notifications coming for your wallet.",
+    "Saved for later. Like a tab.",
+    "Wishlist +1.",
+  ],
+  "log.success.dropped": ["Marked dropped. No shame.", "Cut your losses.", "Moving on."],
+  "log.success.on_hold": ["Paused. We'll see.", "On the shelf.", "Maybe later."],
+
+  // === Empty states (placeholders — finalized in Task 32) ===
+  "library.empty.all": [
+    "Empty shelf. The classic 'I'll start tomorrow' move.",
+    "Nothing logged yet. Let's fix that.",
+  ],
+  "library.empty.playing": ["Nothing actively playing.", "No active runs.", "Free time?"],
+  "library.empty.completed": ["No finishes yet. The journey is the reward, etc.", "Zero completions."],
+  "library.empty.backlog": ["No backlog. Suspicious.", "Empty backlog. Either a lie or a flex."],
+  "library.empty.wishlist": [
+    "No wishlisted games. You're either disciplined or in denial.",
+    "Wishlist empty.",
+  ],
+  "library.empty.dropped": ["Nothing dropped. Yet.", "No dropped games. Stay strong."],
+  "library.empty.on_hold": ["Nothing paused.", "No games on hold."],
+
+  // === Dashboard greetings (placeholder — Task 27 expands) ===
+  "dashboard.greeting.morning": ["Morning.", "Up early.", "Coffee first."],
+  "dashboard.greeting.afternoon": ["Afternoon.", "How's the day?", "Welcome back."],
+  "dashboard.greeting.evening": ["Evening.", "Logging hours, I see.", "Welcome back."],
+  "dashboard.greeting.night": ["Late one tonight.", "Bedtime soon?", "Just one more."],
+  "dashboard.greeting.long-absence": [
+    "Been a while. Welcome back.",
+    "It's been {days} days. We missed you.",
+  ],
+  "dashboard.greeting.actively-playing": [
+    "Still on {title}? Respect.",
+    "{days} days into {title} — close to finishing?",
+  ],
+
+  // === Errors ===
+  "error.404": ["This game doesn't exist. Or maybe you do.", "404. Try a different URL."],
+  "error.500": ["Something broke. Not your fault. Probably.", "500. Refresh, maybe?"],
+  "error.rate-limited": [
+    "RAWG is napping. Try in a minute.",
+    "Slow down — we're rate-limited.",
+  ],
+};
+
+/** Deterministic hash so the same scenario picks the same variant within a day. */
+function hashDay(scenario: string): number {
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  let h = 0;
+  const s = day + scenario;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function interpolate(line: string, ctx?: CopyContext): string {
+  if (!ctx) return line;
+  return line.replace(/\{(\w+)\}/g, (_, k) => {
+    const v = ctx[k];
+    return v === undefined || v === null ? `{${k}}` : String(v);
+  });
+}
+
+export function copy(scenario: MascotScenario, ctx?: CopyContext): string {
+  const variants = COPY[scenario];
+  if (!variants || variants.length === 0) return "";
+  const idx = hashDay(scenario) % variants.length;
+  return interpolate(variants[idx], ctx);
+}
+
+/** Helper: pick the right log success scenario from status + rating. */
+export function logSuccessCopy(status: string, rating: number, title: string): string {
+  const ctx: CopyContext = { title, rating };
+  if (status === "completed") {
+    if (rating >= 8.5) return copy("log.success.completed-high", ctx);
+    if (rating >= 5) return copy("log.success.completed-mid", ctx);
+    return copy("log.success.completed-low", ctx);
+  }
+  return copy(`log.success.${status}` as MascotScenario, ctx);
+}
