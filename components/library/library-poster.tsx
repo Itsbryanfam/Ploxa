@@ -1,13 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { HeartFull } from "@/components/pixel";
+import { PosterStatusMenu } from "./poster-status-menu";
 
 export function LibraryPoster({ item }: { item: LibraryItem }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <motion.div
       layout
@@ -47,6 +51,28 @@ export function LibraryPoster({ item }: { item: LibraryItem }) {
           </div>
         </div>
       </Link>
+
+      {/* Status menu — sibling of <Link>, above it via z-index */}
+      <button
+        type="button"
+        onClick={() => setMenuOpen((v) => !v)}
+        className="absolute top-1.5 right-1.5 z-20 w-6 h-6 rounded-md bg-black/60 backdrop-blur flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+        aria-label="Change status"
+        aria-expanded={menuOpen}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+          <circle cx="6" cy="2" r="1" fill="currentColor" />
+          <circle cx="6" cy="6" r="1" fill="currentColor" />
+          <circle cx="6" cy="10" r="1" fill="currentColor" />
+        </svg>
+      </button>
+      {menuOpen && (
+        <PosterStatusMenu
+          logId={item.logId}
+          currentStatus={item.status}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
     </motion.div>
   );
 }
