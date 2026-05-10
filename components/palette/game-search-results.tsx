@@ -15,7 +15,10 @@ export function GameSearchResults({ query }: { query: string }) {
   const debouncedQuery = useDebounced(query, 250);
   const selectGame = usePaletteStore((s) => s.selectGame);
 
-  const { data: results = [], isFetching } = useQuery({
+  // isLoading is only true on the very first fetch for a key; isFetching also
+  // fires on background revalidations. Using isLoading keeps stale results
+  // visible during cache refresh instead of flashing a full-screen spinner.
+  const { data: results = [], isLoading } = useQuery({
     queryKey: ["palette-search", debouncedQuery],
     queryFn: () => searchGames(debouncedQuery),
     enabled: debouncedQuery.length >= 2,
@@ -34,6 +37,9 @@ export function GameSearchResults({ query }: { query: string }) {
   // Keyboard navigation
   useEffect(() => {
     function handler(e: KeyboardEvent) {
+      // Skip during IME composition so confirming a CJK candidate with Enter
+      // doesn't double-trigger as a result selection.
+      if (e.isComposing) return;
       if (results.length === 0) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -60,7 +66,7 @@ export function GameSearchResults({ query }: { query: string }) {
     );
   }
 
-  if (isFetching) {
+  if (isLoading) {
     return (
       <div className="px-5 py-12 text-center flex flex-col items-center gap-3">
         <PixelSpinner size={24} />
