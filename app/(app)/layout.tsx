@@ -21,7 +21,8 @@ export default async function AppLayout({
     redirect("/");
   }
 
-  // Auth gate (independent of getHeaderUser to keep the redirect-to-login path obvious).
+  // Single auth check: we own the redirect path, then pass the verified user
+  // into getHeaderUser so the profile lookup doesn't re-verify the session.
   const supabase = await createSupabaseServerClient();
   const {
     data: { user: authUser },
@@ -30,10 +31,7 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  const headerUser = await getHeaderUser();
-  if (!headerUser) {
-    redirect("/login");
-  }
+  const headerUser = await getHeaderUser(authUser);
 
   return (
     <div className="flex min-h-screen flex-col">

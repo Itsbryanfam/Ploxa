@@ -47,7 +47,7 @@ export function MobileMenu({ user, profileHref }: Props) {
             </Link>
           ))}
         </nav>
-        <div className="mt-6 pt-6 border-t border-[var(--border)] text-sm">
+        <div className="mt-6 pt-6 border-t border-[var(--border-soft)] text-sm">
           <div>@{user.username ?? "—"}</div>
           <div className="text-[var(--text-dim)] truncate">{user.email}</div>
         </div>

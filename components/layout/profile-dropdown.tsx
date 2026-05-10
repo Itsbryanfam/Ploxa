@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTransition } from "react";
 import { Avatar, type AvatarUser } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -17,6 +18,14 @@ interface Props {
 }
 
 export function ProfileDropdown({ user }: Props) {
+  // We invoke `logoutAction` from `onSelect` (rather than wrapping a <form>
+  // in `<DropdownMenuItem asChild>`) because Radix's keyboard handler calls
+  // `.click()` on the menu item's root element. With `<form>` as that root,
+  // a synthetic click does NOT submit the form, so Enter/Space wouldn't
+  // trigger logout for keyboard or AT users. `onSelect` fires for both
+  // pointer and keyboard activation, then we kick the server action off in
+  // a transition so the redirect navigation is treated as non-blocking.
+  const [, startTransition] = useTransition();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
@@ -32,12 +41,8 @@ export function ProfileDropdown({ user }: Props) {
           <Link href="/settings">Settings</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <form action={logoutAction}>
-            <button type="submit" className="w-full text-left">
-              Log out
-            </button>
-          </form>
+        <DropdownMenuItem onSelect={() => startTransition(() => logoutAction())}>
+          Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

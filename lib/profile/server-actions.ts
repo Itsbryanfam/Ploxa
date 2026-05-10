@@ -1,5 +1,6 @@
 "use server";
 
+import type { User } from "@supabase/supabase-js";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -10,16 +11,22 @@ export interface HeaderUser {
   email: string;
   profilePictureUrl: string | null;
   profilePictureKind: "static" | "gif" | null;
+  // TODO(Phase 1.5 Task 8): add `profilePicturePosterUrl: string | null` —
+  // computed from the Supabase Storage path when profilePictureKind === "gif".
+  // Without it the Avatar GIF branch falls back to using the animated GIF as
+  // its own poster, defeating the hover-swap UX. Add when the server-side
+  // poster path helper lands in Task 8.
 }
 
-export async function getHeaderUser(): Promise<HeaderUser | null> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+/**
+ * Build the data the AppHeader needs from an already-authenticated Supabase
+ * user. The caller is expected to have already run `supabase.auth.getUser()`
+ * and gated on its result — we accept the user object instead of re-fetching
+ * it here so each authenticated render only verifies the session once.
+ */
+export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.userId, user.id),
+    where: eq(schema.profiles.userId, authUser.id),
     columns: {
       username: true,
       profilePictureUrl: true,
@@ -27,9 +34,9 @@ export async function getHeaderUser(): Promise<HeaderUser | null> {
     },
   });
   return {
-    id: user.id,
+    id: authUser.id,
     username: profile?.username ?? null,
-    email: user.email ?? "",
+    email: authUser.email ?? "",
     profilePictureUrl: profile?.profilePictureUrl ?? null,
     profilePictureKind: profile?.profilePictureKind ?? null,
   };
