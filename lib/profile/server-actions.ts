@@ -11,11 +11,15 @@ export interface HeaderUser {
   email: string;
   profilePictureUrl: string | null;
   profilePictureKind: "static" | "gif" | null;
-  // TODO(Phase 1.5 Task 8): add `profilePicturePosterUrl: string | null` —
-  // computed from the Supabase Storage path when profilePictureKind === "gif".
-  // Without it the Avatar GIF branch falls back to using the animated GIF as
-  // its own poster, defeating the hover-swap UX. Add when the server-side
-  // poster path helper lands in Task 8.
+  profilePicturePosterUrl: string | null;
+}
+
+async function posterUrlFor(userId: string): Promise<string> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = supabase.storage
+    .from("avatars")
+    .getPublicUrl(`${userId}/avatar-poster.png`);
+  return data.publicUrl;
 }
 
 /**
@@ -39,6 +43,8 @@ export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
     email: authUser.email ?? "",
     profilePictureUrl: profile?.profilePictureUrl ?? null,
     profilePictureKind: profile?.profilePictureKind ?? null,
+    profilePicturePosterUrl:
+      profile?.profilePictureKind === "gif" ? await posterUrlFor(authUser.id) : null,
   };
 }
 
