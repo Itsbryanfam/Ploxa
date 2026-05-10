@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Per-developer Claude Code state, including worktrees that carry
+    // their own checked-out copies of repo code + .next/ build output.
+    // Without this, lint recurses into every worktree and reports the
+    // same errors N times. Mirrors .gitignore.
+    ".claude/**",
   ]),
 ]);
 
