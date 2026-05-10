@@ -6,6 +6,12 @@ import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getGameDetail } from "@/lib/games/server-actions";
 import { LOG_STATUSES, type LogStatus } from "@/lib/db/schema-types";
+import { mapRowToLibraryItem, type LibraryItem } from "./library-item";
+
+// Re-exported so existing `import type { LibraryItem } from "@/lib/logs/server-actions"`
+// callers keep working. Type-only re-exports are erased at compile time, so this is
+// allowed inside a `"use server"` module.
+export type { LibraryItem } from "./library-item";
 
 const createLogInput = z.object({
   rawgId: z.number().int().positive(),
@@ -93,30 +99,6 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   return { ok: true, logId: inserted.id, gameSlug: game.slug };
 }
 
-export interface LibraryItem {
-  logId: string;
-  status: LogStatus;
-  rating: number | null;
-  startedAt: Date | null;
-  finishedAt: Date | null;
-  hoursPlayed: number | null;
-  platformPlayedOn: string | null;
-  isReplay: boolean;
-  isPrivate: boolean;
-  notes: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  game: {
-    id: number;
-    slug: string;
-    title: string;
-    coverUrl: string | null;
-    released: Date | null;
-    genres: string[];
-    platforms: string[];
-  };
-}
-
 export type SortKey = "rating-desc" | "rating-asc" | "recent" | "title-asc" | "released-desc";
 
 export interface GetLibraryArgs {
@@ -149,25 +131,29 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
 
   const rows = await db
     .select({
-      logId: schema.logs.id,
-      status: schema.logs.status,
-      rating: schema.logs.rating,
-      startedAt: schema.logs.startedAt,
-      finishedAt: schema.logs.finishedAt,
-      hoursPlayed: schema.logs.hoursPlayed,
-      platformPlayedOn: schema.logs.platformPlayedOn,
-      isReplay: schema.logs.isReplay,
-      isPrivate: schema.logs.isPrivate,
-      notes: schema.logs.notes,
-      createdAt: schema.logs.createdAt,
-      updatedAt: schema.logs.updatedAt,
-      game_id: schema.games.id,
-      game_slug: schema.games.slug,
-      game_title: schema.games.title,
-      game_coverUrl: schema.games.coverUrl,
-      game_released: schema.games.released,
-      game_genres: schema.games.genres,
-      game_platforms: schema.games.platforms,
+      log: {
+        id: schema.logs.id,
+        status: schema.logs.status,
+        rating: schema.logs.rating,
+        startedAt: schema.logs.startedAt,
+        finishedAt: schema.logs.finishedAt,
+        hoursPlayed: schema.logs.hoursPlayed,
+        platformPlayedOn: schema.logs.platformPlayedOn,
+        isReplay: schema.logs.isReplay,
+        isPrivate: schema.logs.isPrivate,
+        notes: schema.logs.notes,
+        createdAt: schema.logs.createdAt,
+        updatedAt: schema.logs.updatedAt,
+      },
+      game: {
+        id: schema.games.id,
+        slug: schema.games.slug,
+        title: schema.games.title,
+        coverUrl: schema.games.coverUrl,
+        released: schema.games.released,
+        genres: schema.games.genres,
+        platforms: schema.games.platforms,
+      },
     })
     .from(schema.logs)
     .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
@@ -179,29 +165,7 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
     )
     .orderBy(orderBy);
 
-  return rows.map((r) => ({
-    logId: r.logId,
-    status: r.status as LogStatus,
-    rating: r.rating ? Number(r.rating) : null,
-    startedAt: r.startedAt,
-    finishedAt: r.finishedAt,
-    hoursPlayed: r.hoursPlayed ? Number(r.hoursPlayed) : null,
-    platformPlayedOn: r.platformPlayedOn,
-    isReplay: r.isReplay,
-    isPrivate: r.isPrivate,
-    notes: r.notes,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-    game: {
-      id: r.game_id,
-      slug: r.game_slug,
-      title: r.game_title,
-      coverUrl: r.game_coverUrl,
-      released: r.game_released,
-      genres: r.game_genres ?? [],
-      platforms: r.game_platforms ?? [],
-    },
-  }));
+  return rows.map((r) => mapRowToLibraryItem(r.log, r.game));
 }
 
 const updateStatusInput = z.object({

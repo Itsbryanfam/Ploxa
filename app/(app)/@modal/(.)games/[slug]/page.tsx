@@ -5,7 +5,7 @@ import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { GameDetail } from "@/components/game/game-detail";
 import { GameDetailPanel } from "@/components/game/game-detail-panel";
-import type { LibraryItem } from "@/lib/logs/server-actions";
+import { mapRowToLibraryItem, type LibraryItem } from "@/lib/logs/library-item";
 
 export default async function InterceptedGamePage({
   params,
@@ -32,21 +32,7 @@ export default async function InterceptedGamePage({
       where: and(eq(schema.logs.userId, user.id), eq(schema.logs.gameId, game.id)),
     });
     if (row) {
-      log = {
-        logId: row.id, status: row.status,
-        rating: row.rating ? Number(row.rating) : null,
-        startedAt: row.startedAt, finishedAt: row.finishedAt,
-        hoursPlayed: row.hoursPlayed ? Number(row.hoursPlayed) : null,
-        platformPlayedOn: row.platformPlayedOn,
-        isReplay: row.isReplay,
-        isPrivate: row.isPrivate,
-        notes: row.notes, createdAt: row.createdAt, updatedAt: row.updatedAt,
-        game: {
-          id: game.id, slug: game.slug, title: game.title,
-          coverUrl: game.coverUrl, released: game.released,
-          genres: game.genres ?? [], platforms: game.platforms ?? [],
-        },
-      };
+      log = mapRowToLibraryItem(row, game);
     }
   }
 
