@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Letterboxd for Games — Project Plan</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-elev: #11111a;
+    --bg-card: #16161f;
+    --bg-card-hover: #1c1c28;
+    --border: #2a2a38;
+    --border-soft: #1f1f2c;
+    --text: #e4e4f0;
+    --text-dim: #9494a8;
+    --text-faint: #5a5a70;
+    --accent: #7c5cff;
+    --accent-soft: #7c5cff22;
+    --accent-glow: #7c5cff44;
+    --pixel: #ffb84a;
+    --pixel-soft: #ffb84a22;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --code-bg: #0d0d14;
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.6);
+    --shadow-glow: 0 0 40px rgba(124, 92, 255, 0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 60px 32px 120px;
+  }
+
+  /* Hero */
+  .hero {
+    text-align: center;
+    padding: 60px 0 80px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 60px;
+    position: relative;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 400px;
+    background: radial-gradient(circle, var(--accent-glow) 0%, transparent 60%);
+    z-index: -1;
+    filter: blur(40px);
+  }
+  .pixel-logo {
+    display: inline-block;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--pixel);
+    margin-bottom: 32px;
+    letter-spacing: 2px;
+    box-shadow: var(--shadow-card);
+  }
+  h1 {
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #fff 0%, #c0c0d8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .tagline {
+    font-size: 19px;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin: 0 auto 32px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 32px;
+  }
+  .meta-pill {
+    padding: 6px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .meta-pill strong {
+    color: var(--text);
+  }
+
+  /* Headings */
+  h2 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 60px 0 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    border: 1px solid var(--accent);
+  }
+  h3 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 40px 0 16px;
+    color: var(--text);
+  }
+  h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 24px 0 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 12px;
+  }
+
+  /* Paragraphs and lists */
+  p { margin-bottom: 16px; color: var(--text); }
+  p.lead { font-size: 18px; color: var(--text-dim); }
+  ul, ol { margin: 16px 0 16px 24px; }
+  li { margin-bottom: 8px; }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--text-dim); font-style: italic; }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-card);
+  }
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 16px 20px;
+    border-radius: 4px 8px 8px 4px;
+    margin: 24px 0;
+  }
+  .callout.warning {
+    background: rgba(251, 191, 36, 0.08);
+    border-left-color: var(--warning);
+  }
+  .callout.success {
+    background: rgba(74, 222, 128, 0.08);
+    border-left-color: var(--success);
+  }
+
+  /* Tables */
+  .table-wrap {
+    overflow-x: auto;
+    margin: 24px 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th, td {
+    padding: 14px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+  }
+  th {
+    background: var(--bg-elev);
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg-card-hover); }
+
+  /* Code */
+  code {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Courier New', monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--pixel);
+    border: 1px solid var(--border-soft);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 20px 0;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* Phase blocks */
+  .phase {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .phase::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--accent);
+  }
+  .phase.milestone::before { background: var(--pixel); }
+  .phase-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .phase-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .phase-weeks {
+    font-size: 13px;
+    color: var(--text-dim);
+    background: var(--bg-elev);
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-soft);
+  }
+  .phase-goal {
+    color: var(--text-dim);
+    font-style: italic;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed var(--border-soft);
+  }
+  .phase ul { margin-left: 20px; }
+  .phase li { font-size: 14px; color: var(--text); }
+  .verify {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: rgba(74, 222, 128, 0.06);
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .verify strong { color: var(--success); }
+  .milestone-banner {
+    margin-top: 16px;
+    padding: 10px 16px;
+    background: var(--pixel-soft);
+    border: 1px solid var(--pixel);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--pixel);
+    font-weight: 600;
+  }
+
+  /* Architecture diagram */
+  .arch {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 24px 0;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .arch pre { background: none; border: none; padding: 0; margin: 0; }
+
+  /* Risk matrix specific */
+  .risk-table td:first-child {
+    font-weight: 600;
+    color: var(--warning);
+    max-width: 280px;
+  }
+
+  /* Decision matrix */
+  .decision-table td:first-child {
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border-soft);
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 13px;
+  }
+
+  /* Anchor links */
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin: 40px 0;
+  }
+  .toc h3 {
+    margin-top: 0;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .toc ol {
+    columns: 2;
+    column-gap: 32px;
+    margin: 16px 0 0 16px;
+  }
+  .toc a {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    border-bottom: 1px dotted var(--border);
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .toc li { margin-bottom: 6px; }
+
+  /* Inline external links */
+  a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--accent);
+    transition: opacity 0.15s;
+  }
+  a:hover { opacity: 0.7; }
+
+  /* Status badges */
+  .status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+  }
+  .status.locked { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+  .status.experimental { background: rgba(251, 191, 36, 0.15); color: var(--warning); border: 1px solid var(--warning); }
+
+  /* Responsive */
+  @media (max-width: 720px) {
+    .container { padding: 40px 20px 80px; }
+    h1 { font-size: 36px; }
+    h2 { font-size: 24px; }
+    .toc ol { columns: 1; }
+    table { font-size: 12px; }
+    th, td { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="pixel-logo">▓ LETTERBOXD ▓ FOR ▓ GAMES ▓</div>
+    <h1>An AI-First Game Tracker<br>with a Pixel-Art Mascot</h1>
+    <p class="tagline">Premium Raycast-class polish meets gaming-native pixel-art aesthetic. AI taste fingerprints, AI-assisted reviews, viral year-in-review retrospectives. Built solo with Claude Code.</p>
+    <div class="meta-row">
+      <span class="meta-pill">Status: <strong>Plan approved</strong></span>
+      <span class="meta-pill">Stack: <strong>Next.js 15 + Supabase</strong></span>
+      <span class="meta-pill">Total effort: <strong>~7–9 months</strong></span>
+      <span class="meta-pill">First soft launch: <strong>~10 weeks</strong></span>
+    </div>
+  </header>
+
+  <!-- TOC -->
+  <nav class="toc">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#context">Context & Research</a></li>
+      <li><a href="#decisions">Locked Decisions</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#data-model">Data Model</a></li>
+      <li><a href="#roadmap">Phased Roadmap</a></li>
+      <li><a href="#ux">UX Flow Highlights</a></li>
+      <li><a href="#files">Critical Files</a></li>
+      <li><a href="#risks">Risk Mitigations</a></li>
+      <li><a href="#scope">Out of Scope</a></li>
+      <li><a href="#verification">Verification</a></li>
+      <li><a href="#kickoff">Phase 0 Kickoff</a></li>
+      <li><a href="#open">Open Questions</a></li>
+      <li><a href="#references">References</a></li>
+    </ol>
+  </nav>
+
+  <!-- CONTEXT -->
+  <section id="context">
+    <h2><span class="num">1</span>Context & Research</h2>
+    <p class="lead">The user is exploring buildable project ideas for their Claude Code subscription. Initial research (via Grok) flagged "Letterboxd for video games" as a recurring evergreen wish on X, with Backloggd as the closest existing solution but with notable execution gaps.</p>
+
+    <p>We cross-verified this research with three parallel research agents. Here's what held up versus what didn't.</p>
+
+    <h3>What was verified</h3>
+    <ul>
+      <li>Demand is real and persistent into May 2026 — the wish keeps surfacing despite Backloggd existing.</li>
+      <li>Backloggd is the leader: <strong>650K+ users, 31.5M games logged</strong>, solo dev now full-time on Patreon (1,300+ backers).</li>
+      <li>"No native mobile" is a confirmed top complaint.</li>
+    </ul>
+
+    <h3>What turned out wrong or outdated</h3>
+    <ul>
+      <li>Backloggd does <strong>not</strong> have an official iOS app — what Grok saw was "Backloggr," a third-party competitor.</li>
+      <li>Specific vote counts (16k Android / 14k Steam / 12k recs) appear hallucinated.</li>
+      <li>The recommendations gap was <strong>partially closed</strong> in June 2025 when Backloggd shipped a Discovery Engine.</li>
+      <li>The competitive landscape is significantly more crowded than Grok knew — at least <strong>15 active competitors</strong>: IGN Playlist, GameTrack, Gamery, SavePoint, Stash, Spawnr, KTOMG, GAMEYE, Gamepal, Sofa, RAWG, Backlog Buddy, etc.</li>
+    </ul>
+
+    <h3>The actual remaining gaps</h3>
+    <div class="card">
+      <ol>
+        <li><strong>Native Android with strong network effects</strong> — Backloggd has the social graph but no Android.</li>
+        <li><strong>PSN sync</strong> is fundamentally hard — no official Sony API, only fragile unofficial libraries.</li>
+        <li><strong>Switch sync</strong> is impossible via API — manual entry only.</li>
+        <li>No competitor combines polished modern UI + serious AI features + robust social network in a single web-first product.</li>
+        <li><strong>Nobody combines premium pixel-art aesthetic + AI mascot character + Raycast-class polish</strong> — an unclaimed visual position. This is our unique angle.</li>
+      </ol>
+    </div>
+
+    <div class="callout">
+      <strong>Intended outcome:</strong> Ship a polished, distinctive AI-first game tracker that competes on craft and AI quality rather than network effects. Phased delivery so each milestone is shippable on its own. Architecture supports the full vision from day one; shipping is staged.
+    </div>
+  </section>
+
+  <!-- DECISIONS -->
+  <section id="decisions">
+    <h2><span class="num">2</span>Locked Decisions</h2>
+    <p>These were brainstormed and validated. They anchor the rest of the plan.</p>
+
+    <div class="table-wrap">
+      <table class="decision-table">
+        <thead>
+          <tr><th>Decision</th><th>Choice</th><th>Why</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Project direction</td><td>AI Taste Profile + Tracker</td><td>Highest portfolio + real-user ceiling; AI-first differentiation</td></tr>
+          <tr><td>Killer AI features</td><td>Layered: Taste fingerprint + recs (primary) + AI-assisted reviews (supporting) + Year-in-review (viral)</td><td>Each feeds the next; rich data → better recs → better recap</td></tr>
+          <tr><td>Social model</td><td>Full social network, phased delivery</td><td>User vision; architecture supports day 1, shipping is staged</td></tr>
+          <tr><td>Library imports</td><td>Aspirational (Steam + Xbox + PSN + Switch) via adapter pattern</td><td>PSN labeled experimental; Switch is manual-only</td></tr>
+          <tr><td>Visual aesthetic</td><td>Raycast-class polish + premium pixel art accents + AI mascot character</td><td>Unclaimed visual position; differentiator vs all 15 competitors</td></tr>
+          <tr><td>Tech stack</td><td>Next.js 15 (App Router) + Supabase</td><td>Most Claude-Code-native combo; massive training data</td></tr>
+          <tr><td>Auth</td><td>Email + password + magic links via Supabase</td><td>Lowest friction, no third-party deps</td></tr>
+          <tr><td>Hosting</td><td>Vercel (frontend + edge functions)</td><td>Free tier, native Next.js</td></tr>
+          <tr><td>Game catalog</td><td>RAWG API</td><td>Free up to 100K MAU, commercial OK, attribution required</td></tr>
+          <tr><td>AI providers</td><td>Multi-provider router (Cerebras → Groq → Cloudflare), DeepSeek V3 paid overflow</td><td>$0 for ~1K users, ~$30/mo at 10K, no BYOK, no Google data training</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section id="architecture">
+    <h2><span class="num">3</span>Architecture</h2>
+
+    <div class="arch"><pre>┌─────────────────────────────────────────────────────────────┐
+│  Next.js 15 (App Router) — Vercel Edge Network              │
+│  - Server Components for data fetching                      │
+│  - Server Actions for mutations                             │
+│  - Edge functions for low-latency API routes                │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+   ┌───────────┴────────────────────┬─────────────────────────┐
+   │                                │                         │
+┌──▼─────────────┐   ┌──────────────▼─────────┐   ┌──────────▼────────────┐
+│   Supabase     │   │   External Game APIs   │   │  AI Provider Router   │
+│  ─────────     │   │  ─────────────────     │   │  ─────────────────    │
+│  Postgres      │   │  RAWG (catalog)        │   │  Tier 1: Cerebras     │
+│  Auth          │   │  Steam Web API         │   │  Tier 2: Groq         │
+│  Storage       │   │  OpenXBL (Xbox)        │   │  Tier 3: CF Workers   │
+│  Realtime      │   │  psn-api (PSN beta)    │   │  Overflow: DeepSeek   │
+│  Edge Funcs    │   │  Manual (Switch)       │   │  V3 (paid)            │
+└────────────────┘   └────────────────────────┘   └───────────────────────┘
+                                │
+                  ┌─────────────▼─────────────┐
+                  │   Background Jobs         │
+                  │  ─────────────────────    │
+                  │   Vercel Cron + Supabase  │
+                  │   Edge Functions          │
+                  └───────────────────────────┘</pre></div>
+
+    <h3>Tech stack details</h3>
+    <ul>
+      <li><strong>Framework:</strong> Next.js 15 (App Router), TypeScript strict mode</li>
+      <li><strong>Styling:</strong> Tailwind CSS v4, <code>shadcn/ui</code> primitives, <code>tw-animate-css</code></li>
+      <li><strong>Animation:</strong> Framer Motion (mascot, transitions, micro-interactions)</li>
+      <li><strong>Data fetching:</strong> TanStack Query v5 client-side, RSC for server-side</li>
+      <li><strong>Client state:</strong> Zustand for ephemeral UI state</li>
+      <li><strong>Forms:</strong> React Hook Form + Zod schema validation</li>
+      <li><strong>Database:</strong> Supabase Postgres with Row-Level Security on every table</li>
+      <li><strong>ORM:</strong> Drizzle ORM (better DX than raw Supabase JS for typed queries)</li>
+      <li><strong>Auth:</strong> Supabase Auth (email/password + magic link), session in cookies</li>
+      <li><strong>File storage:</strong> Supabase Storage for avatars, custom covers, mascot variants. RAWG covers used by URL.</li>
+      <li><strong>Email:</strong> Resend (3K/mo free) for transactional</li>
+      <li><strong>Pixel-art:</strong> Sprite sheets + CSS animations, Framer Motion for state transitions</li>
+      <li><strong>Charts:</strong> <code>recharts</code> or <code>visx</code> for taste fingerprint visualization</li>
+      <li><strong>Observability:</strong> Vercel Analytics free + Sentry free</li>
+      <li><strong>AI SDK:</strong> Vercel AI SDK (<code>ai</code>) — provider-agnostic abstraction</li>
+      <li><strong>Background jobs:</strong> Vercel Cron + Supabase Edge Functions</li>
+    </ul>
+
+    <h3>AI Provider Router pattern</h3>
+    <p>A single <code>aiProviderRouter</code> module exposes one async function. Tries providers in order, falls back on rate-limit errors:</p>
+    <pre><code>generate(prompt, opts)
+  → try Cerebras (Llama 3.3 70B, 1M tokens/day free)
+  → on 429/5xx → try Groq (Llama 3.3 70B, 14,400 req/day free)
+  → on 429/5xx → try Cloudflare Workers AI (10K Neurons/day free)
+  → on 429/5xx OR opts.quality === 'premium' → DeepSeek V3 ($0.14/$0.28 per M)
+  → if all fail → throw with user-friendly message</code></pre>
+
+    <p>Same prompt template works on every provider (Llama 3.3 70B is the common denominator). Includes:</p>
+    <ul>
+      <li>Token-bucket rate limiter per provider per minute</li>
+      <li>Daily counter to preempt provider exhaustion</li>
+      <li>Cost telemetry to Supabase (track $ spent per user per feature)</li>
+      <li>Caching layer (Vercel KV) — semantic cache on prompt hash to avoid duplicate calls</li>
+    </ul>
+    <div class="callout warning">
+      <strong>Skip these providers:</strong> Gemini free (trains on data), OpenRouter free (50 RPD), GitHub Models (no production use), Anthropic free credits ($5 trial only).
+    </div>
+  </section>
+
+  <!-- DATA MODEL -->
+  <section id="data-model">
+    <h2><span class="num">4</span>Data Model</h2>
+    <p>Postgres via Supabase, managed with Drizzle migrations. All user-owned tables enforce <code>auth.uid() = user_id</code> via RLS for writes; public reads scoped by <code>is_public</code> flags.</p>
+
+    <h3>Core auth + profile</h3>
+    <ul>
+      <li><code>auth.users</code> — Supabase managed</li>
+      <li><code>profiles</code> — username, display_name, bio, avatar_url, mascot_variant, is_public</li>
+    </ul>
+
+    <h3>Games (RAWG-cached catalog)</h3>
+    <ul>
+      <li><code>games</code> — slug, title, released, cover_url, screenshot_urls, description, genres[], themes[], mechanics[], platforms[], playtime_avg_hours, metacritic, rawg_rating, cached_at</li>
+      <li><code>game_aliases</code> — alternate titles for search</li>
+    </ul>
+
+    <h3>User logs (the core "I played this" record)</h3>
+    <ul>
+      <li><code>logs</code> — status, rating (0–10), started_at, finished_at, hours_played, platform_played_on, is_replay, is_private</li>
+    </ul>
+
+    <h3>Reviews</h3>
+    <ul>
+      <li><code>reviews</code> — body, rating, is_ai_assisted, published_at, is_public, optional log_id link</li>
+      <li><code>review_questions</code> — the AI interview Q&A used to draft the review</li>
+    </ul>
+
+    <h3>AI taste fingerprint</h3>
+    <ul>
+      <li><code>taste_fingerprints</code> — genre/theme/mechanic vectors (jsonb), length_preference, difficulty_preference, narrative_summary, model_version, generated_at</li>
+      <li><code>recommendations</code> — score, reason, algorithm (similarity|ai|hybrid), generated_at, dismissed</li>
+    </ul>
+
+    <h3>Social</h3>
+    <ul>
+      <li><code>follows</code>, <code>likes</code>, <code>comments</code> (one-level threading)</li>
+      <li><code>lists</code> + <code>list_items</code> (curated game collections)</li>
+      <li><code>notifications</code> — type, target_id, actor_id, read_at</li>
+    </ul>
+
+    <h3>Library imports</h3>
+    <ul>
+      <li><code>platform_connections</code> — platform, external_id, encrypted access/refresh tokens, last_synced_at</li>
+      <li><code>imports</code> — status (queued|running|completed|failed), counts, error_message</li>
+    </ul>
+
+    <h3>Operational</h3>
+    <ul>
+      <li><code>ai_calls</code> — telemetry: feature, provider, model, tokens, cost_usd, latency_ms</li>
+      <li><code>year_in_reviews</code> — payload (jsonb), share_image_url</li>
+    </ul>
+  </section>
+
+  <!-- ROADMAP -->
+  <section id="roadmap">
+    <h2><span class="num">5</span>Phased Roadmap</h2>
+    <p class="lead">Each phase ends with a working, deployable milestone. Database schema is created in full at Phase 0 — features fill in tables over time. Strict phase gates: nothing in phase N+1 begins until phase N ships to staging.</p>
+
+    <div class="phase">
+      <div class="phase-header">
+        <span class="phase-title">Phase 0 — Foundation</span>
+        <span class="phase-weeks">Weeks 1–2</span>
+      </div>
+      <p class="phase-goal">Skeleton ready, design system in place, can authenticate.</p>
+      <ul>
+        <li>Initialize Next.js 15, Tailwind v4, Supabase project, Drizzle</li>
+        <li>Full database schema migration (all tables, even unused yet)</li>
+        <li>Supabase Auth wired (email + magic link), protected route wrapper</li>
+        <li>Design system foundation: tokens, dark mode, shadcn/ui setup</li>
+        <li>Mascot system stub: pixel-art placeholder + state machine via Framer Motion</li>
+        <li>Login/signup pages, deploy to Vercel staging with preview deploys per PR</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> Visit staging URL → sign up → log in → see authenticated home page with mascot waving.</div>
+    </div>
+
+    <div class="phase milestone">
+      <div class="phase-header">
+        <span class="phase-title">Phase 1 — Core Logging</span>
+        <span class="phase-weeks">Weeks 3–6</span>
+      </div>
+      <p class="phase-goal">A useful personal game tracker. End of phase = you can dogfood it.</p>
+      <ul>
+        <li>RAWG API client wrapper (rate-limited, cached via Vercel KV)</li>
+        <li>Game search UI: typeahead → results grid with cover art</li>
+        <li>Game detail page with "log it" CTA</li>
+        <li>Log creation flow: status, rating, dates, platform, hours, notes</li>
+        <li>Personal library page: filter by status, sort by rating/date, list/grid views</li>
+        <li>Profile page (own): stats summary, recent activity timeline</li>
+        <li>Pixel-art empty states with mascot ("No games yet — let's log one!")</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> Search for "Hades" → log it as completed with rating 9 → see it on personal library page filtered by "completed."</div>
+    </div>
+
+    <div class="phase milestone">
+      <div class="phase-header">
+        <span class="phase-title">Phase 2 — AI Reviews</span>
+        <span class="phase-weeks">Weeks 7–10</span>
+      </div>
+      <p class="phase-goal">First AI magic moment. End of phase = soft launch to friends.</p>
+      <ul>
+        <li>AI provider router with all four providers wired</li>
+        <li>Token bucket rate limiter + daily counters + cost telemetry</li>
+        <li>Review writing flow: AI interview (3–4 questions) → draft → user edits → publish</li>
+        <li>Mascot animates as it "listens" during the interview</li>
+        <li>Public review URLs (<code>/u/{username}/reviews/{slug}</code>) — shareable</li>
+        <li>Review reactions: like only (comments come in Phase 5)</li>
+        <li>AI provider failover testing (force-disable Cerebras, verify Groq takes over)</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> Log a completed game → click "Write with mascot" → answer 4 questions → get draft → edit → publish → visit public URL → friend reads it from a Discord link.</div>
+      <div class="milestone-banner">★ Milestone: Soft personal launch + share with friends</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-header">
+        <span class="phase-title">Phase 3 — Library Imports</span>
+        <span class="phase-weeks">Weeks 11–14</span>
+      </div>
+      <p class="phase-goal">Remove the #1 friction (manual entry) for new users.</p>
+      <ul>
+        <li>Adapter interface: <code>LibraryImporter</code> with <code>connect/fetchLibrary/disconnect</code></li>
+        <li>Steam adapter (Steam Web API, OpenID for connection)</li>
+        <li>Xbox adapter (OpenXBL, with clear "unofficial" disclosure)</li>
+        <li>PSN adapter (<code>psn-api</code>, labeled <span class="status experimental">Beta</span>)</li>
+        <li>Manual platform: Switch + physical games (barcode-scanner future hook)</li>
+        <li>Background sync: Supabase Edge Function on cron, paginated with progress UI</li>
+        <li>Conflict resolution: prefer user data, merge platform list</li>
+        <li>Settings → "Connected Platforms" with sync status, last-synced timestamps</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> Connect Steam → see import progress → end up with 200 games auto-logged at "backlog" status → see merge with previously manually-logged Hades.</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-header">
+        <span class="phase-title">Phase 4 — Taste Fingerprint + Recommendations</span>
+        <span class="phase-weeks">Weeks 15–20</span>
+      </div>
+      <p class="phase-goal">The differentiating feature that justifies the "AI-first" claim.</p>
+      <ul>
+        <li>Fingerprint generator pipeline (triggers at 10+ logs or on-demand)</li>
+        <li>Aggregates logs+reviews+ratings → structured genre/theme/mechanic vectors</li>
+        <li>AI generates narrative summary ("You love narrative-driven indies with strong art direction…")</li>
+        <li>Fingerprint visualization: pixel-art "taste DNA" infographic, charts, mascot reads narrative</li>
+        <li>Shareable as image card via Vercel OG (server-rendered)</li>
+        <li>Hybrid recommendation engine: metadata similarity → AI re-ranking with reasoning</li>
+        <li>"What should I play next?" page: filter by mood, time available, platform owned</li>
+        <li>Per-recommendation feedback ("sounds great" / "not for me") improves future recs</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> With 30+ logs → see fingerprint with non-trivial narrative → get 5 recommendations with cogent reasons → share fingerprint image card to social media.</div>
+    </div>
+
+    <div class="phase milestone">
+      <div class="phase-header">
+        <span class="phase-title">Phase 5 — Social Layer</span>
+        <span class="phase-weeks">Weeks 21–26</span>
+      </div>
+      <p class="phase-goal">Network effects layer. Letterboxd-equivalent feature parity.</p>
+      <ul>
+        <li>Follow / unfollow (asymmetric, like Twitter/Letterboxd)</li>
+        <li>Public profile pages: library, recent reviews, fingerprint, lists</li>
+        <li>Activity feed: chronological logs/reviews/ratings from followed users</li>
+        <li>Threaded comments on reviews (one level deep)</li>
+        <li>Lists: curated collections, reorderable, optional notes per item, public/private</li>
+        <li>Notifications: new follower, review liked, comment, friend logged your wishlist game</li>
+        <li>Notification preferences (email digest vs in-app)</li>
+        <li>Discovery: "popular this week," "people with similar taste"</li>
+        <li>Basic moderation: report content, block user, simple auto-flag for spam</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> Two test accounts follow each other → see activity in feed → comment on reviews → get notifications → create and share a list.</div>
+      <div class="milestone-banner">★ Milestone: Beta launch — Letterboxd-equivalent feature parity</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-header">
+        <span class="phase-title">Phase 6 — Year-in-Review</span>
+        <span class="phase-weeks">Weeks 27–30</span>
+      </div>
+      <p class="phase-goal">The marquee viral moment. Spotify Wrapped energy.</p>
+      <ul>
+        <li>Stats aggregation pipeline (heavy batch job, runs monthly to precompute)</li>
+        <li>AI narrative arc ("Your 2026 in games started with…")</li>
+        <li>Pixel-art animated cards (mascot leading you through the recap)</li>
+        <li>Top games, surprises, taste evolution, longest, most-replayed</li>
+        <li>Shareable image cards optimized for Twitter / Instagram / Discord</li>
+        <li>Public year-in-review URLs (<code>/u/{username}/year/2026</code>)</li>
+        <li>Monthly mini-recaps as bonus engagement loop</li>
+        <li>Editorial highlights ("staff picks of 2026") for credibility</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> Generate year-in-review → watch animated narrative → download share card → post to Twitter → card renders correctly with OG meta.</div>
+    </div>
+
+    <div class="phase milestone">
+      <div class="phase-header">
+        <span class="phase-title">Phase 7 — Polish + Launch</span>
+        <span class="phase-weeks">Week 31+</span>
+      </div>
+      <p class="phase-goal">Public launch ready.</p>
+      <ul>
+        <li>Commission proper mascot artwork (Fiverr ~$200–500 or known pixel artist ~$500–2000)</li>
+        <li>Replace placeholder sprites with final mascot, integrate full state machine animations</li>
+        <li>SEO: server-rendered metadata, sitemap, schema.org markup for reviews</li>
+        <li>Performance: Lighthouse 95+ on key pages, image optimization, bundle analysis</li>
+        <li>Accessibility: axe-core + manual screen reader pass</li>
+        <li>PWA: manifest, service worker, install prompt</li>
+        <li>Onboarding refinement based on beta feedback</li>
+        <li>Pricing decision: free forever vs. freemium (e.g., $4/mo for unlimited AI)</li>
+        <li>Public launch (ProductHunt, HN, gaming subreddits, X)</li>
+      </ul>
+      <div class="verify"><strong>Verify:</strong> Lighthouse 95+ → axe 0 violations → PWA installable → ProductHunt page live → conversion funnel measured.</div>
+      <div class="milestone-banner">★ Public launch</div>
+    </div>
+  </section>
+
+  <!-- UX -->
+  <section id="ux">
+    <h2><span class="num">6</span>UX Flow Highlights</h2>
+
+    <h3>Onboarding</h3>
+    <ol>
+      <li>Sign up → mascot greets ("Hey, I'm [name]!")</li>
+      <li>Pick username + display name</li>
+      <li>Optional: choose mascot color variant</li>
+      <li>"Let's log your first game" — search prompt with mascot pointing</li>
+      <li>After first log: "Want me to help you write a review?" (introduces AI)</li>
+      <li>After 5 logs: "Want to import from Steam to get started faster?" (introduces imports)</li>
+    </ol>
+
+    <h3>Write a review with the mascot</h3>
+    <ol>
+      <li>From a completed log, click "Write with mascot"</li>
+      <li>Mascot animates "thinking" → asks first question</li>
+      <li>Conversational UI: each Q&A in a card, mascot animates between</li>
+      <li>After 3–4 questions, mascot says "Drafting your review…"</li>
+      <li>Draft appears, full edit control, mascot waits patiently</li>
+      <li>Publish → mascot celebrates, share modal opens</li>
+    </ol>
+
+    <h3>What should I play next?</h3>
+    <ol>
+      <li>From dashboard, click "What should I play?"</li>
+      <li>Mascot asks: "How long do you have?" (15min / 1hr / 3hr+ / multi-session)</li>
+      <li>"Mood?" (chill / challenged / story-driven / mindless / multiplayer)</li>
+      <li>"Platform?" (defaults to your most-recently-used)</li>
+      <li>Mascot returns 3–5 recommendations with reasoning, each with "play this" / "skip" / "save"</li>
+    </ol>
+
+    <h3>Year-in-review</h3>
+    <ol>
+      <li>Email arrives end of December: "Your 2026 in games is ready"</li>
+      <li>Click → animated full-screen experience</li>
+      <li>Mascot narrates each section (taste evolution, top games, surprises)</li>
+      <li>End screen: "Share your 2026" with optimized cards for each platform</li>
+    </ol>
+  </section>
+
+  <!-- FILES -->
+  <section id="files">
+    <h2><span class="num">7</span>Critical Files (Phase 0–2)</h2>
+    <pre><code>/
+├─ app/                              # Next.js App Router
+│  ├─ (auth)/                        # Auth route group
+│  │  ├─ login/
+│  │  └─ signup/
+│  ├─ (app)/                         # Authenticated route group
+│  │  ├─ library/
+│  │  ├─ games/[slug]/
+│  │  ├─ logs/[id]/
+│  │  ├─ reviews/
+│  │  └─ u/[username]/               # Public profiles
+│  └─ layout.tsx
+├─ components/
+│  ├─ mascot/                        # Mascot system (sprites, state machine)
+│  ├─ ui/                            # shadcn primitives
+│  └─ game/                          # Game-specific components
+├─ lib/
+│  ├─ ai/                            # AI provider router + clients
+│  │  ├─ router.ts
+│  │  └─ providers/
+│  │     ├─ cerebras.ts
+│  │     ├─ groq.ts
+│  │     ├─ cloudflare.ts
+│  │     └─ deepseek.ts
+│  ├─ rawg/                          # RAWG API wrapper
+│  ├─ supabase/                      # Supabase clients
+│  └─ db/                            # Drizzle schema + migrations
+│     ├─ schema.ts
+│     └─ migrations/
+├─ public/
+│  └─ mascot/                        # Pixel-art sprites
+├─ drizzle.config.ts
+├─ next.config.ts
+└─ package.json</code></pre>
+  </section>
+
+  <!-- RISKS -->
+  <section id="risks">
+    <h2><span class="num">8</span>Risk Mitigations</h2>
+    <div class="table-wrap">
+      <table class="risk-table">
+        <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>PSN API can die any day</td><td>Adapter pattern; PSN labeled "experimental"; UI degrades gracefully if disabled</td></tr>
+          <tr><td>AI provider free tiers can change</td><td>Multi-provider router; same prompts work on all; paid overflow ready</td></tr>
+          <tr><td>Cold-start recs problem</td><td>Phase 4 uses metadata-similarity for first 10 logs, AI re-ranking only after enough data</td></tr>
+          <tr><td>AI slop in reviews</td><td>Interview format requires user input — AI can't generate without 3+ user answers</td></tr>
+          <tr><td>Mascot "Clippy syndrome"</td><td>Mascot is celebratory/state-indicator only; no unprompted interruptions; opt-out available</td></tr>
+          <tr><td>Scope creep</td><td>Strict phase gates: nothing in phase N+1 begins until phase N ships to staging</td></tr>
+          <tr><td>Solo dev burnout / abandonment</td><td>Each phase is independently shippable — abandoning at any phase still leaves a usable product</td></tr>
+          <tr><td>Backloggd ships native mobile</td><td>Our advantage is AI + craft + mascot, not mobile — we're not racing them on that axis</td></tr>
+          <tr><td>AI costs spike unexpectedly</td><td>Cost telemetry per user per feature; rate-limit individual users; fall back to cache when over budget</td></tr>
+          <tr><td>Supabase free tier exhaustion</td><td>Architecture supports paid upgrade ($25/mo) without code changes; alert at 80% capacity</td></tr>
+          <tr><td>Domain costs</td><td>Use <code>vercel.app</code> until traffic justifies $12/yr custom domain</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SCOPE -->
+  <section id="scope">
+    <h2><span class="num">9</span>Out of Scope (explicit non-goals)</h2>
+    <div class="card">
+      <ul>
+        <li>❌ Native iOS/Android apps in v1 (PWA only)</li>
+        <li>❌ Desktop app</li>
+        <li>❌ Real-time multiplayer features (game-along-watching, party mode)</li>
+        <li>❌ Streaming / Twitch integration</li>
+        <li>❌ E-commerce (game keys, deals)</li>
+        <li>❌ Forums or long-form discussion threads (reviews + comments only)</li>
+        <li>❌ Live achievement tracking (only library import, no live sync)</li>
+        <li>❌ Friend recommendations / AI-matched gaming partners — Phase 8+ if ever</li>
+        <li>❌ Conversational AI chatbot interface — explicitly skipped per brainstorming</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- VERIFICATION -->
+  <section id="verification">
+    <h2><span class="num">10</span>Verification</h2>
+    <h3>Per-phase</h3>
+    <p>Each phase ends with the explicit verification checklist defined in its phase section. A phase is "shipped" only when:</p>
+    <ol>
+      <li>Verification checklist passes on staging</li>
+      <li>Lighthouse score ≥85 on key pages</li>
+      <li>No TypeScript errors, no console errors in browser</li>
+      <li>Core flows tested manually on Chrome + Safari + Firefox</li>
+      <li>Deployed to production (Vercel) without errors</li>
+      <li>Self-test: 30 minutes of usage as a real user</li>
+    </ol>
+
+    <h3>End-to-end (post Phase 7)</h3>
+    <p>Full user journey:</p>
+    <ol>
+      <li>Anonymous user lands on homepage → mascot intro → sign up</li>
+      <li>Connect Steam → import 100+ games</li>
+      <li>Log a recent completed game with rating</li>
+      <li>Write AI-assisted review → publish</li>
+      <li>View fingerprint → see narrative summary</li>
+      <li>Get 3 recommendations → mark one as "play next"</li>
+      <li>Follow another user, see their activity</li>
+      <li>Generate year-in-review preview → share card</li>
+    </ol>
+    <div class="callout success">If any step in this journey breaks, public launch is blocked.</div>
+  </section>
+
+  <!-- KICKOFF -->
+  <section id="kickoff">
+    <h2><span class="num">11</span>Phase 0 Kickoff — First Concrete Steps</h2>
+    <ol>
+      <li>Create Next.js project: <code>pnpm create next-app letterboxd-for-games --ts --tailwind --app</code></li>
+      <li>Initialize git repo, push to GitHub</li>
+      <li>Create Supabase project at supabase.com, capture URL + anon key</li>
+      <li>Add <code>.env.local</code> with Supabase + RAWG + Resend keys</li>
+      <li>Install initial deps: <code>@supabase/ssr drizzle-orm postgres zod react-hook-form @hookform/resolvers framer-motion @tanstack/react-query zustand</code></li>
+      <li>Add dev deps: <code>drizzle-kit @types/node</code></li>
+      <li>Set up Drizzle: <code>drizzle.config.ts</code>, schema, first migration</li>
+      <li>Connect Vercel: import GitHub repo, add env vars, first deploy</li>
+      <li>Implement Supabase auth helper (server + client utilities)</li>
+      <li>Build login/signup pages</li>
+      <li>Placeholder mascot component with state machine (sprites can be AI-generated for now)</li>
+      <li>Add design tokens: dark mode palette, type scale, spacing scale, animation timings</li>
+    </ol>
+    <div class="callout">When Phase 0 verification passes (sign up → see mascot on home page → log out → log in via magic link), Phase 1 begins.</div>
+  </section>
+
+  <!-- OPEN -->
+  <section id="open">
+    <h2><span class="num">12</span>Open Questions</h2>
+    <p>These don't block the plan but should be decided early in implementation:</p>
+    <ol>
+      <li><strong>Project name</strong> — working title is the directory name; needs proper naming</li>
+      <li><strong>Mascot name + species</strong> — creature, robot, abstract entity? Develop in Phase 0</li>
+      <li><strong>Domain name</strong> — skip until Phase 5+ to save $12/yr, or buy speculatively</li>
+      <li><strong>Pricing model</strong> — decision can wait until close to Phase 7 based on real cost data</li>
+      <li><strong>Mascot artist commission</strong> — recommended: AI placeholder until Phase 5 beta, commission for Phase 7</li>
+    </ol>
+  </section>
+
+  <!-- REFERENCES -->
+  <section id="references">
+    <h2><span class="num">13</span>References</h2>
+
+    <h3>Verified competitor landscape</h3>
+    <ul>
+      <li><a href="https://backloggd.com/" target="_blank">Backloggd</a> — leader, 650K+ users, no native mobile, weak imports</li>
+      <li><a href="https://apps.apple.com/us/app/ign-playlist/id1600472119" target="_blank">IGN Playlist</a> — free, IGN-distributed, baked-in HowLongToBeat</li>
+      <li><a href="https://gametrack.app/" target="_blank">GameTrack</a> — AI recs, multi-Apple platform support</li>
+      <li><a href="https://apps.apple.com/us/app/gamery-track-your-games/id1607763458" target="_blank">Gamery</a> — deep multi-console sync (PS/Xbox/Steam/Nintendo/GOG/Epic)</li>
+      <li><a href="https://www.savepoint.one/" target="_blank">SavePoint</a> — video games + board games unique angle</li>
+      <li><a href="https://ggapp.io/" target="_blank">GG</a> — mobile-first competitor</li>
+      <li><a href="https://stash.games/" target="_blank">Stash</a>, <a href="https://spawnr.es/" target="_blank">Spawnr</a>, <a href="https://keeptrackofmygames.com/" target="_blank">KTOMG</a></li>
+    </ul>
+
+    <h3>APIs and services</h3>
+    <ul>
+      <li><a href="https://rawg.io/apidocs" target="_blank">RAWG</a> — free 100K MAU, commercial OK</li>
+      <li><a href="https://igdb.com" target="_blank">IGDB</a> — commercial fuzzy post-Twitch</li>
+      <li><a href="https://steamcommunity.com/dev" target="_blank">Steam Web API</a> — free, official</li>
+      <li><a href="https://xbl.io" target="_blank">OpenXBL</a> — unofficial Xbox</li>
+      <li><a href="https://github.com/achievements-app/psn-api" target="_blank">psn-api</a> — unofficial PSN <span class="status experimental">Beta</span></li>
+    </ul>
+
+    <h3>AI providers (May 2026)</h3>
+    <ul>
+      <li>Cerebras — 1M tokens/day free, Llama 3.3 70B</li>
+      <li>Groq — 14,400 RPD free, Llama 3.3 70B</li>
+      <li>Cloudflare Workers AI — 10K Neurons/day forever-free</li>
+      <li>DeepSeek V3 — $0.14/$0.28 per M tokens (paid overflow)</li>
+    </ul>
+
+    <h3>Aesthetic references</h3>
+    <ul>
+      <li><a href="https://raycast.com" target="_blank">Raycast</a>, <a href="https://linear.app" target="_blank">Linear</a>, <a href="https://vercel.com" target="_blank">Vercel</a> — premium UI</li>
+      <li><a href="https://www.sabotagestudio.com/" target="_blank">Sabotage Studio</a>, <a href="https://eastwardgame.com/" target="_blank">Eastward</a> — premium pixel art</li>
+      <li><a href="https://www.duolingo.com/" target="_blank">Duolingo</a>, <a href="https://www.granola.ai/" target="_blank">Granola</a> — mascot done well</li>
+    </ul>
+  </section>
+
+  <footer class="footer">
+    Plan generated 2026-05-10 — collaboratively brainstormed and committed for execution.<br>
+    Source: <code>C:\Users\corte\.claude\plans\smooth-herding-flame.md</code>
+  </footer>
+</div>
+</body>
+</html>
