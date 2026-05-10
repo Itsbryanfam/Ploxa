@@ -1,18 +1,55 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UsernameInput } from "@/components/auth/username-input";
 
 import { signup, type ActionResult } from "./actions";
 
 export function SignupForm() {
   const [state, action, pending] = useActionState<ActionResult, FormData>(signup, undefined);
+  const [username, setUsername] = useState({ value: "", valid: false });
 
   return (
     <form action={action} className="space-y-4">
+      {/* Hidden input mirrors UsernameInput value so FormData includes it */}
+      <input type="hidden" name="username" value={username.value} />
+
+      <div className="space-y-2">
+        <Label htmlFor="username">Username</Label>
+        {/*
+          key remounts UsernameInput when suggestion chips update state,
+          ensuring initialValue is picked up after a chip click.
+        */}
+        <UsernameInput
+          key={state?.suggestions?.join(",") ?? "x"}
+          id="username"
+          name="_username_display"
+          initialValue={username.value}
+          required
+          onChange={(value, valid) => setUsername({ value, valid })}
+        />
+      </div>
+
+      {/* Suggestion chips — shown when a username collision returns alternatives */}
+      {state?.suggestions && state.suggestions.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {state.suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setUsername({ value: s, valid: true })}
+              className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] hover:border-[var(--accent)] transition-colors"
+            >
+              @{s}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -54,7 +91,13 @@ export function SignupForm() {
         </p>
       )}
 
-      <Button type="submit" variant="primary" size="lg" className="w-full" disabled={pending}>
+      <Button
+        type="submit"
+        variant="primary"
+        size="lg"
+        className="w-full"
+        disabled={!username.valid || pending}
+      >
         {pending ? "Creating account…" : "Create account"}
       </Button>
     </form>

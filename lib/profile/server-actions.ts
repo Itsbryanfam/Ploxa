@@ -1,11 +1,12 @@
 "use server";
 
 import type { User } from "@supabase/supabase-js";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { usernameSchema } from "./username-schema";
 import { RESERVED_USERNAMES } from "./reserved-usernames";
+import { UsernameCollisionError } from "./errors";
 
 export interface HeaderUser {
   id: string;
@@ -76,7 +77,7 @@ export async function checkUsernameAvailability(
   return existing ? { ok: false, reason: "taken" } : { ok: true };
 }
 
-export async function ensureMyProfile() {
+export async function ensureMyProfile(opts?: { username?: string }) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -88,20 +89,39 @@ export async function ensureMyProfile() {
   });
   if (existing) return existing;
 
-  // Generate username from email prefix
-  const baseUsername = (user.email?.split("@")[0] ?? "user").toLowerCase().replace(/[^a-z0-9_]/g, "");
-  // Reserve 2 chars for the numeric retry suffix so a 31-char base + "10"
-  // doesn't blow past the schema's varchar(32) limit.
-  const baseTruncated = baseUsername.slice(0, 30);
-  let username = (baseUsername.slice(0, 32) || `user${Date.now()}`).slice(0, 32);
+  // ---------------------------------------------------------------------------
+  // Determine username to use for the new row
+  // ---------------------------------------------------------------------------
+  let username: string;
 
-  // Ensure unique — append numeric suffix if collision
-  for (let i = 0; i < 10; i++) {
-    const conflict = await db.query.profiles.findFirst({
-      where: eq(schema.profiles.username, username),
-    });
-    if (!conflict) break;
-    username = `${baseTruncated}${i + 1}`;
+  const explicitUsername =
+    opts?.username && usernameSchema.safeParse(opts.username).success
+      ? opts.username
+      : undefined;
+
+  if (explicitUsername) {
+    // Caller supplied a validated+available name — use it directly.
+    // No retry loop: if there's a collision, we surface it rather than
+    // silently picking a different name from what the user chose.
+    username = explicitUsername;
+  } else {
+    // Email-prefix derivation with varchar(32) length safety.
+    // Reserve 2 chars for the numeric retry suffix so a 31-char base + "10"
+    // doesn't blow past the schema's varchar(32) limit.
+    const baseUsername = (user.email?.split("@")[0] ?? "user")
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "");
+    const baseTruncated = baseUsername.slice(0, 30);
+    username = (baseUsername.slice(0, 32) || `user${Date.now()}`).slice(0, 32);
+
+    // Ensure unique — append numeric suffix if collision.
+    for (let i = 0; i < 10; i++) {
+      const conflict = await db.query.profiles.findFirst({
+        where: eq(schema.profiles.username, username),
+      });
+      if (!conflict) break;
+      username = `${baseTruncated}${i + 1}`;
+    }
   }
 
   // Postgres unique-violation SQLSTATE — handles the TOCTOU race between the
@@ -116,8 +136,14 @@ export async function ensureMyProfile() {
     return created;
   } catch (err) {
     if (typeof err === "object" && err !== null && (err as { code?: string }).code === PG_UNIQUE_VIOLATION) {
-      // Either another request inserted our (userId) row first, or another
-      // user grabbed our username. Re-fetch the row that exists for this user.
+      if (explicitUsername) {
+        // Caller picked this name explicitly; surface the collision so they
+        // can be offered alternatives rather than silently getting a different name.
+        throw new UsernameCollisionError(explicitUsername);
+      }
+      // Auto-derived path: re-fetch the row that won the race (could be ours
+      // if another concurrent request inserted the same userId row first, or
+      // the email-prefix row grabbed by a different user).
       const winner = await db.query.profiles.findFirst({
         where: eq(schema.profiles.userId, user.id),
       });
@@ -125,4 +151,30 @@ export async function ensureMyProfile() {
     }
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Username suggestion helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate up to 3 candidate usernames near `taken` that are not in use.
+ * Used by signup when the user's chosen name was grabbed between the
+ * client-side availability check and the server-side insert.
+ */
+export async function suggestUsernames(taken: string): Promise<string[]> {
+  const candidates = [
+    `${taken}1`,
+    `${taken}_g`,
+    `${taken}_2`,
+    `${taken}3`,
+    `${taken}_x`,
+  ].filter((c) => usernameSchema.safeParse(c).success);
+  if (candidates.length === 0) return [];
+  const rows = await db
+    .select({ username: schema.profiles.username })
+    .from(schema.profiles)
+    .where(inArray(schema.profiles.username, candidates));
+  const usedSet = new Set(rows.map((r) => r.username));
+  return candidates.filter((c) => !usedSet.has(c)).slice(0, 3);
 }

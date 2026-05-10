@@ -21,7 +21,18 @@ export async function GET(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      await ensureMyProfile();
+      // Pull the username the user chose at signup from Supabase user metadata.
+      // It was stored via signUp options.data.username so it survives the
+      // email-confirmation round-trip. Non-signup flows (magic link, OAuth) won't
+      // have it, and ensureMyProfile falls back to email-prefix derivation.
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const metadataUsername =
+        typeof user?.user_metadata?.username === "string"
+          ? user.user_metadata.username
+          : undefined;
+      await ensureMyProfile(metadataUsername ? { username: metadataUsername } : undefined);
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
