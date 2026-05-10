@@ -71,16 +71,26 @@ export async function getScreenshots(rawgId: number): Promise<string[]> {
   return data.results.map((r) => r.image);
 }
 
-/** Insert or update the games row from a RAWG payload. */
-export async function upsertGameFromRawg(rawg: RawgGameDetail) {
+/**
+ * Insert or update the games row from a RAWG payload.
+ *
+ * Intentionally NOT exported. In a file with `"use server"` at the top, every
+ * exported function becomes a callable server-action endpoint. Without an
+ * auth/role gate, exposing `upsertGameFromRawg` would let any authenticated
+ * client overwrite catalog rows by id. Public callers should use
+ * `getGameDetail` instead — it owns the freshness check + upsert flow.
+ */
+async function upsertGameFromRawg(rawg: RawgGameDetail) {
   const row = {
     id: rawg.id,
     slug: rawg.slug,
     title: rawg.name,
     released: rawg.released ? new Date(rawg.released) : null,
     coverUrl: rawg.background_image ?? null,
-    description: rawg.description_raw ?? null,
+    // RAWG occasionally returns "" for description_raw; coerce empty to null.
+    description: rawg.description_raw || null,
     genres: rawg.genres?.map((g) => g.name) ?? [],
+    // RAWG tags double as themes; cap at 20 to keep DB array sizes bounded.
     themes: rawg.tags?.slice(0, 20).map((t) => t.name) ?? [],
     mechanics: [],
     platforms: rawg.platforms?.map((p) => p.platform.name) ?? [],
