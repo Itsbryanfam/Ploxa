@@ -46,6 +46,12 @@ export function LibraryViewSwitcher({ initialData, initialFilter, initialSort }:
     queryKey: ["library", filter, sort],
     queryFn: () => getUserLibrary({ status: filter, sort }),
     initialData: filter === initialFilter && sort === initialSort ? initialData : undefined,
+    // Tell TanStack the server-rendered initialData is fresh so the 30s staleTime
+    // from app/providers.tsx prevents a redundant post-hydration refetch.
+    // Date.now() here is intentional: it records when SSR data was hydrated into
+    // the client, not a reactive value — the eslint-disable is load-bearing.
+    // eslint-disable-next-line react-hooks/purity
+    initialDataUpdatedAt: Date.now(),
   });
 
   function setView(v: View) {
