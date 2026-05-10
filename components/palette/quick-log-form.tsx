@@ -26,10 +26,26 @@ export function QuickLogForm() {
       setError("Pick a status first.");
       return;
     }
+    // Defensive: re-check selectedGame inside the closure. The component-level
+    // early return guarantees this is non-null by the time handleSubmit can
+    // run, but TS narrowing doesn't carry across the function boundary.
+    if (!selectedGame) return;
     setError(null);
+    // Snapshot form values before entering the transition. Once Task 13 swaps
+    // in `await createLog(...)`, the await point is a re-render boundary —
+    // capturing here keeps the submission stable against any concurrent state
+    // change between submit and resolution.
+    const snapshot = {
+      rawgId: selectedGame.rawgId,
+      title: selectedGame.title,
+      coverUrl: selectedGame.coverUrl,
+      status,
+      rating,
+      note,
+    };
     startTransition(async () => {
       // Task 13 will replace this with the actual createLog server action call.
-      console.log("[quick-log] would submit:", { selectedGame, status, rating, note });
+      console.log("[quick-log] would submit:", snapshot);
       close();
     });
   }
@@ -77,6 +93,7 @@ export function QuickLogForm() {
                 key={s}
                 type="button"
                 onClick={() => setStatus(s)}
+                disabled={pending}
                 style={isActive ? { borderColor: color, color } : undefined}
                 className={cn(
                   "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-all",
@@ -101,7 +118,7 @@ export function QuickLogForm() {
             {rating > 0 ? `${rating} / 10` : "—"}
           </span>
         </div>
-        <HeartRating value={rating} onChange={setRating} size={22} />
+        <HeartRating value={rating} onChange={setRating} size={22} disabled={pending} />
       </div>
 
       {/* Note */}
@@ -114,8 +131,9 @@ export function QuickLogForm() {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           maxLength={200}
+          disabled={pending}
           placeholder="loved the soundtrack..."
-          className="w-full bg-[var(--bg-elev)] border border-[var(--border-soft)] rounded-md px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent-soft)]"
+          className="w-full bg-[var(--bg-elev)] border border-[var(--border-soft)] rounded-md px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none focus:border-[var(--accent-soft)] disabled:opacity-50"
         />
       </div>
 
