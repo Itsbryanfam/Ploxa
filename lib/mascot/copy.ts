@@ -4,83 +4,176 @@ type CopyContext = Record<string, string | number | undefined>;
 
 const COPY: Record<MascotScenario, string[]> = {
   // === Palette ===
-  "palette.idle": ["Start typing to search.", "What are we logging today?", "I'll wait."],
+  "palette.idle": [
+    "Start typing to search.",
+    "What are we logging today?",
+    "I'll wait.",
+    "Search anything — RAWG has an opinion.",
+  ],
   "palette.no-results": [
     "Nothing matches. Try actual spelling?",
     "No hits. RAWG hasn't heard of it.",
     "Empty. The search engine, not your taste.",
+    "Zero results. Could be a RAWG gap, could be a typo.",
   ],
-  "palette.searching": ["Searching...", "Looking...", "Hold on."],
+  "palette.searching": [
+    "Searching...",
+    "Looking...",
+    "Hold on.",
+    "Asking RAWG nicely.",
+  ],
 
   // === Log success ===
   "log.success.completed-high": [
     "{rating} hearts. That's basically a marriage proposal.",
     "{rating} hearts on {title}. Bold endorsement.",
     "Logged. {title} clearly hit.",
+    "Strong rating. The Pile thanks you for finishing something.",
   ],
   "log.success.completed-mid": [
     "Logged. Solid pick.",
     "{title} — fair rating.",
     "Logged. Mid-tier banger.",
+    "Respectable. Not everything has to be a masterpiece.",
   ],
   "log.success.completed-low": [
     "Logged. Closure achieved.",
     "Done is done.",
     "{title} survived. So did you.",
+    "At least it's off the backlog.",
+    "Low rating, but you finished it — that's commitment.",
   ],
   "log.success.playing": [
     "On the docket.",
     "Currently playing: noted.",
     "Good luck out there.",
+    "The clock starts now.",
   ],
   "log.success.backlog": [
     "Backlog +1. Bold.",
     "Added to The Pile.",
     "Maybe someday.",
+    "The Pile grows. As it does.",
   ],
   "log.success.wishlist": [
     "Wishlisted. Sale notifications coming for your wallet.",
     "Saved for later. Like a tab.",
     "Wishlist +1.",
+    "Noted. Now wait for a 90% off sale like everyone else.",
   ],
-  "log.success.dropped": ["Marked dropped. No shame.", "Cut your losses.", "Moving on."],
-  "log.success.on_hold": ["Paused. We'll see.", "On the shelf.", "Maybe later."],
+  "log.success.dropped": [
+    "Marked dropped. No shame.",
+    "Cut your losses.",
+    "Moving on.",
+    "Some games earn it. Recorded for posterity.",
+  ],
+  "log.success.on_hold": [
+    "Paused. We'll see.",
+    "On the shelf.",
+    "Maybe later.",
+    "On hold — the diplomatic answer.",
+  ],
 
-  // === Empty states (placeholders — finalized in Task 32) ===
+  // === Empty states ===
   "library.empty.all": [
     "Empty shelf. The classic 'I'll start tomorrow' move.",
-    "Nothing logged yet. Let's fix that.",
+    "Nothing logged yet. Press Command-K and get on with it.",
+    "Empty. Auspicious start.",
+    "The shelf is bare. The backlog is not.",
   ],
-  "library.empty.playing": ["Nothing actively playing.", "No active runs.", "Free time?"],
-  "library.empty.completed": ["No finishes yet. The journey is the reward, etc.", "Zero completions."],
-  "library.empty.backlog": ["No backlog. Suspicious.", "Empty backlog. Either a lie or a flex."],
+  "library.empty.playing": [
+    "Nothing actively playing.",
+    "No active runs.",
+    "Free time?",
+    "No current game — rare condition.",
+  ],
+  "library.empty.completed": [
+    "No finishes yet. The journey is the reward, etc.",
+    "Zero completions. The backlog appreciates your loyalty.",
+    "Nothing completed. That's what The Pile wants you to think.",
+    "No finished games — a clean slate or a concerning pattern.",
+  ],
+  "library.empty.backlog": [
+    "No backlog. Suspicious.",
+    "Empty backlog. Either a lie or a flex.",
+    "Backlog empty. Are you okay.",
+    "No backlog entries — a statistical anomaly.",
+  ],
   "library.empty.wishlist": [
     "No wishlisted games. You're either disciplined or in denial.",
-    "Wishlist empty.",
+    "Wishlist empty. The sales will wait.",
+    "Nothing wishlisted — unprecedented restraint.",
+    "Empty wishlist. Someone's lying to themselves.",
   ],
-  "library.empty.dropped": ["Nothing dropped. Yet.", "No dropped games. Stay strong."],
-  "library.empty.on_hold": ["Nothing paused.", "No games on hold."],
+  "library.empty.dropped": [
+    "Nothing dropped. Yet.",
+    "No dropped games. Stay strong.",
+    "Zero drops — impressive or in denial.",
+    "Nothing abandoned. The optimism is noted.",
+  ],
+  "library.empty.on_hold": [
+    "Nothing paused.",
+    "No games on hold.",
+    "Empty hold list. Every game got a verdict.",
+    "Nothing on hold — decisive.",
+  ],
 
-  // === Dashboard greetings (placeholder — Task 27 expands) ===
-  "dashboard.greeting.morning": ["Morning.", "Up early.", "Coffee first."],
-  "dashboard.greeting.afternoon": ["Afternoon.", "How's the day?", "Welcome back."],
-  "dashboard.greeting.evening": ["Evening.", "Logging hours, I see.", "Welcome back."],
-  "dashboard.greeting.night": ["Late one tonight.", "Bedtime soon?", "Just one more."],
+  // === Dashboard greetings ===
+  "dashboard.greeting.morning": [
+    "Morning.",
+    "Up early.",
+    "Coffee first.",
+    "Morning. The backlog is already judging you.",
+  ],
+  "dashboard.greeting.afternoon": [
+    "Afternoon.",
+    "Welcome back.",
+    "Afternoon. The Pile hasn't shrunk.",
+    "Back again. Good.",
+  ],
+  "dashboard.greeting.evening": [
+    "Evening.",
+    "Logging hours, I see.",
+    "Welcome back.",
+    "Evening. One more session before bed, probably.",
+  ],
+  "dashboard.greeting.night": [
+    "Late one tonight.",
+    "Bedtime soon?",
+    "Just one more.",
+    "Still here. The Pile is impressed.",
+  ],
   "dashboard.greeting.long-absence": [
     "Been a while. Welcome back.",
     "It's been {days} days. We missed you.",
+    "{days} days off. The backlog grew anyway.",
+    "Look who's back. The Pile didn't go anywhere.",
   ],
   "dashboard.greeting.actively-playing": [
     "Still on {title}? Respect.",
     "{days} days into {title} — close to finishing?",
+    "{title} is getting its money's worth.",
+    "{days} days in. Either a great game or a long one.",
   ],
 
   // === Errors ===
-  "error.404": ["This game doesn't exist. Or maybe you do.", "404. Try a different URL."],
-  "error.500": ["Something broke. Not your fault. Probably.", "500. Refresh, maybe?"],
+  "error.404": [
+    "This game doesn't exist. Or maybe you do.",
+    "404. Try a different URL.",
+    "Nothing here. Either a broken link or a fever dream.",
+    "Page not found. The backlog knows the feeling.",
+  ],
+  "error.500": [
+    "Something broke. Not your fault. Probably.",
+    "500. Refresh, maybe?",
+    "The server's having a moment. Give it a sec.",
+    "Internal error. Classic.",
+  ],
   "error.rate-limited": [
     "RAWG is napping. Try in a minute.",
     "Slow down — we're rate-limited.",
+    "Too many requests. Take a breath.",
+    "Rate-limited. Even the API needs a break.",
   ],
 };
 
