@@ -52,6 +52,15 @@ export function UsernameInput({
     onChange(value, status.kind === "available");
   }, [value, status, onChange]);
 
+  // Cancel any pending debounce on unmount so the stale callback doesn't try
+  // to setState into a torn-down component (the seq guard already prevents
+  // out-of-order state updates while mounted; this is the unmount case).
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   function handleChange(next: string) {
     setValue(next);
     if (debounceRef.current) clearTimeout(debounceRef.current);
