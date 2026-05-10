@@ -73,3 +73,9 @@ export async function sendMagicLink(_: ActionResult, formData: FormData): Promis
 
   return { success: "Check your inbox for a sign-in link." };
 }
+
+export async function logoutAction() {
+  const supabase = await createSupabaseServerClient();
+  await supabase.auth.signOut();
+  redirect("/");
+}

@@ -4,6 +4,37 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+export interface HeaderUser {
+  id: string;
+  username: string | null;
+  email: string;
+  profilePictureUrl: string | null;
+  profilePictureKind: "static" | "gif" | null;
+}
+
+export async function getHeaderUser(): Promise<HeaderUser | null> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const profile = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.userId, user.id),
+    columns: {
+      username: true,
+      profilePictureUrl: true,
+      profilePictureKind: true,
+    },
+  });
+  return {
+    id: user.id,
+    username: profile?.username ?? null,
+    email: user.email ?? "",
+    profilePictureUrl: profile?.profilePictureUrl ?? null,
+    profilePictureKind: profile?.profilePictureKind ?? null,
+  };
+}
+
 export async function getProfileByUsername(username: string) {
   const profile = await db.query.profiles.findFirst({
     where: eq(schema.profiles.username, username),
