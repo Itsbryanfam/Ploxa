@@ -9,6 +9,10 @@ export function PaletteKeyboardShortcut() {
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
+      // Skip while an IME composition session is active (e.g. CJK input methods)
+      // — otherwise `keydown` events from composing a character can spuriously
+      // toggle the palette.
+      if (e.isComposing) return;
       // Don't intercept ⌘K when user is typing in an input/textarea/contenteditable
       const target = e.target as HTMLElement;
       const isTyping =
