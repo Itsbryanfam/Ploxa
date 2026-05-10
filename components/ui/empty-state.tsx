@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 
 interface EmptyStateProps {
   mood?: MascotMood;
+  /** Heading element. Defaults to h1 for full-page (size="lg") empty states, h2 for inline. */
+  as?: "h1" | "h2" | "h3";
   title: string;
   body?: string;
   action?: React.ReactNode;
@@ -13,12 +15,14 @@ interface EmptyStateProps {
 
 export function EmptyState({
   mood = "pointing",
+  as,
   title,
   body,
   action,
   size = "lg",
   className,
 }: EmptyStateProps) {
+  const Heading = as ?? (size === "lg" ? "h1" : "h2");
   return (
     <div
       className={cn(
@@ -29,7 +33,7 @@ export function EmptyState({
     >
       <Mascot size={size === "lg" ? "xl" : "lg"} mood={mood} silent />
       <div className="space-y-1.5">
-        <h2 className="text-xl font-semibold text-[var(--text)]">{title}</h2>
+        <Heading className="text-xl font-semibold text-[var(--text)]">{title}</Heading>
         {body && <p className="text-sm text-[var(--text-dim)] max-w-md mx-auto">{body}</p>}
       </div>
       {action && <div className="mt-2">{action}</div>}
