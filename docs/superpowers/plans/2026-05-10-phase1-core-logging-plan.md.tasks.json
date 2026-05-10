@@ -1,235 +1,326 @@
 {
   "planPath": "docs/superpowers/plans/2026-05-10-phase1-core-logging-plan.md",
-  "lastUpdated": "2026-05-10T00:00:00Z",
+  "lastUpdated": "2026-05-10T16:29:16.706Z",
   "tasks": [
     {
       "id": 1,
       "subject": "Task 1: Install reactivity + toast deps, mount providers",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add TanStack Query (with devtools) + sonner toast substrate, mounted at the app root.\n\n**Files:**\n- Create: app/providers.tsx\n- Modify: app/layout.tsx, package.json\n\n**See plan:** docs/superpowers/plans/2026-05-10-phase1-core-logging-plan.md (Task 1)\n\n```json:metadata\n{\"files\": [\"app/providers.tsx\", \"app/layout.tsx\", \"package.json\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"App renders, no console errors\", \"React Query Devtools floating icon visible in dev\", \"toast.success works from any client component\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Pixel asset library (hearts, status, platform, feedback, spinner)",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Build all custom-pixel-art SVG primitives. Load-bearing visual identity.\n\n**Files:**\n- Create: components/pixel/{hearts,status-icons,platform-icons,feedback-icons,spinner,index}.ts(x)\n\n**See plan:** Task 2\n\n```json:metadata\n{\"files\": [\"components/pixel/hearts.tsx\", \"components/pixel/status-icons.tsx\", \"components/pixel/platform-icons.tsx\", \"components/pixel/feedback-icons.tsx\", \"components/pixel/spinner.tsx\", \"components/pixel/index.ts\"], \"verifyCommand\": \"pnpm dev (visit /_scratch/pixels)\", \"acceptanceCriteria\": [\"Hearts Minecraft-style with vertical half-split\", \"6 status icons visually distinct\", \"All SVGs use shape-rendering crispEdges\", \"No emojis anywhere\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: <HeartRating> component",
-      "status": "pending",
-      "blockedBy": [2],
+      "status": "completed",
+      "blockedBy": [
+        2
+      ],
       "description": "**Goal:** 10 hearts in a row, click left/right half for 0.5 increments, hover preview, keyboard accessible.\n\n**Files:**\n- Create: components/ui/heart-rating.tsx\n\n**See plan:** Task 3\n\n```json:metadata\n{\"files\": [\"components/ui/heart-rating.tsx\"], \"verifyCommand\": \"pnpm dev (visit scratch route)\", \"acceptanceCriteria\": [\"All 21 valid values (0, 0.5, 1.0, ..., 10.0) render correctly\", \"Arrow keys change rating in 0.5 steps\", \"Disabled mode shows hearts at half opacity\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: <StatusBadge> component + LogStatus type helper",
-      "status": "pending",
-      "blockedBy": [2],
+      "status": "completed",
+      "blockedBy": [
+        2
+      ],
       "description": "**Goal:** Visual status indicator using pixel status icons + label.\n\n**Files:**\n- Create: components/ui/status-badge.tsx, lib/db/schema-types.ts\n\n**See plan:** Task 4\n\n```json:metadata\n{\"files\": [\"components/ui/status-badge.tsx\", \"lib/db/schema-types.ts\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"Icon + label for any of 6 statuses\", \"Color matches status\", \"Three sizes (sm/md/lg)\", \"iconOnly mode\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: <PlatformIcon> + RAWG name mapping",
-      "status": "pending",
-      "blockedBy": [2],
+      "status": "completed",
+      "blockedBy": [
+        2
+      ],
       "description": "**Goal:** Map RAWG platform strings to our pixel-icon keys.\n\n**Files:**\n- Create: components/ui/platform-icon.tsx, lib/games/platform-mapping.ts\n\n**See plan:** Task 5\n\n```json:metadata\n{\"files\": [\"components/ui/platform-icon.tsx\", \"lib/games/platform-mapping.ts\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"Recognizes PC, PlayStation 5, Xbox Series, Nintendo Switch, Steam\", \"Returns null for unrecognized\", \"Tooltip with full platform name\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: <EmptyState> component (mascot + scenario copy)",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Reusable empty-state wrapper with mascot illustration + scenario-specific copy.\n\n**Files:**\n- Create: components/ui/empty-state.tsx\n\n**See plan:** Task 6\n\n```json:metadata\n{\"files\": [\"components/ui/empty-state.tsx\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"Mascot at large size + heading + body text\", \"Mood prop sets expression\", \"Optional CTA button\", \"Centered layout with whitespace\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: RAWG client + Zod types + KV cache",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Server-only modules. Typed fetch wrapper, Zod-validated responses, KV read-through cache.\n\n**Files:**\n- Create: lib/rawg/{client,types,cache}.ts\n\n**See plan:** Task 7\n\n```json:metadata\n{\"files\": [\"lib/rawg/client.ts\", \"lib/rawg/types.ts\", \"lib/rawg/cache.ts\"], \"verifyCommand\": \"pnpm dev (visit /_scratch/rawg twice, second should be <50ms)\", \"acceptanceCriteria\": [\"rawgFetch handles 429 typed error, validates with Zod\", \"cachedSearch second call ~20ms (KV hit)\", \"cachedGameDetail second call ~20ms\", \"Unrecognized RAWG fields don't crash\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: Game server actions (search, detail, upsert)",
-      "status": "pending",
-      "blockedBy": [7],
+      "status": "completed",
+      "blockedBy": [
+        7
+      ],
       "description": "**Goal:** Bridges RAWG cache to Postgres games upsert.\n\n**Files:**\n- Create: lib/games/server-actions.ts\n\n**See plan:** Task 8\n\n```json:metadata\n{\"files\": [\"lib/games/server-actions.ts\"], \"verifyCommand\": \"pnpm dev (visit scratch route)\", \"acceptanceCriteria\": [\"searchGames returns lightweight result shape ready for typeahead\", \"getGameDetail returns from games table if cached, else fetches RAWG\", \"upsertGameFromRawg is idempotent\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: Header search bar + Cmd+K shortcut + Zustand palette store",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Update (app) layout's header. Add palette Zustand store. Wire ⌘K / Ctrl+K + ESC.\n\n**Files:**\n- Create: components/palette/{header-search-input,keyboard-shortcut}.tsx, lib/palette/palette-store.ts\n- Modify: app/(app)/layout.tsx\n\n**See plan:** Task 9\n\n```json:metadata\n{\"files\": [\"components/palette/header-search-input.tsx\", \"components/palette/keyboard-shortcut.tsx\", \"lib/palette/palette-store.ts\", \"app/(app)/layout.tsx\"], \"verifyCommand\": \"pnpm dev (sign in, click search, hit Cmd+K)\", \"acceptanceCriteria\": [\"Header shows logo + faux search + Cmd+K hint + email + logout\", \"Click on input opens palette state\", \"Cmd+K toggles, Esc closes\", \"Shortcut doesn't fire while typing in inputs\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 10: <CommandPalette> shell with portal + state machine",
-      "status": "pending",
-      "blockedBy": [9],
+      "status": "completed",
+      "blockedBy": [
+        9
+      ],
       "description": "**Goal:** The actual palette modal — portal, animated overlay, contains input + view scaffold.\n\n**Files:**\n- Create: components/palette/{command-palette,palette-input}.tsx\n\n**See plan:** Task 10\n\n```json:metadata\n{\"files\": [\"components/palette/command-palette.tsx\", \"components/palette/palette-input.tsx\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"Centered card overlay with backdrop blur on open\", \"Input auto-focused\", \"Backdrop click + Esc close\", \"Animated in (~150ms scale + fade)\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 11: Palette typeahead with TanStack Query",
-      "status": "pending",
-      "blockedBy": [8, 10],
+      "status": "completed",
+      "blockedBy": [
+        8,
+        10
+      ],
       "description": "**Goal:** Replace SearchView stub with real typeahead. Debounced TanStack Query → searchGames. Keyboard navigation.\n\n**Files:**\n- Create: components/palette/game-search-results.tsx, lib/palette/use-debounced.ts\n- Modify: components/palette/command-palette.tsx, next.config.ts\n\n**See plan:** Task 11\n\n```json:metadata\n{\"files\": [\"components/palette/game-search-results.tsx\", \"lib/palette/use-debounced.ts\", \"next.config.ts\"], \"verifyCommand\": \"pnpm dev (Cmd+K, type 'hades')\", \"acceptanceCriteria\": [\"2+ chars triggers debounced search after 250ms\", \"Loading state with PixelSpinner\", \"Empty state with confused mascot\", \"Arrow Up/Down navigate, Enter selects\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 12: <QuickLogForm> — status chips + heart rating + note",
-      "status": "pending",
-      "blockedBy": [3, 4, 11],
+      "status": "completed",
+      "blockedBy": [
+        3,
+        4,
+        11
+      ],
       "description": "**Goal:** Inline form inside palette after picking a result.\n\n**Files:**\n- Create: components/palette/quick-log-form.tsx\n- Modify: components/palette/command-palette.tsx\n\n**See plan:** Task 12\n\n```json:metadata\n{\"files\": [\"components/palette/quick-log-form.tsx\"], \"verifyCommand\": \"pnpm dev (search a game, pick it, fill form)\", \"acceptanceCriteria\": [\"Selected game cover + title at top\", \"6 status chips selectable\", \"HeartRating widget functional\", \"200-char note input\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 13: createLog server action (Drizzle insert + game upsert)",
-      "status": "pending",
-      "blockedBy": [12],
+      "status": "completed",
+      "blockedBy": [
+        12
+      ],
       "description": "**Goal:** Wire actual log creation. Validates input, upserts game, inserts log owned by user.\n\n**Files:**\n- Create: lib/logs/server-actions.ts\n- Modify: components/palette/quick-log-form.tsx\n\n**See plan:** Task 13\n\n```json:metadata\n{\"files\": [\"lib/logs/server-actions.ts\", \"components/palette/quick-log-form.tsx\"], \"verifyCommand\": \"pnpm dev (full log flow → check Supabase SQL editor)\", \"acceptanceCriteria\": [\"Validates rawgId, status, rating in 0.5 steps, note <= 200 chars\", \"Auth check\", \"Upserts game then inserts log\", \"Returns error if duplicate non-replay log exists\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 14: Toast confirmation + mascot celebration",
-      "status": "pending",
-      "blockedBy": [13],
+      "status": "completed",
+      "blockedBy": [
+        13
+      ],
       "description": "**Goal:** On successful log: pixel checkmark toast + mascot celebrating mood.\n\n**Files:**\n- Create: components/ui/log-success-toast.tsx\n- Modify: components/palette/quick-log-form.tsx, components/mascot/mascot-store.ts\n\n**See plan:** Task 14\n\n```json:metadata\n{\"files\": [\"components/ui/log-success-toast.tsx\", \"components/palette/quick-log-form.tsx\", \"components/mascot/mascot-store.ts\"], \"verifyCommand\": \"pnpm dev (log a game, watch toast)\", \"acceptanceCriteria\": [\"Toast with pixel checkmark + title + status\", \"Mascot mood briefly switches to celebrating\", \"No emojis in success path\"]}\n```"
     },
     {
       "id": 15,
       "subject": "Task 15: Initialize lib/mascot/copy.ts with starter strings",
-      "status": "pending",
-      "blockedBy": [11, 13, 14],
+      "status": "completed",
+      "blockedBy": [
+        11,
+        13,
+        14
+      ],
       "description": "**Goal:** Mascot copy registry — typed scenarios + variant picker.\n\n**Files:**\n- Create: lib/mascot/{copy,scenarios}.ts\n- Modify: components/palette/game-search-results.tsx, components/palette/quick-log-form.tsx\n\n**See plan:** Task 15\n\n```json:metadata\n{\"files\": [\"lib/mascot/copy.ts\", \"lib/mascot/scenarios.ts\"], \"verifyCommand\": \"pnpm dev (trigger each scenario)\", \"acceptanceCriteria\": [\"copy(scenario, ctx) returns one of N variants\", \"Variant picked deterministically by hash(date + scenario)\", \"Type-safe scenario keys\", \"At least 8 scenarios filled with 3+ variants\"]}\n```"
     },
     {
       "id": 16,
       "subject": "Task 16: Library server actions (getUserLibrary, updateLogStatus, deleteLog)",
-      "status": "pending",
-      "blockedBy": [13],
+      "status": "completed",
+      "blockedBy": [
+        13
+      ],
       "description": "**Goal:** Read/mutate API for the library page.\n\n**Files:**\n- Modify: lib/logs/server-actions.ts (append actions)\n\n**See plan:** Task 16\n\n```json:metadata\n{\"files\": [\"lib/logs/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"getUserLibrary returns joined log+game rows for current user, filters/sorts\", \"updateLogStatus throws if log isn't owned\", \"deleteLog throws if not owned\"]}\n```"
     },
     {
       "id": 17,
       "subject": "Task 17: <FilterChips> + <SortDropdown>",
-      "status": "pending",
-      "blockedBy": [16],
+      "status": "completed",
+      "blockedBy": [
+        16
+      ],
       "description": "**Goal:** Pixel sticky-note style filter chips + sort dropdown. URL state via searchParams.\n\n**Files:**\n- Create: components/library/{filter-chips,sort-dropdown}.tsx\n\n**See plan:** Task 17\n\n```json:metadata\n{\"files\": [\"components/library/filter-chips.tsx\", \"components/library/sort-dropdown.tsx\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"7 chips with pixel sticky-note styling\", \"Selecting updates ?status=playing\", \"5 sort options update ?sort=...\"]}\n```"
     },
     {
       "id": 18,
       "subject": "Task 18: <ShelfFrame> pixel-art shelf wrapper",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Signature visual treatment — pixel-art wooden shelf graphic framing the poster grid.\n\n**Files:**\n- Create: components/pixel/shelf-frame.tsx\n\n**See plan:** Task 18\n\n```json:metadata\n{\"files\": [\"components/pixel/shelf-frame.tsx\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"Wooden plank top + bottom\", \"Mascot peeks from one corner (small, idle, silent)\", \"Children render in centered area between planks\"]}\n```"
     },
     {
       "id": 19,
       "subject": "Task 19: <LibraryGrid> (poster wall view)",
-      "status": "pending",
-      "blockedBy": [4, 16],
+      "status": "completed",
+      "blockedBy": [
+        4,
+        16
+      ],
       "description": "**Goal:** Default library view. Letterboxd-style small posters with hover overlay.\n\n**Files:**\n- Create: components/library/{library-grid,library-poster}.tsx\n\n**See plan:** Task 19\n\n```json:metadata\n{\"files\": [\"components/library/library-grid.tsx\", \"components/library/library-poster.tsx\"], \"verifyCommand\": \"pnpm dev (visit /library)\", \"acceptanceCriteria\": [\"Posters ~140px wide, 6-8 per row at desktop, responsive\", \"Hover overlay with status + heart count\", \"Click navigates to /games/[slug]\", \"Empty state via EmptyState\"]}\n```"
     },
     {
       "id": 20,
       "subject": "Task 20: <LibraryList> (info-dense list view)",
-      "status": "pending",
-      "blockedBy": [3, 4, 16],
+      "status": "completed",
+      "blockedBy": [
+        3,
+        4,
+        16
+      ],
       "description": "**Goal:** Alternative library view with info-dense rows.\n\n**Files:**\n- Create: components/library/library-list.tsx\n\n**See plan:** Task 20\n\n```json:metadata\n{\"files\": [\"components/library/library-list.tsx\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"60x80 cover thumb + title + hearts + status + dates + hours\", \"Mobile stacks vertically\", \"Empty state via EmptyState\"]}\n```"
     },
     {
       "id": 21,
       "subject": "Task 21: <StatusShelf> (horizontal carousels per status)",
-      "status": "pending",
-      "blockedBy": [4, 16],
+      "status": "completed",
+      "blockedBy": [
+        4,
+        16
+      ],
       "description": "**Goal:** Cockpit view — horizontal carousels by status. Reused on dashboard.\n\n**Files:**\n- Create: components/library/status-shelf.tsx\n\n**See plan:** Task 21\n\n```json:metadata\n{\"files\": [\"components/library/status-shelf.tsx\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"4 carousels: Playing → Up Next → Recently Completed → Wishlist\", \"Status icon + title at left\", \"Horizontal scroll with snap\", \"Empty carousels show compact 'no games here' line\"]}\n```"
     },
     {
       "id": 22,
       "subject": "Task 22: /library page with view toggle + URL state",
-      "status": "pending",
-      "blockedBy": [17, 18, 19, 20, 21],
+      "status": "completed",
+      "blockedBy": [
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
       "description": "**Goal:** Library page. RSC fetches initial data, client switcher renders chosen view.\n\n**Files:**\n- Create: app/(app)/library/page.tsx, components/library/library-view-switcher.tsx\n\n**See plan:** Task 22\n\n```json:metadata\n{\"files\": [\"app/(app)/library/page.tsx\", \"components/library/library-view-switcher.tsx\"], \"verifyCommand\": \"pnpm dev (visit /library, toggle views, change filter/sort)\", \"acceptanceCriteria\": [\"Default grid view in shelf frame\", \"3 view toggle: grid/list/shelf\", \"Filter chips + sort dropdown work\", \"URL syncs ?status=&sort=&view=\", \"TanStack Query hydrated from RSC initialData\"]}\n```"
     },
     {
       "id": 23,
       "subject": "Task 23: Tactile FLIP transitions for status changes",
-      "status": "pending",
-      "blockedBy": [16, 22],
+      "status": "completed",
+      "blockedBy": [
+        16,
+        22
+      ],
       "description": "**Goal:** Status menu on poster hover. Picking new status → poster animates via Framer Motion FLIP.\n\n**Files:**\n- Create: components/library/poster-status-menu.tsx\n- Modify: components/library/library-poster.tsx\n\n**See plan:** Task 23\n\n```json:metadata\n{\"files\": [\"components/library/poster-status-menu.tsx\", \"components/library/library-poster.tsx\"], \"verifyCommand\": \"pnpm dev (change a poster's status, watch animation)\", \"acceptanceCriteria\": [\"Hover shows 'Change status' affordance\", \"Picking status calls updateLogStatus + invalidates\", \"Poster slides to new sorted position\", \"Animation smooth on 30+ items\"]}\n```"
     },
     {
       "id": 24,
       "subject": "Task 24: <GameDetail> + <LogCard> + <ScreenshotGallery>",
-      "status": "pending",
-      "blockedBy": [4, 5, 6],
+      "status": "completed",
+      "blockedBy": [
+        4,
+        5,
+        6
+      ],
       "description": "**Goal:** Detail content used by both intercepted panel + full route.\n\n**Files:**\n- Create: components/game/{game-detail,log-card,screenshot-gallery,edit-log-modal}.tsx\n\n**See plan:** Task 24\n\n```json:metadata\n{\"files\": [\"components/game/game-detail.tsx\", \"components/game/log-card.tsx\", \"components/game/screenshot-gallery.tsx\", \"components/game/edit-log-modal.tsx\"], \"verifyCommand\": \"pnpm typecheck\", \"acceptanceCriteria\": [\"Cover hero with gradient overlay\", \"Title, year, genres chips, platform icons\", \"Description with Read More expander\", \"Screenshots gallery horizontal scroll\", \"LogCard if logged, Log-it CTA if not\"]}\n```"
     },
     {
       "id": 25,
       "subject": "Task 25: Full game detail route /games/[slug]",
-      "status": "pending",
-      "blockedBy": [8, 24],
+      "status": "completed",
+      "blockedBy": [
+        8,
+        24
+      ],
       "description": "**Goal:** Full-page route. RSC fetches game + screenshots + user log.\n\n**Files:**\n- Create: app/(app)/games/[slug]/{page,not-found}.tsx\n\n**See plan:** Task 25\n\n```json:metadata\n{\"files\": [\"app/(app)/games/[slug]/page.tsx\", \"app/(app)/games/[slug]/not-found.tsx\"], \"verifyCommand\": \"pnpm dev (visit /games/hades)\", \"acceptanceCriteria\": [\"Visiting /games/hades renders full page\", \"Game not in DB triggers RAWG fetch + upsert\", \"Log card if logged, CTA placeholder if not\", \"404 with mascot for unknown slugs\"]}\n```"
     },
     {
       "id": 26,
       "subject": "Task 26: Intercepting route — slide-over panel",
-      "status": "pending",
-      "blockedBy": [24, 25],
+      "status": "completed",
+      "blockedBy": [
+        24,
+        25
+      ],
       "description": "**Goal:** Click poster from inside app → slide-over panel via Next.js intercepting routes.\n\n**Files:**\n- Create: app/(app)/@modal/default.tsx, app/(app)/@modal/(.)games/[slug]/page.tsx, components/game/game-detail-panel.tsx\n- Modify: app/(app)/layout.tsx (modal slot)\n\n**See plan:** Task 26\n\n```json:metadata\n{\"files\": [\"app/(app)/@modal/default.tsx\", \"app/(app)/@modal/(.)games/[slug]/page.tsx\", \"components/game/game-detail-panel.tsx\", \"app/(app)/layout.tsx\"], \"verifyCommand\": \"pnpm dev (click poster from library, refresh URL while open)\", \"acceptanceCriteria\": [\"Click poster opens slide-over panel; URL updates\", \"Refresh loads as full route\", \"Backdrop click + Esc + close button all close\", \"Slide animation ~300ms\"]}\n```"
     },
     {
       "id": 27,
       "subject": "Task 27: <MascotGreeting> with context-aware copy",
-      "status": "pending",
-      "blockedBy": [15],
+      "status": "completed",
+      "blockedBy": [
+        15
+      ],
       "description": "**Goal:** Dashboard hero. Mascot at xl with context-aware greeting.\n\n**Files:**\n- Create: components/dashboard/mascot-greeting.tsx\n- Modify: lib/mascot/copy.ts (add dashboardGreeting picker)\n\n**See plan:** Task 27\n\n```json:metadata\n{\"files\": [\"components/dashboard/mascot-greeting.tsx\", \"lib/mascot/copy.ts\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"Mascot at xl with waving → idle transition (1.5s)\", \"Speech bubble with context-aware copy\", \"Picks variant based on hour-of-day, days-since-last-log, currently-playing\"]}\n```"
     },
     {
       "id": 28,
       "subject": "Task 28: <StatsStrip> + <ActivityTimeline> + getUserStats/getRecentActivity",
-      "status": "pending",
-      "blockedBy": [16],
+      "status": "completed",
+      "blockedBy": [
+        16
+      ],
       "description": "**Goal:** Dashboard widgets — at-a-glance stats + recent activity feed.\n\n**Files:**\n- Create: components/dashboard/{stats-strip,activity-timeline}.tsx\n- Modify: lib/logs/server-actions.ts (add getUserStats + getRecentActivity)\n\n**See plan:** Task 28\n\n```json:metadata\n{\"files\": [\"components/dashboard/stats-strip.tsx\", \"components/dashboard/activity-timeline.tsx\", \"lib/logs/server-actions.ts\"], \"verifyCommand\": \"pnpm dev\", \"acceptanceCriteria\": [\"Total + by-status + average rating\", \"Last 10 events with timestamps\"]}\n```"
     },
     {
       "id": 29,
       "subject": "Task 29: Cockpit dashboard at /home + dispatch from /",
-      "status": "pending",
-      "blockedBy": [21, 27, 28],
+      "status": "completed",
+      "blockedBy": [
+        21,
+        27,
+        28
+      ],
       "description": "**Goal:** Authed users at / redirect to /home. Cockpit composes greeting + status shelf + activity + stats. Old /dashboard redirects.\n\n**Files:**\n- Create: app/(app)/_cockpit/cockpit-dashboard.tsx, app/(app)/home/page.tsx\n- Modify: app/page.tsx, app/(app)/dashboard/page.tsx, app/(app)/layout.tsx, app/(auth)/login/actions.ts, app/(auth)/signup/actions.ts, app/auth/callback/route.ts\n\n**See plan:** Task 29\n\n```json:metadata\n{\"files\": [\"app/(app)/_cockpit/cockpit-dashboard.tsx\", \"app/(app)/home/page.tsx\", \"app/page.tsx\", \"app/(app)/dashboard/page.tsx\", \"app/(app)/layout.tsx\", \"app/(auth)/login/actions.ts\", \"app/(auth)/signup/actions.ts\", \"app/auth/callback/route.ts\"], \"verifyCommand\": \"pnpm dev (sign out → / shows marketing; sign in → / redirects to /home)\", \"acceptanceCriteria\": [\"Signed out at / shows marketing\", \"Signed in at / redirects to /home\", \"/dashboard redirects to /home\", \"Cockpit shows greeting + shelf + activity + stats\"]}\n```"
     },
     {
       "id": 30,
       "subject": "Task 30: /u/[username] profile page + ensureMyProfile bootstrap",
-      "status": "pending",
-      "blockedBy": [19, 28],
+      "status": "completed",
+      "blockedBy": [
+        19,
+        28
+      ],
       "description": "**Goal:** Profile page (own primary, public works via RLS). Auto-create profile from email prefix.\n\n**Files:**\n- Create: app/(app)/u/[username]/{page,not-found}.tsx, lib/profile/server-actions.ts\n- Modify: auth callback / actions to call ensureMyProfile()\n\n**See plan:** Task 30\n\n```json:metadata\n{\"files\": [\"app/(app)/u/[username]/page.tsx\", \"app/(app)/u/[username]/not-found.tsx\", \"lib/profile/server-actions.ts\", \"app/auth/callback/route.ts\"], \"verifyCommand\": \"pnpm dev (sign in, visit /u/<username>)\", \"acceptanceCriteria\": [\"Profile header + library + stats\", \"Auto-create profile on first sign-in\", \"404 with mascot for unknown\", \"Public viewing RLS-filtered\"]}\n```"
     },
     {
       "id": 31,
       "subject": "Task 31: <EditLogModal> full-form editor + updateLogFull",
-      "status": "pending",
-      "blockedBy": [16, 24],
+      "status": "completed",
+      "blockedBy": [
+        16,
+        24
+      ],
       "description": "**Goal:** Replace stub. All schema fields. Save + Delete with confirm.\n\n**Files:**\n- Modify: components/game/edit-log-modal.tsx, lib/logs/server-actions.ts\n\n**See plan:** Task 31\n\n```json:metadata\n{\"files\": [\"components/game/edit-log-modal.tsx\", \"lib/logs/server-actions.ts\"], \"verifyCommand\": \"pnpm dev (edit a log on detail page)\", \"acceptanceCriteria\": [\"All fields: status, rating, dates, hours, platform, replay, privacy, notes\", \"Validates rating 0-10/0.5 steps, hours non-negative\", \"Delete with confirm\"]}\n```"
     },
     {
       "id": 32,
       "subject": "Task 32: Author full mascot copy strings",
-      "status": "pending",
-      "blockedBy": [15],
+      "status": "completed",
+      "blockedBy": [
+        15
+      ],
       "description": "**Goal:** 3-5 variants per scenario. Tone-review pass for sardonic-insider voice. 25-35 strings total.\n\n**Files:**\n- Modify: lib/mascot/copy.ts\n\n**See plan:** Task 32\n\n```json:metadata\n{\"files\": [\"lib/mascot/copy.ts\"], \"verifyCommand\": \"manual read-aloud review\", \"acceptanceCriteria\": [\"Every scenario has 3+ variants\", \"Every line passes tone check (ribs not insults)\", \"No emojis, no exclamation marks\", \"25-35 strings total\"]}\n```"
     },
     {
       "id": 33,
       "subject": "Task 33: Verification gate run-through + bug fixes",
-      "status": "pending",
-      "blockedBy": [29, 30, 31, 32, 23, 26],
+      "status": "completed",
+      "blockedBy": [
+        29,
+        30,
+        31,
+        32,
+        23,
+        26
+      ],
       "description": "**Goal:** Manually run all 14 acceptance checks. Fix anything broken. Cross-browser pass. Final commit marks gate passing.\n\n**Files:**\n- (Likely various small fixes across codebase)\n\n**See plan:** Task 33\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"pnpm dev → walk all 14 checks from spec §08\", \"acceptanceCriteria\": [\"All 14 spec gate items pass\", \"Cross-browser: Chrome, Safari, Firefox + iOS Safari + Chrome Android\", \"Final empty commit marks gate passing\"]}\n```"
     }
   ]
