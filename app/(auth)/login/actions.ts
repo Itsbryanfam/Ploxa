@@ -40,7 +40,9 @@ export async function loginWithPassword(_: ActionResult, formData: FormData): Pr
     return { error: error.message };
   }
 
-  redirect(parsed.data.next || "/home");
+  // Only honor relative paths — prevents open-redirect via crafted `next=`.
+  const safeNext = parsed.data.next?.startsWith("/") ? parsed.data.next : "/home";
+  redirect(safeNext);
 }
 
 export async function sendMagicLink(_: ActionResult, formData: FormData): Promise<ActionResult> {

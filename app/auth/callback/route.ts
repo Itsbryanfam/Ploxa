@@ -12,7 +12,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/home";
+  // Only honor relative paths — prevents open-redirect via crafted `?next=`.
+  const rawNext = searchParams.get("next") ?? "/home";
+  const next = rawNext.startsWith("/") ? rawNext : "/home";
 
   if (code) {
     const supabase = await createSupabaseServerClient();
