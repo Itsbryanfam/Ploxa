@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import { usePaletteStore } from "@/lib/palette/palette-store";
 import { PaletteInput } from "./palette-input";
-import { Mascot } from "@/components/mascot/mascot";
+import { GameSearchResults } from "./game-search-results";
 
 export function CommandPalette() {
   const isOpen = usePaletteStore((s) => s.isOpen);
@@ -67,7 +67,7 @@ export function CommandPalette() {
             </div>
             <div className="max-h-[60vh] overflow-y-auto">
               {view === "search" ? (
-                <SearchView query={query} />
+                <GameSearchResults query={query} />
               ) : (
                 <QuickLogView /* will be built in Task 12 */ />
               )}
@@ -86,23 +86,6 @@ function PaletteSearchIcon() {
       <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
       <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
-  );
-}
-
-// Stub for now; Task 11 fills it
-function SearchView({ query }: { query: string }) {
-  if (query.length < 2) {
-    return (
-      <div className="px-5 py-12 text-center">
-        <Mascot size="md" mood="idle" silent />
-        <p className="mt-4 text-sm text-[var(--text-dim)]">Start typing to search.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="px-5 py-8 text-sm text-[var(--text-dim)]">
-      [results for &quot;{query}&quot; wired in Task 11]
-    </div>
   );
 }
 
