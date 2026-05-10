@@ -14,7 +14,7 @@ export function ScreenshotGallery({ urls }: { urls: string[] }) {
           rel="noopener noreferrer"
           className="flex-shrink-0 relative w-72 aspect-video rounded-md overflow-hidden bg-[var(--bg-elev)] border border-[var(--border-soft)] hover:border-[var(--accent-soft)] transition-colors"
         >
-          <Image src={url} alt="Screenshot" fill sizes="288px" className="object-cover" unoptimized />
+          <Image src={url} alt="Screenshot" fill sizes="288px" className="object-cover" />
         </a>
       ))}
     </div>
