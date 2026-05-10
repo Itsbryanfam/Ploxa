@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { usePaletteStore } from "@/lib/palette/palette-store";
 import { PaletteInput } from "./palette-input";
 import { GameSearchResults } from "./game-search-results";
+import { QuickLogForm } from "./quick-log-form";
 
 export function CommandPalette() {
   const isOpen = usePaletteStore((s) => s.isOpen);
@@ -69,7 +70,7 @@ export function CommandPalette() {
               {view === "search" ? (
                 <GameSearchResults query={query} />
               ) : (
-                <QuickLogView /* will be built in Task 12 */ />
+                <QuickLogForm />
               )}
             </div>
           </motion.div>
@@ -89,7 +90,3 @@ function PaletteSearchIcon() {
   );
 }
 
-// Placeholder until Task 12
-function QuickLogView() {
-  return <div className="px-5 py-8">[quick-log form wired in Task 12]</div>;
-}
