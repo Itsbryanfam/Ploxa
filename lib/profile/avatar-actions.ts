@@ -71,6 +71,10 @@ export async function uploadAvatar(
       .set({
         profilePictureUrl: urls.url,
         profilePictureKind: isGif ? "gif" : "static",
+        // updated_at has DEFAULT now() but that only fires on INSERT — UPDATEs
+        // must set it explicitly or queries that order/cache by updatedAt see
+        // a stale timestamp after an avatar change.
+        updatedAt: new Date(),
       })
       .where(eq(schema.profiles.userId, user.id)); // ← userId, NOT id (plan defect corrected)
   } catch {
