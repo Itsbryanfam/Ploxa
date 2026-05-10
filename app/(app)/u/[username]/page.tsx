@@ -35,6 +35,8 @@ export default async function ProfilePage({
       startedAt: schema.logs.startedAt,
       finishedAt: schema.logs.finishedAt,
       hoursPlayed: schema.logs.hoursPlayed,
+      platformPlayedOn: schema.logs.platformPlayedOn,
+      isReplay: schema.logs.isReplay,
       notes: schema.logs.notes,
       isPrivate: schema.logs.isPrivate,
       createdAt: schema.logs.createdAt,
@@ -59,6 +61,9 @@ export default async function ProfilePage({
       rating: r.rating ? Number(r.rating) : null,
       startedAt: r.startedAt, finishedAt: r.finishedAt,
       hoursPlayed: r.hoursPlayed ? Number(r.hoursPlayed) : null,
+      platformPlayedOn: r.platformPlayedOn,
+      isReplay: r.isReplay,
+      isPrivate: r.isPrivate,
       notes: r.notes, createdAt: r.createdAt, updatedAt: r.updatedAt,
       game: {
         id: r.game_id, slug: r.game_slug, title: r.game_title,

@@ -37,6 +37,9 @@ export default async function InterceptedGamePage({
         rating: row.rating ? Number(row.rating) : null,
         startedAt: row.startedAt, finishedAt: row.finishedAt,
         hoursPlayed: row.hoursPlayed ? Number(row.hoursPlayed) : null,
+        platformPlayedOn: row.platformPlayedOn,
+        isReplay: row.isReplay,
+        isPrivate: row.isPrivate,
         notes: row.notes, createdAt: row.createdAt, updatedAt: row.updatedAt,
         game: {
           id: game.id, slug: game.slug, title: game.title,
