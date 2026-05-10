@@ -4,8 +4,7 @@ import { useState, useTransition } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { AvatarUploader } from "@/components/settings/avatar-uploader";
 import { uploadAvatar } from "@/lib/profile/avatar-actions";
-import type { HeaderUser } from "@/lib/profile/server-actions";
-import { updateUsername } from "@/lib/profile/server-actions";
+import { updateUsername, type HeaderUser } from "@/lib/profile/server-actions";
 import { UsernameInput } from "@/components/auth/username-input";
 import { Button } from "@/components/ui/button";
 
@@ -66,7 +65,9 @@ export function ProfileSection({ user }: Props) {
 
   function cancelUsernameEdit() {
     setEditingUsername(false);
-    setUsernameDraft({ value: user.username ?? "", valid: false });
+    // The user's current name is valid by definition (matches treatInitialAsValid
+    // when re-opened); flagging it as valid keeps state consistent.
+    setUsernameDraft({ value: user.username ?? "", valid: true });
     setUsernameError(null);
   }
 
@@ -117,7 +118,11 @@ export function ProfileSection({ user }: Props) {
                 <Button onClick={saveUsername} disabled={!canSaveUsername}>
                   {pendingUsername ? "Saving…" : "Save"}
                 </Button>
-                <Button variant="secondary" onClick={cancelUsernameEdit}>
+                <Button
+                  variant="secondary"
+                  onClick={cancelUsernameEdit}
+                  disabled={pendingUsername}
+                >
                   Cancel
                 </Button>
               </div>
