@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 1 — Core Logging — Implementation Plan</title>
+<style>
+  :root {
+    --bg: #0a0a0f; --bg-elev: #11111a; --bg-card: #16161f; --bg-card-hover: #1c1c28;
+    --border: #2a2a38; --border-soft: #1f1f2c;
+    --text: #e4e4f0; --text-dim: #9494a8; --text-faint: #5a5a70;
+    --accent: #7c5cff; --accent-soft: #7c5cff22; --accent-glow: #7c5cff44;
+    --pixel: #ffb84a; --pixel-soft: #ffb84a22;
+    --success: #4ade80; --warning: #fbbf24; --danger: #f87171;
+    --code-bg: #0d0d14;
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.6);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6; font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 60px 32px 120px; }
+  .hero { text-align: center; padding: 60px 0 80px; border-bottom: 1px solid var(--border-soft); margin-bottom: 60px; position: relative; }
+  .hero::before {
+    content: ''; position: absolute; top: -20%; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 400px; background: radial-gradient(circle, var(--accent-glow) 0%, transparent 60%);
+    z-index: -1; filter: blur(40px);
+  }
+  .pixel-logo {
+    display: inline-block; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; font-family: 'Courier New', monospace; font-size: 11px; color: var(--pixel);
+    margin-bottom: 32px; letter-spacing: 2px;
+  }
+  h1 {
+    font-size: 56px; font-weight: 800; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 20px;
+    background: linear-gradient(180deg, var(--text) 0%, var(--text-dim) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .hero-tagline { font-size: 18px; color: var(--text-dim); max-width: 720px; margin: 0 auto 24px; }
+  .meta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px; }
+  .meta-pill {
+    padding: 6px 14px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 999px; font-size: 13px; color: var(--text-dim);
+  }
+  .meta-pill strong { color: var(--text); }
+
+  /* Week heading */
+  h2.week {
+    font-size: 36px; font-weight: 700; letter-spacing: -0.8px; margin: 80px 0 8px;
+    display: flex; align-items: baseline; gap: 16px;
+  }
+  h2.week .num {
+    color: var(--pixel); font-family: 'Courier New', monospace; font-size: 16px;
+    background: var(--pixel-soft); padding: 6px 12px; border-radius: 6px;
+  }
+  .week-goal {
+    font-size: 15px; color: var(--text-dim); margin-bottom: 32px; padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  /* Task cards */
+  .task {
+    background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 12px;
+    padding: 24px; margin: 16px 0;
+  }
+  .task:hover { border-color: var(--border); }
+  .task-header {
+    display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px;
+  }
+  .task-num {
+    color: var(--accent); font-family: 'Courier New', monospace; font-size: 13px;
+    background: var(--accent-soft); padding: 4px 10px; border-radius: 6px;
+    font-weight: 600;
+  }
+  .task-title { font-size: 18px; font-weight: 600; color: var(--text); }
+  .task-goal { color: var(--text-dim); margin-bottom: 16px; font-size: 14px; }
+  .task-section { margin-top: 14px; }
+  .task-section-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-faint); margin-bottom: 6px;
+  }
+  .task-files, .task-criteria {
+    font-size: 13px; color: var(--text-dim); line-height: 1.7;
+  }
+  .task-files li { list-style: none; padding-left: 0; }
+  .task-files code { font-size: 12px; }
+  .task-criteria { padding-left: 18px; }
+  .task-criteria li { margin: 3px 0; }
+  .task-criteria li::marker { color: var(--accent); }
+
+  code {
+    font-family: 'Courier New', 'SF Mono', Monaco, monospace; font-size: 12px;
+    background: var(--code-bg); padding: 1px 6px; border-radius: 4px;
+    color: var(--pixel); border: 1px solid var(--border-soft);
+  }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent-soft); }
+  a:hover { border-bottom-style: solid; }
+
+  /* Callouts */
+  .callout {
+    background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 18px 22px; margin: 24px 0;
+  }
+  .callout strong { color: var(--accent); }
+  .callout.pixel { border-left-color: var(--pixel); }
+  .callout.pixel strong { color: var(--pixel); }
+  .callout.success { border-left-color: var(--success); }
+  .callout.success strong { color: var(--success); }
+
+  /* Section dividers */
+  hr { border: none; border-top: 1px solid var(--border-soft); margin: 60px 0; }
+
+  footer {
+    margin-top: 80px; padding-top: 32px; border-top: 1px solid var(--border-soft);
+    text-align: center; color: var(--text-faint); font-size: 13px;
+  }
+  footer a { color: var(--text-dim); }
+
+  /* TOC */
+  .toc {
+    background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 12px;
+    padding: 20px 28px; margin: 32px 0;
+  }
+  .toc h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); margin-bottom: 12px; }
+  .toc ol { padding-left: 24px; font-size: 14px; color: var(--text-dim); }
+  .toc ol li { margin: 4px 0; }
+  .toc a { color: var(--text-dim); border-bottom: none; }
+  .toc a:hover { color: var(--accent); }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0 0; }
+  .stat {
+    background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 8px;
+    padding: 16px; text-align: center;
+  }
+  .stat-value { font-size: 24px; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); margin-top: 4px; }
+
+  @media (max-width: 720px) {
+    .container { padding: 40px 18px 80px; }
+    h1 { font-size: 36px; }
+    h2.week { font-size: 26px; }
+    .task { padding: 18px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="hero">
+  <div class="pixel-logo">PHASE 01 / IMPLEMENTATION PLAN</div>
+  <h1>Core Logging</h1>
+  <p class="hero-tagline">33 bite-sized tasks across 4 weeks. Each task = self-contained, testable, single commit. Source of truth for engineers (or subagents) executing the build.</p>
+  <div class="meta-row">
+    <span class="meta-pill"><strong>Date</strong> &nbsp;2026-05-10</span>
+    <span class="meta-pill"><strong>Phase</strong> &nbsp;1 of 7</span>
+    <span class="meta-pill"><strong>Duration</strong> &nbsp;Weeks 3–6</span>
+    <span class="meta-pill"><strong>Tasks</strong> &nbsp;33</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-value">8</div><div class="stat-label">Week 3 tasks</div></div>
+    <div class="stat"><div class="stat-value">7</div><div class="stat-label">Week 4 tasks</div></div>
+    <div class="stat"><div class="stat-value">11</div><div class="stat-label">Week 5 tasks</div></div>
+    <div class="stat"><div class="stat-value">7</div><div class="stat-label">Week 6 tasks</div></div>
+  </div>
+</header>
+
+<div class="callout">
+  <strong>Source of truth:</strong> The markdown plan at <code>docs/superpowers/plans/2026-05-10-phase1-core-logging-plan.md</code> contains every code block, every command, every step. This HTML is the navigable summary for review — open the markdown when actually building.
+</div>
+
+<div class="callout pixel">
+  <strong>Custom-asset rule (load-bearing):</strong> Every UI element gets a custom SVG/pixel-art asset. Emojis in product UI are an anti-pattern. Site must feel hand-crafted, not AI-generated.
+</div>
+
+<div class="callout success">
+  <strong>Verification gate:</strong> 14 acceptance checks (Spec §08). Phase ships when all 14 pass manually. Task 33 runs the full gate.
+</div>
+
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#week-3">Week 3 — Foundation, Assets, Data Layer (Tasks 1–8)</a></li>
+    <li><a href="#week-4">Week 4 — Cmd+K Palette + Quick-Log Flow (Tasks 9–15)</a></li>
+    <li><a href="#week-5">Week 5 — Library Page + Game Detail (Tasks 16–26)</a></li>
+    <li><a href="#week-6">Week 6 — Cockpit Dashboard, Profile, Polish (Tasks 27–33)</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================== -->
+<h2 class="week" id="week-3"><span class="num">WEEK 03</span>Foundation, Assets, Data Layer</h2>
+<p class="week-goal">Ship every primitive and server module needed by Week 4. By end of week 3, the palette doesn't exist yet but everything it needs does.</p>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">01</span><span class="task-title">Install reactivity + toast deps, mount providers</span></div>
+  <p class="task-goal">Add TanStack Query (with devtools) + sonner toast substrate, mounted at the app root.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>app/providers.tsx</code></li>
+    <li>~ <code>app/layout.tsx</code> · <code>package.json</code></li>
+  </ul></div>
+  <div class="task-section"><div class="task-section-label">Acceptance</div><ul class="task-criteria">
+    <li>App renders, no console errors</li>
+    <li>React Query Devtools floating icon visible in dev</li>
+    <li><code>toast.success("test")</code> works from any client component</li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">02</span><span class="task-title">Pixel asset library — hearts, status, platform, feedback, spinner</span></div>
+  <p class="task-goal">All custom-pixel-art SVG primitives. Load-bearing visual identity; nothing downstream renders without these.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/pixel/{hearts,status-icons,platform-icons,feedback-icons,spinner,index}.ts(x)</code></li>
+  </ul></div>
+  <div class="task-section"><div class="task-section-label">Acceptance</div><ul class="task-criteria">
+    <li>Hearts recognizably Minecraft-style (red fill, dark outline, vertical half-split)</li>
+    <li>6 status icons visually distinct at 16px</li>
+    <li>All SVGs use <code>shape-rendering="crispEdges"</code></li>
+    <li>No emojis anywhere</li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">03</span><span class="task-title">&lt;HeartRating&gt; component</span></div>
+  <p class="task-goal">10 hearts, click-half = 0.5 increments, hover preview, keyboard accessible, controlled + uncontrolled.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files"><li>+ <code>components/ui/heart-rating.tsx</code></li></ul></div>
+  <div class="task-section"><div class="task-section-label">Acceptance</div><ul class="task-criteria">
+    <li>21 valid values (0, 0.5, 1.0, ..., 10.0)</li>
+    <li>Arrow keys change rating in 0.5 steps</li>
+    <li>Disabled mode at half opacity, no interaction</li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">04</span><span class="task-title">&lt;StatusBadge&gt; component</span></div>
+  <p class="task-goal">Visual status indicator using pixel status icons + label.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/ui/status-badge.tsx</code> · <code>lib/db/schema-types.ts</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">05</span><span class="task-title">&lt;PlatformIcon&gt; + RAWG name mapping</span></div>
+  <p class="task-goal">Map RAWG platform strings ("PlayStation 5") → our pixel-icon keys.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/ui/platform-icon.tsx</code> · <code>lib/games/platform-mapping.ts</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">06</span><span class="task-title">&lt;EmptyState&gt; component</span></div>
+  <p class="task-goal">Mascot illustration + scenario-specific copy. Reused on library, palette, profile, errors.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files"><li>+ <code>components/ui/empty-state.tsx</code></li></ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">07</span><span class="task-title">RAWG client + Zod types + KV cache</span></div>
+  <p class="task-goal">Server-only modules. Typed fetch wrapper, Zod-validated responses, KV read-through cache (24h search, 7d detail).</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>lib/rawg/{client,types,cache}.ts</code></li>
+  </ul></div>
+  <div class="task-section"><div class="task-section-label">Acceptance</div><ul class="task-criteria">
+    <li>Second call to <code>cachedSearch("hades")</code> returns within ~20ms (KV hit)</li>
+    <li>RAWG 429 → typed error</li>
+    <li>Unrecognized RAWG fields don't crash</li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">08</span><span class="task-title">Game server actions — search, detail, upsert</span></div>
+  <p class="task-goal">Bridges RAWG cache → Postgres <code>games</code> upsert. Used by palette + detail page.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files"><li>+ <code>lib/games/server-actions.ts</code></li></ul></div>
+</div>
+
+<!-- ============================================================== -->
+<h2 class="week" id="week-4"><span class="num">WEEK 04</span>Cmd+K Palette + Quick-Log Flow</h2>
+<p class="week-goal">Ship the search → log roundtrip end-to-end. By end of week 4, you can ⌘K, search, pick a game, fill the quick-log form, submit, and see a toast confirming the row landed in the DB.</p>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">09</span><span class="task-title">Header bar with &lt;HeaderSearchInput&gt; + ⌘K shortcut</span></div>
+  <p class="task-goal">Update the (app) layout's header. Add Zustand palette store. Wire global keyboard shortcut (⌘K / Ctrl+K, ESC to close).</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/palette/{header-search-input,keyboard-shortcut}.tsx</code> · <code>lib/palette/palette-store.ts</code></li>
+    <li>~ <code>app/(app)/layout.tsx</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">10</span><span class="task-title">&lt;CommandPalette&gt; shell</span></div>
+  <p class="task-goal">The actual palette modal — portal, overlay, animated card with input. State machine wired to Zustand.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/palette/{command-palette,palette-input}.tsx</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">11</span><span class="task-title">Palette typeahead with TanStack Query</span></div>
+  <p class="task-goal">Debounced search → results grid with cover thumbnails + keyboard nav (arrow keys, enter to select).</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/palette/game-search-results.tsx</code> · <code>lib/palette/use-debounced.ts</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">12</span><span class="task-title">&lt;QuickLogForm&gt; — status chips + heart rating + note</span></div>
+  <p class="task-goal">Inline form inside the palette after picking a result. 6 status chips, 10 hearts, optional 200-char note.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/palette/quick-log-form.tsx</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">13</span><span class="task-title">createLog server action</span></div>
+  <p class="task-goal">Drizzle insert + game upsert. Auth check via Supabase JWT. Validates 0.5-step rating. Unique constraint enforces "one log per game per user (non-replay)".</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>lib/logs/server-actions.ts</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">14</span><span class="task-title">Toast confirmation + mascot celebration</span></div>
+  <p class="task-goal">Custom pixel checkmark in the toast (no emojis). Mascot mood briefly switches to <code>celebrating</code>.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>components/ui/log-success-toast.tsx</code></li>
+    <li>~ <code>components/palette/quick-log-form.tsx</code> · <code>components/mascot/mascot-store.ts</code></li>
+  </ul></div>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">15</span><span class="task-title">Initialize lib/mascot/copy.ts</span></div>
+  <p class="task-goal">Mascot copy registry — typed scenario keys + variant picker (deterministic by date hash). Starter strings for palette + log success scenarios.</p>
+  <div class="task-section"><div class="task-section-label">Files</div><ul class="task-files">
+    <li>+ <code>lib/mascot/{copy,scenarios}.ts</code></li>
+  </ul></div>
+</div>
+
+<!-- ============================================================== -->
+<h2 class="week" id="week-5"><span class="num">WEEK 05</span>Library Page + Game Detail</h2>
+<p class="week-goal">Build the library page with all three views, the game detail page (full route + intercepted panel), and tactile FLIP transitions for status changes.</p>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">16</span><span class="task-title">Library server actions</span></div>
+  <p class="task-goal"><code>getUserLibrary(filters)</code>, <code>updateLogStatus</code>, <code>deleteLog</code>. Drizzle queries with explicit user-id filter (RLS as backstop).</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">17</span><span class="task-title">&lt;FilterChips&gt; + &lt;SortDropdown&gt;</span></div>
+  <p class="task-goal">Pixel sticky-note style filter chips + sort dropdown. URL state via <code>useSearchParams</code> + <code>router.replace</code>.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">18</span><span class="task-title">&lt;ShelfFrame&gt; pixel-art shelf wrapper</span></div>
+  <p class="task-goal">Wooden plank top + bottom + mascot peeking from corner. Library wall sits inside this frame.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">19</span><span class="task-title">&lt;LibraryGrid&gt; (poster wall view)</span></div>
+  <p class="task-goal">Letterboxd-style small posters. Hover overlay reveals rating + status. Each poster has <code>layoutId</code> for FLIP.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">20</span><span class="task-title">&lt;LibraryList&gt; (info-dense list view)</span></div>
+  <p class="task-goal">60×80 cover thumb + title + hearts + status + dates + hours. Sortable column headers.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">21</span><span class="task-title">&lt;StatusShelf&gt; (horizontal carousels)</span></div>
+  <p class="task-goal">Steam Big Picture vibe — Playing → Up Next → Recently Completed → Wishlist. Reused as dashboard hero.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">22</span><span class="task-title">/library page with view toggle</span></div>
+  <p class="task-goal">RSC fetches initial data, client switcher renders one of grid/list/shelf. URL state for filter, sort, view.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">23</span><span class="task-title">Tactile FLIP transitions</span></div>
+  <p class="task-goal">Status menu on poster hover. Picking a new status → poster physically slides to its new sorted position via Framer Motion FLIP.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">24</span><span class="task-title">&lt;GameDetail&gt; + &lt;LogCard&gt; + screenshots</span></div>
+  <p class="task-goal">Cover hero, metadata strip, log card if logged, RAWG description, screenshots gallery. Used by both panel and full route.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">25</span><span class="task-title">/games/[slug] full route</span></div>
+  <p class="task-goal">RSC fetches game + screenshots + user log. 404 with mascot if slug unknown.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">26</span><span class="task-title">Intercepting route — slide-over panel</span></div>
+  <p class="task-goal">Click poster from inside the app → slide-over panel via Next.js parallel/intercepting routes. Refresh → loads as full route. Mobile fallback to bottom sheet.</p>
+</div>
+
+<!-- ============================================================== -->
+<h2 class="week" id="week-6"><span class="num">WEEK 06</span>Cockpit Dashboard, Profile, Polish</h2>
+<p class="week-goal">Ship the dashboard, profile page, full edit-log modal, complete the mascot copy, and run the verification gate.</p>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">27</span><span class="task-title">&lt;MascotGreeting&gt; with context-aware copy</span></div>
+  <p class="task-goal">Dashboard hero. Mascot at xl, greeting picks variants based on (hour-of-day, days-since-last-log, currently-playing).</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">28</span><span class="task-title">&lt;StatsStrip&gt; + &lt;ActivityTimeline&gt;</span></div>
+  <p class="task-goal">Total + by-status counts + average rating. Recent-activity feed (last 10 events).</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">29</span><span class="task-title">Cockpit dashboard at /home</span></div>
+  <p class="task-goal">Authed users at <code>/</code> redirect to <code>/home</code>. Cockpit composed from MascotGreeting + StatusShelf + ActivityTimeline + StatsStrip. Old <code>/dashboard</code> redirects to <code>/home</code>.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">30</span><span class="task-title">/u/[username] profile page</span></div>
+  <p class="task-goal">Header + stats + library grid. Auto-creates profile from email prefix on first sign-in.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">31</span><span class="task-title">&lt;EditLogModal&gt; — full-form editor</span></div>
+  <p class="task-goal">All schema fields: status, rating, started/finished dates, hours, platform, replay flag, privacy toggle, notes textarea. Save + Delete with confirm.</p>
+</div>
+
+<div class="task">
+  <div class="task-header"><span class="task-num">32</span><span class="task-title">Author full mascot copy strings</span></div>
+  <p class="task-goal">Expand to 3-5 variants per scenario. Tone-review pass — every line passes "ribs your backlog, never insults your taste." 25-35 strings total.</p>
+</div>
+
+<div class="task" style="border-color: var(--success);">
+  <div class="task-header"><span class="task-num" style="background: rgba(74, 222, 128, 0.13); color: var(--success);">33</span><span class="task-title">Verification gate run-through</span></div>
+  <p class="task-goal">Manually walk through all 14 acceptance checks from the spec. Cross-browser pass (Chrome / Safari / Firefox + iOS Safari + Chrome Android). Each fix gets its own commit. Final empty commit marks gate passing.</p>
+</div>
+
+<hr>
+
+<h2 class="week"><span class="num">DONE</span>Phase 1 Complete</h2>
+<p class="week-goal">When all 33 tasks above ship: dogfood loop works end-to-end, codebase is ready for Phase 2 (AI router + reviews). Tag the milestone: <code>git tag phase-1-complete</code>.</p>
+
+<footer>
+  <p>Letterboxd for Games · Phase 1 Implementation Plan · 2026-05-10</p>
+  <p>Source markdown: <a href="../docs/superpowers/plans/2026-05-10-phase1-core-logging-plan.md">docs/superpowers/plans/2026-05-10-phase1-core-logging-plan.md</a></p>
+  <p>Spec: <a href="phase1-design.html">phase1-design.html</a> · Project plan: <a href="plan.html">plan.html</a></p>
+</footer>
+
+</div>
+</body>
+</html>
