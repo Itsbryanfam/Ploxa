@@ -44,7 +44,10 @@ export function ProfileSection({ user }: Props) {
             <Avatar user={user} size="lg" />
           </AvatarUploader>
           <p className="text-xs text-[var(--text-dim)] mt-2">
-            JPG, PNG, WebP, or GIF — up to 5 MB.{pending ? " Uploading…" : ""}
+            JPG, PNG, WebP, or GIF — up to 5 MB.
+            <span aria-live="polite" className="ml-1">
+              {pending ? "Uploading…" : ""}
+            </span>
           </p>
           {error && (
             <p className="text-sm text-red-500 mt-2" role="alert">
