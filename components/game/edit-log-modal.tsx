@@ -20,9 +20,9 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
   const [startedAt, setStartedAt] = useState(dateToInput(item.startedAt));
   const [finishedAt, setFinishedAt] = useState(dateToInput(item.finishedAt));
   const [hours, setHours] = useState(item.hoursPlayed?.toString() ?? "");
-  const [platform, setPlatform] = useState("");
-  const [isReplay, setIsReplay] = useState(false);
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [platform, setPlatform] = useState(item.platformPlayedOn ?? "");
+  const [isReplay, setIsReplay] = useState(item.isReplay);
+  const [isPrivate, setIsPrivate] = useState(item.isPrivate);
   const [notes, setNotes] = useState(item.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();

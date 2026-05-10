@@ -100,6 +100,9 @@ export interface LibraryItem {
   startedAt: Date | null;
   finishedAt: Date | null;
   hoursPlayed: number | null;
+  platformPlayedOn: string | null;
+  isReplay: boolean;
+  isPrivate: boolean;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -152,6 +155,9 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
       startedAt: schema.logs.startedAt,
       finishedAt: schema.logs.finishedAt,
       hoursPlayed: schema.logs.hoursPlayed,
+      platformPlayedOn: schema.logs.platformPlayedOn,
+      isReplay: schema.logs.isReplay,
+      isPrivate: schema.logs.isPrivate,
       notes: schema.logs.notes,
       createdAt: schema.logs.createdAt,
       updatedAt: schema.logs.updatedAt,
@@ -180,6 +186,9 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
     startedAt: r.startedAt,
     finishedAt: r.finishedAt,
     hoursPlayed: r.hoursPlayed ? Number(r.hoursPlayed) : null,
+    platformPlayedOn: r.platformPlayedOn,
+    isReplay: r.isReplay,
+    isPrivate: r.isPrivate,
     notes: r.notes,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
