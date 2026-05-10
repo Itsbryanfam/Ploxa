@@ -4408,7 +4408,7 @@ git commit -m "Phase 1.27: MascotGreeting + dashboardGreeting context picker"
 **Files:**
 - Create: `components/dashboard/stats-strip.tsx`
 - Create: `components/dashboard/activity-timeline.tsx`
-- Modify: `lib/logs/server-actions.ts` (add `getStats` + `getRecentActivity`)
+- Modify: `lib/logs/server-actions.ts` (add `getUserStats` + `getRecentActivity`)
 
 **Acceptance Criteria:**
 - [ ] StatsStrip: total games · by-status counts · average rating
