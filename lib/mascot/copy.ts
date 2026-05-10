@@ -118,3 +118,29 @@ export function logSuccessCopy(status: string, rating: number, title: string): s
   }
   return copy(`log.success.${status}` as MascotScenario, ctx);
 }
+
+export interface GreetingContext {
+  hour: number; // 0-23
+  daysSinceLastLog: number | null;
+  currentlyPlaying: { title: string; daysSinceStarted: number } | null;
+}
+
+export function dashboardGreeting(ctx: GreetingContext): string {
+  // Long absence trumps all
+  if (ctx.daysSinceLastLog != null && ctx.daysSinceLastLog >= 7) {
+    return copy("dashboard.greeting.long-absence", { days: ctx.daysSinceLastLog });
+  }
+  // Currently playing reference
+  if (ctx.currentlyPlaying && ctx.currentlyPlaying.daysSinceStarted >= 3) {
+    return copy("dashboard.greeting.actively-playing", {
+      title: ctx.currentlyPlaying.title,
+      days: ctx.currentlyPlaying.daysSinceStarted,
+    });
+  }
+  // Time of day
+  if (ctx.hour < 5) return copy("dashboard.greeting.night");
+  if (ctx.hour < 12) return copy("dashboard.greeting.morning");
+  if (ctx.hour < 17) return copy("dashboard.greeting.afternoon");
+  if (ctx.hour < 22) return copy("dashboard.greeting.evening");
+  return copy("dashboard.greeting.night");
+}
