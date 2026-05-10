@@ -23,6 +23,9 @@ export type CreateLogResult =
   | { ok: true; logId: string; gameSlug: string }
   | { ok: false; error: string };
 
+// Postgres unique-violation SQLSTATE — used to detect duplicate-log races.
+const PG_UNIQUE_VIOLATION = "23505";
+
 export async function createLog(input: unknown): Promise<CreateLogResult> {
   const parsed = createLogInput.safeParse(input);
   if (!parsed.success) {
@@ -37,10 +40,18 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
-  // Ensure the game exists in our DB (write-through cache)
-  const game = await getGameDetail(rawgId);
+  // Ensure the game exists in our DB (write-through from RAWG if missing).
+  // getGameDetail can throw on a RAWG 404 / network blip / Zod parse mismatch —
+  // surface as a recoverable error envelope rather than letting it hit the
+  // Next.js error boundary.
+  let game: Awaited<ReturnType<typeof getGameDetail>>;
+  try {
+    game = await getGameDetail(rawgId);
+  } catch {
+    return { ok: false, error: "Couldn't load that game. Please try again." };
+  }
 
-  // Check for existing non-replay log on this game
+  // Check for existing non-replay log on this game.
   const existing = await db.query.logs.findFirst({
     where: and(
       eq(schema.logs.userId, user.id),
@@ -52,16 +63,32 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
     return { ok: false, error: "Already logged. Edit the existing log instead." };
   }
 
-  const [inserted] = await db
-    .insert(schema.logs)
-    .values({
-      userId: user.id,
-      gameId: game.id,
-      status,
-      rating: rating && rating > 0 ? String(rating) : null,
-      notes: note?.trim() || null,
-    })
-    .returning({ id: schema.logs.id });
+  // Insert. Wrap in try/catch so the (userId, gameId, isReplay) unique-constraint
+  // race (between findFirst above and this insert) maps to the same friendly
+  // "Already logged" message instead of bubbling as an unhandled throw.
+  let inserted: { id: string } | undefined;
+  try {
+    [inserted] = await db
+      .insert(schema.logs)
+      .values({
+        userId: user.id,
+        gameId: game.id,
+        status,
+        // rating > 0 already short-circuits when rating is undefined (undefined > 0 is false);
+        // wrapping in `rating != null` makes the intent explicit.
+        rating: rating != null && rating > 0 ? String(rating) : null,
+        notes: note?.trim() || null,
+      })
+      .returning({ id: schema.logs.id });
+  } catch (err) {
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === PG_UNIQUE_VIOLATION) {
+      return { ok: false, error: "Already logged. Edit the existing log instead." };
+    }
+    throw err;
+  }
+  if (!inserted) {
+    return { ok: false, error: "Insert failed. Please try again." };
+  }
 
   return { ok: true, logId: inserted.id, gameSlug: game.slug };
 }
