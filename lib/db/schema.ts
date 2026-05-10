@@ -74,8 +74,16 @@ export const profiles = pgTable("profiles", {
   username: varchar("username", { length: 32 }).notNull().unique(),
   displayName: varchar("display_name", { length: 64 }),
   bio: text("bio"),
+  // Dormant: predates Phase 1.5's PFP feature. No callers in app code.
+  // Kept for additive-only migration safety; new code uses profilePictureUrl.
   avatarUrl: text("avatar_url"),
   profilePictureUrl: text("profile_picture_url"),
+  // The DB-side CHECK constraint (profile_picture_kind IN ('static','gif'))
+  // is enforced on the live database but is NOT captured in Drizzle's
+  // snapshot (text({ enum: [...] }) only narrows the TypeScript type). The
+  // constraint was added by hand to migration 0001. Re-running drizzle-kit
+  // generate produces no diff for the CHECK; fresh environments must apply
+  // migration 0001 to get the constraint.
   profilePictureKind: text("profile_picture_kind", { enum: ["static", "gif"] }),
   mascotVariant: varchar("mascot_variant", { length: 32 }).default("default"),
   isPublic: boolean("is_public").notNull().default(true),
