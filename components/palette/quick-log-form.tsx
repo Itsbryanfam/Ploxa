@@ -2,12 +2,14 @@
 
 import { useState, useTransition } from "react";
 import Image from "next/image";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePaletteStore } from "@/lib/palette/palette-store";
 import { HeartRating } from "@/components/ui/heart-rating";
 import { COLORS, STATUS_ICONS } from "@/components/pixel/status-icons";
 import { LOG_STATUSES, STATUS_LABELS, type LogStatus } from "@/lib/db/schema-types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { createLog } from "@/lib/logs/server-actions";
 
 export function QuickLogForm() {
   const selectedGame = usePaletteStore((s) => s.selectedGame);
@@ -18,6 +20,7 @@ export function QuickLogForm() {
   const [note, setNote] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   if (!selectedGame) return null;
 
@@ -44,8 +47,20 @@ export function QuickLogForm() {
       note,
     };
     startTransition(async () => {
-      // Task 13 will replace this with the actual createLog server action call.
-      console.log("[quick-log] would submit:", snapshot);
+      const result = await createLog({
+        rawgId: snapshot.rawgId,
+        status: snapshot.status,
+        rating: snapshot.rating,
+        note: snapshot.note,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      // Invalidate library + dashboard queries so they refetch.
+      queryClient.invalidateQueries({ queryKey: ["library"] });
+      queryClient.invalidateQueries({ queryKey: ["status-shelf"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
       close();
     });
   }
