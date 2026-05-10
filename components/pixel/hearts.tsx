@@ -44,6 +44,9 @@ export function HeartFull({ size = 16, ...rest }: HeartProps) {
       <rect x="9" y="13" width="1" height="1" fill={HEART_OUTLINE} />
       <rect x="7" y="14" width="2" height="1" fill={HEART_OUTLINE} />
       {/* Red fill */}
+      {/* Lobe interior at row 3 (under top notches) */}
+      <rect x="4" y="3" width="3" height="1" fill={HEART_RED} />
+      <rect x="9" y="3" width="3" height="1" fill={HEART_RED} />
       <rect x="2" y="4" width="5" height="4" fill={HEART_RED} />
       <rect x="9" y="4" width="5" height="4" fill={HEART_RED} />
       <rect x="3" y="8" width="10" height="2" fill={HEART_RED} />
@@ -89,6 +92,8 @@ export function HeartHalf({ size = 16, ...rest }: HeartProps) {
       {/* Vertical split line down the middle */}
       <rect x="8" y="3" width="1" height="11" fill={HEART_OUTLINE} />
       {/* Red fill — LEFT HALF ONLY */}
+      {/* Left lobe interior at row 3 (under top notch) */}
+      <rect x="4" y="3" width="3" height="1" fill={HEART_RED} />
       <rect x="2" y="4" width="5" height="4" fill={HEART_RED} />
       <rect x="3" y="8" width="5" height="2" fill={HEART_RED} />
       <rect x="4" y="10" width="4" height="1" fill={HEART_RED} />
