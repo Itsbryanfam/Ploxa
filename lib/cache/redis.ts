@@ -12,7 +12,6 @@ import { requireEnv } from "@/lib/env";
  * so we don't spin up a new client on every server-component render.
  */
 declare global {
-  // eslint-disable-next-line no-var
   var __redisClient: Redis | undefined;
 }
 

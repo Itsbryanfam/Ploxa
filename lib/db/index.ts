@@ -5,7 +5,6 @@ import { requireEnv } from "@/lib/env";
 import * as schema from "@/lib/db/schema";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __dbClient: ReturnType<typeof postgres> | undefined;
 }
 
