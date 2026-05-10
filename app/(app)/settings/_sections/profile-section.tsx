@@ -5,6 +5,9 @@ import { Avatar } from "@/components/ui/avatar";
 import { AvatarUploader } from "@/components/settings/avatar-uploader";
 import { uploadAvatar } from "@/lib/profile/avatar-actions";
 import type { HeaderUser } from "@/lib/profile/server-actions";
+import { updateUsername } from "@/lib/profile/server-actions";
+import { UsernameInput } from "@/components/auth/username-input";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   user: HeaderUser;
@@ -34,6 +37,39 @@ export function ProfileSection({ user }: Props) {
     });
   };
 
+  // ---------------------------------------------------------------------------
+  // Username editing state
+  // ---------------------------------------------------------------------------
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [pendingUsername, startUsernameTransition] = useTransition();
+  const [usernameDraft, setUsernameDraft] = useState({
+    value: user.username ?? "",
+    valid: false,
+  });
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+
+  const isUsernameUnchanged = usernameDraft.value === (user.username ?? "");
+  const canSaveUsername =
+    usernameDraft.valid && !isUsernameUnchanged && !pendingUsername;
+
+  function saveUsername() {
+    setUsernameError(null);
+    startUsernameTransition(async () => {
+      const res = await updateUsername(usernameDraft.value);
+      if (res.ok) {
+        setEditingUsername(false);
+      } else {
+        setUsernameError(res.error);
+      }
+    });
+  }
+
+  function cancelUsernameEdit() {
+    setEditingUsername(false);
+    setUsernameDraft({ value: user.username ?? "", valid: false });
+    setUsernameError(null);
+  }
+
   return (
     <section id="profile">
       <h2 className="text-xl font-semibold mb-6">Profile</h2>
@@ -57,10 +93,41 @@ export function ProfileSection({ user }: Props) {
         </div>
         <div>
           <div className="text-sm text-[var(--text-dim)] mb-1">Username</div>
-          <div className="text-base">@{user.username ?? "—"}</div>
-          <p className="text-xs text-[var(--text-dim)] mt-1">
-            Editing lands in a later task.
-          </p>
+          {!editingUsername ? (
+            <div className="flex items-center gap-3">
+              <span className="text-base">@{user.username ?? "—"}</span>
+              <button
+                type="button"
+                onClick={() => setEditingUsername(true)}
+                className="text-sm text-[var(--text-dim)] hover:text-[var(--text)] underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded"
+              >
+                Edit
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <UsernameInput
+                initialValue={user.username ?? ""}
+                treatInitialAsValid
+                onChange={(value, valid) =>
+                  setUsernameDraft({ value, valid })
+                }
+              />
+              <div className="flex items-center gap-2">
+                <Button onClick={saveUsername} disabled={!canSaveUsername}>
+                  {pendingUsername ? "Saving…" : "Save"}
+                </Button>
+                <Button variant="secondary" onClick={cancelUsernameEdit}>
+                  Cancel
+                </Button>
+              </div>
+              {usernameError && (
+                <p className="text-sm text-red-500" role="alert">
+                  {usernameError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <div>
           <div className="text-sm text-[var(--text-dim)] mb-1">Email</div>

@@ -2,6 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import { eq, inArray } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { usernameSchema } from "./username-schema";
@@ -177,4 +178,71 @@ export async function suggestUsernames(taken: string): Promise<string[]> {
     .where(inArray(schema.profiles.username, candidates));
   const usedSet = new Set(rows.map((r) => r.username));
   return candidates.filter((c) => !usedSet.has(c)).slice(0, 3);
+}
+
+// ---------------------------------------------------------------------------
+// Username update
+// ---------------------------------------------------------------------------
+
+export type UpdateUsernameResult =
+  | { ok: true; username: string }
+  | { ok: false; error: string };
+
+export async function updateUsername(
+  newUsername: string,
+): Promise<UpdateUsernameResult> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const parsed = usernameSchema.safeParse(newUsername);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid username.",
+    };
+  }
+  if (RESERVED_USERNAMES.has(parsed.data)) {
+    return { ok: false, error: "this name is reserved" };
+  }
+
+  // Read the user's current username so we can revalidate the old /u/[username] route.
+  const existing = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.userId, user.id),
+    columns: { username: true },
+  });
+  if (!existing) return { ok: false, error: "Profile not found." };
+  // No-op: caller asked to set the name to what it already is.
+  if (existing.username === parsed.data) {
+    return { ok: true, username: parsed.data };
+  }
+
+  try {
+    await db
+      .update(schema.profiles)
+      .set({
+        username: parsed.data,
+        // Refresh updatedAt so any sort/cache invalidates correctly.
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.profiles.userId, user.id));
+  } catch (err) {
+    // Unique-constraint violation = another user grabbed the name between
+    // the live-availability check and this UPDATE. Surface clean.
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      (err as { code?: string }).code === "23505"
+    ) {
+      return { ok: false, error: "That username is taken." };
+    }
+    throw err;
+  }
+
+  revalidatePath("/", "layout");
+  revalidatePath(`/u/${existing.username}`, "page");
+  revalidatePath(`/u/${parsed.data}`, "page");
+  return { ok: true, username: parsed.data };
 }
