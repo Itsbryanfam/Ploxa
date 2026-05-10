@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { HeartFull } from "@/components/pixel";
@@ -66,13 +66,15 @@ export function LibraryPoster({ item }: { item: LibraryItem }) {
           <circle cx="6" cy="10" r="1" fill="currentColor" />
         </svg>
       </button>
-      {menuOpen && (
-        <PosterStatusMenu
-          logId={item.logId}
-          currentStatus={item.status}
-          onClose={() => setMenuOpen(false)}
-        />
-      )}
+      <AnimatePresence>
+        {menuOpen && (
+          <PosterStatusMenu
+            logId={item.logId}
+            currentStatus={item.status}
+            onClose={() => setMenuOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
