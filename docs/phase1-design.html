@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 1 — Core Logging — Design Spec</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-elev: #11111a;
+    --bg-card: #16161f;
+    --bg-card-hover: #1c1c28;
+    --border: #2a2a38;
+    --border-soft: #1f1f2c;
+    --text: #e4e4f0;
+    --text-dim: #9494a8;
+    --text-faint: #5a5a70;
+    --accent: #7c5cff;
+    --accent-soft: #7c5cff22;
+    --accent-glow: #7c5cff44;
+    --pixel: #ffb84a;
+    --pixel-soft: #ffb84a22;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --code-bg: #0d0d14;
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.6);
+    --shadow-glow: 0 0 40px rgba(124, 92, 255, 0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 60px 32px 120px;
+  }
+
+  /* Hero */
+  .hero {
+    text-align: center;
+    padding: 60px 0 80px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 60px;
+    position: relative;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 400px;
+    background: radial-gradient(circle, var(--accent-glow) 0%, transparent 60%);
+    z-index: -1;
+    filter: blur(40px);
+  }
+  .pixel-logo {
+    display: inline-block;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--pixel);
+    margin-bottom: 32px;
+    letter-spacing: 2px;
+  }
+  h1 {
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    background: linear-gradient(180deg, var(--text) 0%, var(--text-dim) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero-tagline {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin: 0 auto 24px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 32px;
+  }
+  .meta-pill {
+    padding: 6px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .meta-pill strong {
+    color: var(--text);
+  }
+
+  /* Headings */
+  h2 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 56px 0 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .num {
+    color: var(--pixel);
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    background: var(--pixel-soft);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+  h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 32px 0 14px;
+    color: var(--text);
+  }
+  h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 22px 0 10px;
+    color: var(--text);
+  }
+
+  /* Body text */
+  p {
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+  p.dim { color: var(--text-dim); }
+
+  ul, ol {
+    margin: 0 0 16px;
+    padding-left: 22px;
+  }
+  ul li, ol li {
+    margin: 6px 0;
+    color: var(--text);
+  }
+  ul li::marker { color: var(--accent); }
+
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--text-dim); font-style: italic; }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--accent-soft);
+  }
+  a:hover { border-bottom-style: solid; }
+
+  /* Code */
+  code {
+    font-family: 'Courier New', 'SF Mono', Monaco, monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--pixel);
+    border: 1px solid var(--border-soft);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin: 16px 0;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text);
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 16px 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  th {
+    background: var(--bg-elev);
+    color: var(--text);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    letter-spacing: 0.2px;
+  }
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-dim);
+    vertical-align: top;
+  }
+  td strong, td code { color: var(--text); }
+  td code { color: var(--pixel); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg-card-hover); }
+
+  /* Callouts */
+  .callout {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 20px 0;
+  }
+  .callout strong { color: var(--accent); }
+  .callout.pixel { border-left-color: var(--pixel); }
+  .callout.pixel strong { color: var(--pixel); }
+  .callout.success { border-left-color: var(--success); }
+  .callout.success strong { color: var(--success); }
+  .callout.warning { border-left-color: var(--warning); }
+  .callout.warning strong { color: var(--warning); }
+
+  /* Checklist */
+  .checklist {
+    list-style: none;
+    padding-left: 0;
+  }
+  .checklist li {
+    padding: 6px 0 6px 28px;
+    position: relative;
+    color: var(--text);
+  }
+  .checklist li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 11px;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-card);
+  }
+  .checklist li::marker { content: none; }
+
+  /* Section dividers */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border-soft);
+    margin: 60px 0;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border-soft);
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 13px;
+  }
+
+  /* Responsive */
+  @media (max-width: 720px) {
+    .container { padding: 40px 20px 80px; }
+    h1 { font-size: 38px; }
+    h2 { font-size: 24px; }
+    h3 { font-size: 18px; }
+    table { font-size: 13px; }
+    th, td { padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="hero">
+  <div class="pixel-logo">PHASE 01 / DESIGN</div>
+  <h1>Core Logging</h1>
+  <p class="hero-tagline">A useful personal game tracker — end of phase = you can dogfood it. Search, log, view, filter, edit. No AI yet, no imports yet, no social yet.</p>
+  <div class="meta-row">
+    <span class="meta-pill"><strong>Date</strong> &nbsp;2026-05-10</span>
+    <span class="meta-pill"><strong>Status</strong> &nbsp;Approved</span>
+    <span class="meta-pill"><strong>Phase</strong> &nbsp;1 of 7</span>
+    <span class="meta-pill"><strong>Duration</strong> &nbsp;Weeks 3–6</span>
+  </div>
+</header>
+
+<h2><span class="num">00</span>Context</h2>
+<p>Phase 0 shipped the foundation: auth, design system tokens, mascot stub, full Drizzle schema applied to live Supabase, RLS policies for all 18 tables, and the cockpit-dashboard placeholder.</p>
+<p>Phase 1 turns this scaffolding into a real product surface. By the end, the developer is dogfooding their own game library through the app — searching, logging, viewing, filtering, and editing.</p>
+<p class="dim">This spec was produced through brainstorming on 2026-05-10. The user explicitly chose ambitious options at every fork; this design reflects those choices.</p>
+
+<h2><span class="num">01</span>Locked Design Principles</h2>
+<ol>
+  <li><strong>Letterboxd-but-better.</strong> Use Letterboxd as the reference for IA and identity, but improve every load-bearing interaction.</li>
+  <li><strong>Raycast-class polish.</strong> Dark mode primary, generous whitespace, refined micro-interactions, ⌘K-driven workflows.</li>
+  <li><strong>Custom assets over emojis.</strong> Every UI element uses custom pixel-art / SVG. Emojis are an anti-pattern. The site must feel hand-crafted, not AI-generated.</li>
+  <li><strong>Mascot restraint.</strong> Mascot is celebratory + state-indicator only. No Clippy-style chat interruptions. Voice = sardonic insider.</li>
+  <li><strong>Premium pixel art as accents</strong> — mascot, hearts, status badges, shelf framing, empty states. Not the whole UI.</li>
+  <li><strong>YAGNI past Phase 1.</strong> Anything in scope for Phase 2-7 is explicitly deferred.</li>
+</ol>
+
+<h2><span class="num">02</span>Information Architecture</h2>
+
+<h3>Routes</h3>
+<table>
+  <thead><tr><th>Route</th><th>Purpose</th><th>Render</th></tr></thead>
+  <tbody>
+    <tr><td><code>/</code></td><td><strong>Cockpit dashboard</strong> — mascot greeting, Status Shelf hero, recent activity, stats strip</td><td>RSC shell + TanStack Query islands</td></tr>
+    <tr><td><code>/library</code></td><td><strong>Poster wall</strong> (default) with three view toggles: poster wall · list · status shelf</td><td>RSC shell + TanStack Query for grid</td></tr>
+    <tr><td><code>/games/[slug]</code></td><td><strong>Game detail</strong> — full route when accessed directly</td><td>RSC + client island for log card</td></tr>
+    <tr><td><code>/games/[slug]</code> <em>(intercepted)</em></td><td><strong>Slide-over panel</strong> — same component, different presentation when navigated to from inside the app</td><td>Client overlay via Next.js intercepting routes</td></tr>
+    <tr><td><code>/u/[username]</code></td><td><strong>Profile</strong> — header, tabs, stats. Phase 1 ships own-profile primarily; public viewing technically works via RLS but UI polish is Phase 5</td><td>RSC + TanStack Query</td></tr>
+    <tr><td><code>/login</code>, <code>/signup</code></td><td>Existing</td><td>Existing</td></tr>
+    <tr><td><code>/dashboard</code> <em>(legacy)</em></td><td>Redirect → <code>/</code></td><td>Redirect</td></tr>
+  </tbody>
+</table>
+
+<h3>Global UI</h3>
+<ul>
+  <li><strong>App shell</strong> mounts the header bar with a faux search input ("Search games... ⌘K") and the global Cmd+K palette as a portal.</li>
+  <li><strong>Header bar</strong> is sticky on scroll, blurred-glass background, contains: app logo (left), faux-search input (center), profile menu (right).</li>
+  <li><strong>Cmd+K palette</strong> is a single global client component triggered by ⌘K / Ctrl+K from anywhere. Has internal states: <code>idle → searching → results → quick-log → submitted</code>.</li>
+</ul>
+
+<h2><span class="num">03</span>Data Flow</h2>
+
+<h3>Search → log roundtrip</h3>
+<pre><code>[User types in palette]
+         ↓ debounce 250ms, min 2 chars
+[Server action: searchGames(query)]
+         ↓
+   Upstash KV?  ──hit──→ return results (5–20ms)
+         ↓ miss
+   RAWG live   ─→ write-through to KV (24h TTL) ─→ return results
+                                                          ↓
+                                          [Palette renders typeahead grid w/ covers]
+                                                          ↓ user picks one
+                                          [Quick-log form: status chips + heart rating + 1-line note]
+                                                          ↓ submit (server action)
+                              [Server action: createLog(rawgGameId, status, rating, note)]
+                                                          ↓
+                              [Upsert into games (write-through cache, KV+Postgres)]
+                                                          ↓
+                              [Insert into logs as auth user (RLS-enforced)]
+                                                          ↓
+                              [Client: invalidate TanStack queries]
+                                                          ↓
+                              [Toast (custom pixel checkmark) + mascot celebrating + palette closes]
+                                                          ↓
+                              [Library page receives invalidation → FLIP-animates new poster in]
+</code></pre>
+
+<h3>Cache strategy</h3>
+<table>
+  <thead><tr><th>Layer</th><th>Contents</th><th>TTL</th></tr></thead>
+  <tbody>
+    <tr><td>Upstash KV</td><td>RAWG search responses (keyed by normalized query)</td><td>24h</td></tr>
+    <tr><td>Upstash KV</td><td>RAWG game-detail JSON (keyed by RAWG game id)</td><td>7 days</td></tr>
+    <tr><td>Postgres <code>games</code></td><td>Permanent record of every game ever logged or detail-viewed</td><td>indefinite (<code>cached_at</code> for soft refresh after 30d)</td></tr>
+    <tr><td>Postgres <code>game_aliases</code></td><td>Alternate spellings / abbreviations</td><td>indefinite</td></tr>
+  </tbody>
+</table>
+
+<h3>Server / Client boundary</h3>
+<table>
+  <thead><tr><th>Concern</th><th>Pattern</th></tr></thead>
+  <tbody>
+    <tr><td>Initial page renders (shells)</td><td><strong>React Server Components</strong> — fast paint, SEO-friendly</td></tr>
+    <tr><td>Reactive lists (library grid, status shelf, palette typeahead)</td><td><strong>TanStack Query</strong> with <code>initialData</code> hydrated from RSC</td></tr>
+    <tr><td>Mutations (create/edit/delete log)</td><td><strong>Server Actions</strong> co-located with components, return new data, invalidate TQ keys</td></tr>
+    <tr><td>RAWG calls + KV cache</td><td><strong>Server-only modules</strong> — never imported by client code</td></tr>
+    <tr><td>All DB reads/writes from server (RSC + server actions)</td><td><strong>Drizzle</strong> (postgres.js) — wired in <code>lib/db/index.ts</code>, connects as DB owner so RLS is bypassed. User-scoped queries MUST explicitly <code>where(eq(table.userId, session.user.id))</code>. Code-level enforcement is the primary safeguard.</td></tr>
+    <tr><td>Auth (login, signup, session, JWT)</td><td><strong><code>@supabase/ssr</code></strong> — wired in <code>lib/supabase/{client,server,middleware}.ts</code></td></tr>
+    <tr><td>RLS posture</td><td>Policies (<code>lib/db/policies/0001_initial.sql</code>) remain active as <strong>defense-in-depth backstop</strong>. Phase 1 server code doesn't engage them, but they protect against future client-direct Supabase JS queries (Phase 5+).</td></tr>
+    <tr><td>URL state for filters/sort</td><td><code>searchParams</code> (e.g. <code>/library?status=playing&amp;sort=rating-desc</code>)</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">04</span>Component Inventory</h2>
+
+<h3>UI primitives (custom-asset where applicable)</h3>
+<table>
+  <thead><tr><th>Component</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>&lt;HeartRating&gt;</code></td><td>10 Minecraft-style pixel hearts. Click left/right half for 0.5 increments. <strong>Custom SVG asset.</strong></td></tr>
+    <tr><td><code>&lt;StatusBadge&gt;</code></td><td>6 pixel-icon sprites: Backlog/Playing/Completed/Dropped/On Hold/Wishlist. <strong>Custom 16×16 SVG.</strong></td></tr>
+    <tr><td><code>&lt;PixelCheckmark&gt;</code>, <code>&lt;PixelX&gt;</code>, <code>&lt;PixelInfo&gt;</code></td><td>Toast and inline status icons. Replace generic glyphs.</td></tr>
+    <tr><td><code>&lt;PixelSpinner&gt;</code></td><td>Replaces generic CSS spinners. Pixel-art rotating frame or mascot <code>thinking</code> mood.</td></tr>
+    <tr><td><code>&lt;PlatformIcon&gt;</code></td><td>Pixel-art Steam / Xbox / PSN / Switch / PC icons.</td></tr>
+    <tr><td><code>&lt;ShelfFrame&gt;</code></td><td>Pixel-art wooden shelf wrapper for the library grid.</td></tr>
+    <tr><td><code>&lt;FilterChip&gt;</code></td><td>Pixel-art "sticky note" pinned to the shelf, used for status filters.</td></tr>
+  </tbody>
+</table>
+
+<h3>Feature components</h3>
+<table>
+  <thead><tr><th>Component</th><th>Responsibility</th></tr></thead>
+  <tbody>
+    <tr><td><code>&lt;CommandPalette&gt;</code></td><td>Global, ⌘K-triggered portal. Owns the multi-state machine.</td></tr>
+    <tr><td><code>&lt;HeaderSearchInput&gt;</code></td><td>Faux input in the header bar that opens the palette.</td></tr>
+    <tr><td><code>&lt;GameSearchResults&gt;</code></td><td>Typeahead result rows w/ cover thumbnail. Keyboard-navigable.</td></tr>
+    <tr><td><code>&lt;QuickLogForm&gt;</code></td><td>Status chips + heart rating + optional one-line note. Inline in palette.</td></tr>
+    <tr><td><code>&lt;LibraryGrid&gt;</code></td><td>Poster wall view. ~120-140px covers, 6-8 per row at desktop. Hover overlay for rating/status.</td></tr>
+    <tr><td><code>&lt;LibraryList&gt;</code></td><td>Info-dense list view. Sortable inline by clicking column headers.</td></tr>
+    <tr><td><code>&lt;StatusShelf&gt;</code></td><td>Horizontal carousels per status. Used by both dashboard hero AND library "shelf view" toggle.</td></tr>
+    <tr><td><code>&lt;FilterChips&gt;</code></td><td>Pixel-styled status filter chips above the library grid.</td></tr>
+    <tr><td><code>&lt;SortDropdown&gt;</code></td><td>Triggers FLIP-animated grid re-layout via Framer Motion.</td></tr>
+    <tr><td><code>&lt;GameDetail&gt;</code></td><td>Used in BOTH the intercepted slide-over panel AND the full <code>/games/[slug]</code> route.</td></tr>
+    <tr><td><code>&lt;LogCard&gt;</code></td><td>Your log on the detail page: status + heart rating + dates + hours + platform + notes preview + Edit-log button.</td></tr>
+    <tr><td><code>&lt;EditLogModal&gt;</code></td><td>Full-form log editor (all schema fields).</td></tr>
+    <tr><td><code>&lt;MascotGreeting&gt;</code></td><td>Dashboard mascot with context-aware copy.</td></tr>
+    <tr><td><code>&lt;EmptyState&gt;</code></td><td>Reusable: mascot illustration + scenario-specific copy.</td></tr>
+    <tr><td><code>&lt;ActivityTimeline&gt;</code></td><td>Recent-logs feed for dashboard (last 10 events).</td></tr>
+    <tr><td><code>&lt;StatsStrip&gt;</code></td><td>Count summary: total / by status / average rating.</td></tr>
+  </tbody>
+</table>
+
+<h3>Server modules</h3>
+<table>
+  <thead><tr><th>Module</th><th>Exports</th></tr></thead>
+  <tbody>
+    <tr><td><code>lib/rawg/client.ts</code></td><td><code>rawgFetch(path, params)</code> — auth, retry, rate-limit aware. Server-only.</td></tr>
+    <tr><td><code>lib/rawg/cache.ts</code></td><td>KV read-through wrappers: <code>cachedSearch(q)</code>, <code>cachedGameDetail(id)</code>.</td></tr>
+    <tr><td><code>lib/rawg/types.ts</code></td><td>Zod-validated typed RAWG response shapes.</td></tr>
+    <tr><td><code>lib/games/server-actions.ts</code></td><td><code>searchGames</code>, <code>getGameDetail</code>, <code>upsertGameFromRawg</code>.</td></tr>
+    <tr><td><code>lib/logs/server-actions.ts</code></td><td><code>createLog</code>, <code>updateLog</code>, <code>deleteLog</code>, <code>getUserLibrary</code>, <code>getRecentActivity</code>, <code>getStatusShelf</code>.</td></tr>
+    <tr><td><code>lib/mascot/copy.ts</code></td><td>Central registry of all hand-written mascot lines.</td></tr>
+    <tr><td><code>lib/cache/redis.ts</code></td><td>(Already exists.) Singleton Upstash client.</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">05</span>Library Page — Three Views</h2>
+
+<h3>Default: Poster Wall (Letterboxd-style)</h3>
+<ul>
+  <li>Small covers (~120-140px), 6-8 per row at desktop widths</li>
+  <li>No always-visible labels; hover overlay shows rating + status as a pixel-art chip</li>
+  <li>Filter chips at top: All / Playing / Completed / Backlog / Wishlist / Dropped / On Hold</li>
+  <li>Sort dropdown with smooth FLIP re-layout</li>
+  <li><strong>Pixel-art shelf framing</strong> — the entire wall sits inside a pixel-art wooden shelf with the mascot peeking from a corner</li>
+  <li>Empty state per filter: mascot + scenario-specific copy</li>
+</ul>
+
+<h3>Toggle 1: List View (info-dense)</h3>
+<ul>
+  <li>Cover thumbnail (60px) + title + heart rating + status badge + dates + hours</li>
+  <li>Sortable inline by clicking column headers</li>
+  <li>Best for "I want to scan and find a specific game"</li>
+</ul>
+
+<h3>Toggle 2: Status Shelf (cockpit-style)</h3>
+<ul>
+  <li>Horizontal carousels per status: Playing → Up Next → Recently Completed → Wishlist</li>
+  <li>Steam Big Picture vibe but with custom pixel-shelf graphics</li>
+  <li>Best for "what am I in the middle of right now?"</li>
+  <li>Reused as the cockpit dashboard's hero element</li>
+</ul>
+
+<h3>Tactile transitions (across all views)</h3>
+<ul>
+  <li>Status changes animate the poster physically across the wall via Framer Motion FLIP</li>
+  <li>Mascot reacts (<code>celebrating</code> for completions, <code>pointing</code> when something joins Playing)</li>
+  <li>Sort/filter changes animate grid re-layout — no hard cuts</li>
+</ul>
+
+<div class="callout pixel">
+  <strong>Future: "The Den" view (Phase 6/7+)</strong><br>
+  A pixel-art room where games physically live based on status — wall shelf for Completed, TV stand for Playing, table for Wishlist, floor stack for Backlog. Mascot lives in the room; the room "levels up" as your library grows. Locked as a planned post-launch headliner. Phase 1 data shape preserves the option.
+</div>
+
+<h2><span class="num">06</span>Mascot Integration</h2>
+
+<p>Voice: <strong>sardonic insider</strong> (locked). All copy lives in <code>lib/mascot/copy.ts</code> for easy review/iteration.</p>
+
+<h3>Phase 1 moments</h3>
+<table>
+  <thead><tr><th>Trigger</th><th>Mood</th><th>Example copy</th></tr></thead>
+  <tbody>
+    <tr><td>Dashboard load</td><td><code>waving</code> → <code>idle</code></td><td>"Welcome back. You picked up Hades 4 days ago — still going?"</td></tr>
+    <tr><td>After log submit</td><td><code>celebrating</code> 1.5s → <code>idle</code></td><td>"9.5 hearts. That's basically a marriage proposal."</td></tr>
+    <tr><td>Empty library (no games)</td><td><code>pointing</code></td><td>"Empty shelf. The classic 'I'll start tomorrow' move."</td></tr>
+    <tr><td>Empty filtered library</td><td><code>confused</code></td><td>(Wishlist empty) "No wishlisted games. You're either disciplined or in denial."</td></tr>
+    <tr><td>Palette searching</td><td><code>thinking</code> (small)</td><td>— (visual only)</td></tr>
+    <tr><td>No palette results</td><td><code>confused</code> (small)</td><td>"Nothing matches. Try actual spelling?"</td></tr>
+    <tr><td>404 / errors</td><td><code>confused</code></td><td>"This game doesn't exist. Or maybe you do."</td></tr>
+  </tbody>
+</table>
+
+<h3>Authoring guidelines</h3>
+<ul>
+  <li><strong>Tone calibration:</strong> ribs your backlog, never insults your taste. When in doubt, dial back ~10%.</li>
+  <li><strong>Length:</strong> one sentence, occasionally two. Never a paragraph.</li>
+  <li><strong>No emojis.</strong> No exclamation marks for emphasis (use phrasing instead).</li>
+  <li><strong>Game-culture-aware references on-brand</strong> ("soulslike", "roguelike", "Stockholm syndrome" in jest); generic-positive words like "epic" or "wholesome" off-brand.</li>
+  <li><strong>3-5 variants per scenario</strong>, picked by deterministic hash so the same day shows the same line (avoids whiplash on refresh).</li>
+</ul>
+
+<p class="dim">Total: ~25-35 strings to author in Phase 1.</p>
+
+<h2><span class="num">07</span>Custom Assets Required</h2>
+<table>
+  <thead><tr><th>Asset</th><th>Purpose</th><th>Priority</th></tr></thead>
+  <tbody>
+    <tr><td>10 hearts (full / half / empty)</td><td>Rating widget</td><td><strong>Required</strong> for verification gate</td></tr>
+    <tr><td>6 status icons</td><td>Status badges everywhere</td><td><strong>Required</strong></td></tr>
+    <tr><td>Pixel checkmark + X</td><td>Toast confirmations</td><td><strong>Required</strong></td></tr>
+    <tr><td>Pixel-art shelf graphic</td><td>Library frame</td><td><strong>Required</strong> for identity</td></tr>
+    <tr><td>4-5 platform icons</td><td>Detail page + log card</td><td><strong>Required</strong></td></tr>
+    <tr><td>Pixel spinner / loading frames</td><td>Replaces generic spinner</td><td>Required (mascot <code>thinking</code> as fallback)</td></tr>
+    <tr><td>Mascot variants for moods</td><td>Already shipping placeholder; Phase 7 commissioned art</td><td>Existing</td></tr>
+    <tr><td>Empty-state illustrations</td><td>Compose mascot + scenario-specific tableau</td><td>Reuse mascot composition</td></tr>
+    <tr><td>Pixel "sticky note" for filter chips</td><td>Library filter UI</td><td>Nice-to-have</td></tr>
+  </tbody>
+</table>
+
+<p class="dim">Stub strategy: where a final asset isn't ready, use simple SVG approximations that are visually intentional (not generic Tailwind defaults). Tag with TODO for Phase 7 polish.</p>
+
+<h2><span class="num">08</span>Acceptance Criteria</h2>
+
+<div class="callout success">
+  <strong>The Verification Gate</strong><br>
+  Phase 1 ships when all 14 of these check.
+</div>
+
+<ol class="checklist">
+  <li>Visit <code>/</code> while signed out → redirect to <code>/login</code></li>
+  <li>Sign in → land on <code>/</code> (cockpit dashboard) → see mascot greeting + empty Status Shelf + onboarding mascot moment</li>
+  <li>Press ⌘K → palette opens → type "Hades" → results stream in within 500ms (RAWG live first time, KV cached thereafter)</li>
+  <li>Click "Hades" result → palette transitions to quick-log form → pick <strong>Completed</strong> → click hearts to set rating to 9.0 → submit</li>
+  <li>Toast appears with custom pixel checkmark + mascot briefly celebrates → palette closes</li>
+  <li>Dashboard updates: Hades appears in "Recently Completed" carousel</li>
+  <li>Navigate to <code>/library</code> → poster wall shows Hades cover (with shelf frame)</li>
+  <li>Click <strong>Completed</strong> filter chip → grid filters to just Hades (FLIP animation)</li>
+  <li>Click Hades poster → slide-over panel opens with full game detail + your log card</li>
+  <li>Refresh the page while panel is open → loads as full <code>/games/hades</code> route (intercepting routes contract)</li>
+  <li>Toggle library to "Status Shelf" view → Hades appears in Completed shelf</li>
+  <li>Toggle to "List" view → info-dense row with cover thumbnail, title, hearts, status, dates</li>
+  <li>Sort by rating descending → Hades is at the top</li>
+  <li>Edit log via <code>&lt;EditLogModal&gt;</code> → set hours_played to 35, platform to "Steam Deck", finished_at to today → save → see updated log card on detail page</li>
+</ol>
+
+<h2><span class="num">09</span>Out of Scope</h2>
+<table>
+  <thead><tr><th>Deferred to</th><th>What</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Phase 2</strong></td><td>AI review drafts · AI provider router · <code>ai_calls</code> telemetry · review writing flow · public review URLs</td></tr>
+    <tr><td><strong>Phase 3</strong></td><td>Library imports (Steam/Xbox/PSN) · platform connections UI · background sync</td></tr>
+    <tr><td><strong>Phase 4</strong></td><td>Recommendations · taste fingerprint · similar-games on detail page</td></tr>
+    <tr><td><strong>Phase 5</strong></td><td>Comments · follows · public profile polish · lists · notifications · activity feed</td></tr>
+    <tr><td><strong>Phase 6</strong></td><td>Year-in-Review · Spotify Wrapped-style cards</td></tr>
+    <tr><td><strong>Phase 7+</strong></td><td>The "Den" view · commissioned mascot artwork · public launch</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">10</span>Open Questions / Known Risks</h2>
+<table>
+  <thead><tr><th>#</th><th>Item</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Intercepting routes UX on mobile (slide-over might feel cramped)</td><td>Test mobile early; fall back to bottom-sheet on <code>width &lt; 768px</code></td></tr>
+    <tr><td>2</td><td>RAWG free-tier rate limit (20k/month) under unexpected traffic</td><td>KV cache + per-IP rate limiting in server action; "rate limited, try again" mascot copy</td></tr>
+    <tr><td>3</td><td>FLIP animations on large libraries (200+) may stutter</td><td>Virtualize the grid (TanStack Virtual) once library exceeds ~60 items</td></tr>
+    <tr><td>4</td><td>Custom assets timing — pixel hearts must ship before quick-log works</td><td>Author hearts in week 1 of Phase 1, before quick-log implementation</td></tr>
+    <tr><td>5</td><td>Mascot copy authoring is creative work — easy to underestimate</td><td>Budget half a day in week 6 for copy authoring + tone review</td></tr>
+    <tr><td>6</td><td>Drizzle <code>db:generate</code> emits <code>CREATE TABLE auth.users</code></td><td>Documented gotcha; strip after every generate</td></tr>
+    <tr><td>7</td><td><code>year_in_reviews</code> access pattern undefined (currently owner-only)</td><td>Revisit when Phase 6 starts; not a Phase 1 concern</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">11</span>Testing Strategy</h2>
+<p>Phase 1 relies on the <strong>manual verification gate</strong> (14 checks above) as the primary correctness signal. Automated testing is intentionally deferred.</p>
+<ul>
+  <li><strong>No unit/integration tests for Phase 1.</strong> Most code is straightforward orchestration of Supabase / Drizzle / RAWG / UI primitives. Bug surface area is shallow; the cost-benefit of test infrastructure is poor at this stage.</li>
+  <li><strong>Type safety as first defense.</strong> TypeScript strict + Drizzle typed queries + Zod RAWG response validation catch most class-of-bug at compile time.</li>
+  <li><strong>Smoke testing via the verification gate.</strong> Run through all 14 checks manually before declaring the phase complete. Repeat after any subsequent refactor.</li>
+  <li><strong>First automated tests arrive Phase 4-5</strong> when complex pipelines (taste fingerprint generation, recommendation ranking, AI provider failover) have meaningful regression risk.</li>
+  <li><strong>Browser testing</strong> during week 6 polish: manually verify Cmd+K palette and intercepting routes in Chrome / Safari / Firefox desktop + iOS Safari + Chrome Android.</li>
+</ul>
+<p class="dim">If a Phase 1 task's bug surface turns out to be deeper than expected (e.g. tactile transitions stuttering across many edge cases), add a targeted test then — don't pre-emptively scaffold a test runner.</p>
+
+<h2><span class="num">12</span>Implementation Roadmap</h2>
+<p>This spec is the input to the <strong>writing-plans</strong> skill, which will break Phase 1 into bite-sized tasks with explicit acceptance criteria, file paths, and dependencies.</p>
+
+<table>
+  <thead><tr><th>Week</th><th>Focus</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Week 3</strong></td><td>RAWG client + cache + custom assets (hearts, status icons, checkmark) + design-system additions</td></tr>
+    <tr><td><strong>Week 4</strong></td><td>Cmd+K palette + search flow + quick-log form + server actions for <code>createLog</code></td></tr>
+    <tr><td><strong>Week 5</strong></td><td>Library page (all 3 views) + filter chips + sort + tactile transitions + game detail page (panel + full route)</td></tr>
+    <tr><td><strong>Week 6</strong></td><td>Cockpit dashboard + StatusShelf + ActivityTimeline + StatsStrip + EditLogModal + mascot copy authoring + verification gate</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>Letterboxd for Games · Phase 1 Design Spec · 2026-05-10</p>
+  <p>Source markdown: <code>docs/superpowers/specs/2026-05-10-phase1-core-logging-design.md</code></p>
+</footer>
+
+</div>
+</body>
+</html>
