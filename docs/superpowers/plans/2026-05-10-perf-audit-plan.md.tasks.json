@@ -1,0 +1,88 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-10-perf-audit-plan.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 1.1: Drop redundant findFirst in createLog",
+      "status": "pending",
+      "description": "**Goal:** Eliminate the pre-INSERT duplicate-check SELECT in `createLog`. Rely on the existing unique-constraint catch path.\n\n**Files:**\n- Modify: `lib/logs/server-actions.ts:61-70`\n\n**Acceptance Criteria:**\n- [ ] The `findFirst` call inside `createLog` is removed\n- [ ] The `if (existing)` block is removed\n- [ ] The existing try/catch still maps SQLSTATE 23505 to 'Already logged. Edit the existing log instead.'\n- [ ] `pnpm typecheck && pnpm lint && pnpm build` passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"lib/logs/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"findFirst call removed\", \"if (existing) block removed\", \"23505 catch path preserved\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1.2: React cache() wrapper for supabase.auth.getUser",
+      "status": "pending",
+      "description": "**Goal:** Add a per-request memoized auth helper and replace 14 inline `supabase.auth.getUser()` call sites in application code. (The single call in `lib/supabase/middleware.ts` stays as-is — different lifecycle.)\n\n**Files:**\n- Create: `lib/supabase/auth-cache.ts`\n- Modify: `lib/logs/server-actions.ts` (7 sites)\n- Modify: `lib/profile/server-actions.ts` (2 sites)\n- Modify: `lib/profile/avatar-actions.ts` (1 site)\n- Modify: `app/(app)/layout.tsx` (1 site)\n- Modify: `app/page.tsx` (1 site)\n- Modify: `app/(app)/games/[slug]/page.tsx` (1 site)\n- Modify: `app/(app)/@modal/(.)games/[slug]/page.tsx` (1 site)\n- Modify: `app/(app)/u/[username]/page.tsx` (1 site)\n- Modify: `app/(app)/settings/page.tsx` (1 site)\n\n**Acceptance Criteria:**\n- [ ] `lib/supabase/auth-cache.ts` exports `getCachedUser` wrapped in React's `cache()`\n- [ ] All 14 application call sites replaced\n- [ ] `lib/supabase/middleware.ts:39` untouched\n- [ ] grep returns only the middleware match for `supabase.auth.getUser()`\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build && grep -rn 'supabase\\.auth\\.getUser()' --include='*.ts' --include='*.tsx' app lib`\n\n```json:metadata\n{\"files\": [\"lib/supabase/auth-cache.ts\", \"lib/logs/server-actions.ts\", \"lib/profile/server-actions.ts\", \"lib/profile/avatar-actions.ts\", \"app/(app)/layout.tsx\", \"app/page.tsx\", \"app/(app)/games/[slug]/page.tsx\", \"app/(app)/@modal/(.)games/[slug]/page.tsx\", \"app/(app)/u/[username]/page.tsx\", \"app/(app)/settings/page.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"getCachedUser helper created\", \"14 call sites replaced\", \"middleware unchanged\", \"grep confirms only middleware match remains\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 1.3: Derive dashboard activity from library array",
+      "status": "pending",
+      "description": "**Goal:** Drop the `getRecentActivity(10)` server-action call from the dashboard. Derive the activity feed from `library.slice(0, 10)` in JS, mirroring Phase 1.5.15c.\n\n**Files:**\n- Modify: `app/(app)/_cockpit/cockpit-dashboard.tsx`\n\n**Acceptance Criteria:**\n- [ ] `getRecentActivity` no longer imported or called in the dashboard\n- [ ] `computeRecentActivityFromLibrary(library)` helper defined locally\n- [ ] Maps `library.slice(0, 10)` to `ActivityEvent` shape\n- [ ] `getRecentActivity` export retained in `lib/logs/server-actions.ts`\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"app/(app)/_cockpit/cockpit-dashboard.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"getRecentActivity dropped from dashboard\", \"local helper added\", \"getRecentActivity still exported\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 1.4: Move isPrivate filter from JS to SQL on profile page",
+      "status": "pending",
+      "description": "**Goal:** Push the `isPrivate` filter into the WHERE clause on `/u/[username]` so private logs never traverse the DB→Node boundary for non-owner viewers.\n\n**Files:**\n- Modify: `app/(app)/u/[username]/page.tsx:30-63`\n\n**Acceptance Criteria:**\n- [ ] WHERE clause uses `and(eq(userId, ...), isOwn ? undefined : eq(isPrivate, false))`\n- [ ] Post-fetch `.filter(...)` is removed\n- [ ] Privacy semantics identical (owners see all, non-owners see only public)\n- [ ] `and` added to drizzle-orm imports\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"app/(app)/u/[username]/page.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"WHERE clause filters isPrivate in SQL\", \"JS filter removed\", \"and imported from drizzle-orm\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 1.5: Tighter column projection on getProfileByUsername",
+      "status": "pending",
+      "description": "**Goal:** Add explicit `columns:` projection on `getProfileByUsername` matching actual caller usage (`userId`, `username`, `displayName`, `bio`).\n\n**Files:**\n- Modify: `lib/profile/server-actions.ts:55-60`\n\n**Acceptance Criteria:**\n- [ ] Explicit `columns:` projection added with the four needed fields\n- [ ] All callers (just one: `app/(app)/u/[username]/page.tsx`) still typecheck\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"lib/profile/server-actions.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"columns: projection added\", \"all callers compile\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 2.1: Composite indexes on logs(user_id, updated_at) and (user_id, status, updated_at)",
+      "status": "pending",
+      "description": "**Goal:** Add two additive indexes via Drizzle. Generate the migration, hand-add `ANALYZE logs;`, apply via `pnpm db:migrate`.\n\n**Files:**\n- Modify: `lib/db/schema.ts:132-157`\n- Create: `drizzle/00NN_<auto-named>.sql`\n\n**Acceptance Criteria:**\n- [ ] Two indexes added: `logs_user_updated_at_idx` and `logs_user_status_updated_at_idx`\n- [ ] `pnpm db:generate` produces a migration with exactly two CREATE INDEX statements\n- [ ] Migration hand-edited to append `ANALYZE logs;`\n- [ ] Migration applied successfully\n- [ ] `pg_indexes` query confirms both new indexes exist\n- [ ] `EXPLAIN ANALYZE` on a sample query shows index use\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"lib/db/schema.ts\", \"drizzle/\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"two indexes added to schema\", \"migration generated with two CREATE INDEX\", \"ANALYZE logs appended\", \"migration applied\", \"EXPLAIN shows index use\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 3.1: React.memo on LibraryPoster and hot leaf SVG components",
+      "status": "pending",
+      "description": "**Goal:** Wrap six components in `React.memo` to prevent re-renders when props are referentially stable.\n\n**Files:**\n- Modify: `components/library/library-poster.tsx`\n- Modify: `components/mascot/mascot.tsx`\n- Modify: `components/pixel/hearts.tsx`\n- Modify: `components/pixel/status-icons.tsx`\n- Modify: `components/pixel/platform-icons.tsx`\n- Modify: `components/ui/status-badge.tsx`\n\n**Acceptance Criteria:**\n- [ ] Each component exported as `memo(function ...)`\n- [ ] No behavior change\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"components/library/library-poster.tsx\", \"components/mascot/mascot.tsx\", \"components/pixel/hearts.tsx\", \"components/pixel/status-icons.tsx\", \"components/pixel/platform-icons.tsx\", \"components/ui/status-badge.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"six components wrapped in memo\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 3.2: priority prop on first visible poster (LCP hint)",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "**Goal:** Mark the first poster in shelf, list, and stacks views with Next.js's `priority` prop.\n\n**Files:**\n- Modify: `components/library/library-shelf.tsx:37-39`\n- Modify: `components/library/library-list.tsx`\n- Modify: `components/library/status-stacks.tsx`\n- Modify: `components/library/library-poster.tsx` (add `priority?: boolean` prop)\n\n**Blocked by:** T3.1 (both modify library-poster.tsx)\n\n**Acceptance Criteria:**\n- [ ] `LibraryPoster` accepts optional `priority?: boolean` (default false)\n- [ ] `<Image>` inside receives `priority={priority}`\n- [ ] `LibraryShelf`, `LibraryList`, `StatusStacks` each pass `priority={i === 0}` (or equivalent) to the first poster\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"components/library/library-shelf.tsx\", \"components/library/library-list.tsx\", \"components/library/status-stacks.tsx\", \"components/library/library-poster.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"priority prop added to LibraryPoster\", \"first poster gets priority in all three views\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 3.3: next/dynamic for react-easy-crop",
+      "status": "pending",
+      "description": "**Goal:** Lazy-load `react-easy-crop` (~45KB gzip) via `next/dynamic` in `AvatarUploader`. Keep type-only import for `Area`.\n\n**Files:**\n- Modify: `components/settings/avatar-uploader.tsx:1-13`\n\n**Acceptance Criteria:**\n- [ ] `Cropper` imported via `next/dynamic` with `ssr: false`\n- [ ] `import type { Area } from 'react-easy-crop'` preserved (types erased at compile time)\n- [ ] `loading: () => null` on the dynamic wrapper\n- [ ] Same crop UX (file pick → dialog → cropper → save → output)\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"components/settings/avatar-uploader.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"Cropper lazy-loaded\", \"type import preserved\", \"ssr: false\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 3.4: content-visibility: auto on library grid items",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "**Goal:** Skip layout/paint for off-viewport library posters and list rows. DOM stays intact.\n\n**Files:**\n- Modify: `app/globals.css`\n- Modify: `components/library/library-poster.tsx`\n- Modify: `components/library/library-list.tsx`\n\n**Blocked by:** T3.1 (both modify library-poster.tsx)\n\n**Acceptance Criteria:**\n- [ ] `.lib-item-cv` CSS class defined in `app/globals.css`\n- [ ] Class applied to `LibraryPoster`'s outermost `motion.div`\n- [ ] Class applied to `LibraryList`'s row wrapper\n- [ ] **Not** applied to `LibraryShelf`'s grid container\n- [ ] Modal morph still works (manual verification when at PC)\n- [ ] build passes\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"app/globals.css\", \"components/library/library-poster.tsx\", \"components/library/library-list.tsx\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"CSS class defined\", \"applied to poster and list row\", \"not on shelf grid container\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 4.1: Install @next/bundle-analyzer",
+      "status": "pending",
+      "description": "**Goal:** Add the bundle analyzer as a devDep gated by `ANALYZE=true`. Provides static HTML measurement source.\n\n**Files:**\n- Modify: `package.json`\n- Modify: `pnpm-lock.yaml` (auto)\n- Modify: `next.config.ts`\n\n**Acceptance Criteria:**\n- [ ] `@next/bundle-analyzer` in `devDependencies`\n- [ ] `cross-env` in `devDependencies` (Windows-safe env var setting)\n- [ ] `pnpm analyze` script added\n- [ ] `next.config.ts` wraps config in `withBundleAnalyzer({ enabled: process.env.ANALYZE === 'true' })`\n- [ ] `pnpm build` succeeds without analyzer output\n- [ ] `pnpm analyze` produces `.next/analyze/client.html` and `.next/analyze/server.html`\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build && pnpm analyze`\n\n```json:metadata\n{\"files\": [\"package.json\", \"pnpm-lock.yaml\", \"next.config.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"@next/bundle-analyzer installed\", \"cross-env installed\", \"analyze script added\", \"next.config.ts wrapped\", \"pnpm analyze produces HTML\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 4.2: next.config.ts enhancements (AVIF, cache, optimizePackageImports, staleTimes)",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Apply four config additions: AVIF + 30-day image cache, barrel-import optimization, `removeConsole` in prod, and `staleTimes` for Router cache.\n\n**Files:**\n- Modify: `next.config.ts`\n\n**Blocked by:** T4.1 (both touch next.config.ts; T4.1 introduces the wrap)\n\n**Acceptance Criteria:**\n- [ ] `images.formats: ['image/avif', 'image/webp']`\n- [ ] `images.minimumCacheTTL: 2592000` (30 days)\n- [ ] `compiler.removeConsole: { exclude: ['error', 'warn'] }`\n- [ ] `experimental.optimizePackageImports` lists installed packages: `lucide-react`, `framer-motion`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-slot`\n- [ ] `experimental.staleTimes: { dynamic: 30, static: 180 }`\n- [ ] `pnpm build` succeeds with no error-level warnings\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\": [\"next.config.ts\"], \"verifyCommand\": \"pnpm typecheck && pnpm lint && pnpm build\", \"acceptanceCriteria\": [\"images.formats includes avif\", \"30-day minimumCacheTTL\", \"removeConsole configured\", \"optimizePackageImports lists installed packages\", \"staleTimes dynamic=30\", \"build passes\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Post-cleanup: Append 'Applied audit fixes' to Phase 1.5 baseline doc",
+      "status": "pending",
+      "blockedBy": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      "description": "**Goal:** Mirror the Phase 1.5.15 pattern — append an 'Audit Tier 1–4 applied' section to `docs/superpowers/perf/2026-05-10-phase1.5-baseline.md` listing each task's commit SHA and a one-line summary.\n\n**Files:**\n- Modify: `docs/superpowers/perf/2026-05-10-phase1.5-baseline.md`\n\n**Blocked by:** All 12 implementation tasks\n\n**Acceptance Criteria:**\n- [ ] New section 'Applied audit fixes (post-Phase-1.5, 2026-05-10)' appended\n- [ ] Each of the 12 tasks (T1.1–T4.2) listed with commit SHA + one-line summary\n- [ ] Tier 5 skipped items listed for traceability\n- [ ] Empirical numbers section left TBD for the user's manual sweep when back at PC\n- [ ] Doc committed\n\n**Verify:** Visual review.\n\n```json:metadata\n{\"files\": [\"docs/superpowers/perf/2026-05-10-phase1.5-baseline.md\"], \"verifyCommand\": \"git log --oneline --grep='perf: T' -20\", \"acceptanceCriteria\": [\"audit-fixes section appended\", \"12 SHAs and summaries listed\", \"skipped items listed\", \"empirical TBD section present\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-10T15:00:00Z"
+}
