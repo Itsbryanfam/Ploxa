@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetailBySlug, getScreenshots } from "@/lib/games/server-actions";
@@ -22,7 +22,13 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
     getUserLogForGame(game.id, game),
     user
       ? db.query.reviews.findFirst({
-          where: and(eq(schema.reviews.userId, user.id), eq(schema.reviews.gameId, game.id)),
+          // Published reviews only — unpublished drafts shouldn't render the
+          // "Your review" excerpt on the game detail page.
+          where: and(
+            eq(schema.reviews.userId, user.id),
+            eq(schema.reviews.gameId, game.id),
+            isNotNull(schema.reviews.publishedAt),
+          ),
           columns: { id: true, body: true, rating: true },
         })
       : Promise.resolve(null),

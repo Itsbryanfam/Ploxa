@@ -255,15 +255,24 @@ export async function generateDraft(input: unknown): Promise<GenerateDraftResult
   }
 
   // One-per-game cardinality enforcement (app-side; no DB unique index).
+  // Two cases:
+  //   1. Published review exists → block, bounce client to its editor URL.
+  //   2. Unpublished draft exists → it's stale (the previous interview
+  //      either failed or was abandoned). Delete it so we can write a
+  //      fresh one from the current interview's answers. The cascade on
+  //      review_questions.reviewId removes the old Q&A rows too.
   const existing = await db.query.reviews.findFirst({
     where: and(
       eq(schema.reviews.userId, user.id),
       eq(schema.reviews.gameId, session.gameId),
     ),
-    columns: { id: true },
+    columns: { id: true, publishedAt: true },
   });
-  if (existing) {
+  if (existing && existing.publishedAt != null) {
     return { ok: false, error: "You've already reviewed this game", existingReviewId: existing.id };
+  }
+  if (existing) {
+    await db.delete(schema.reviews).where(eq(schema.reviews.id, existing.id));
   }
 
   const game = await db.query.games.findFirst({

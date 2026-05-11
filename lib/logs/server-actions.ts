@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetail } from "@/lib/games/server-actions";
@@ -128,8 +128,15 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
 
   const items = rows.map((r) => mapRowToLibraryItem(r.log, r.game));
 
+  // Only attach existingReviewId for *published* reviews. Unpublished drafts
+  // (orphans from a failed prior interview) should NOT make the log card show
+  // "Edit review" — the user needs to restart the interview; generateDraft
+  // will overwrite the stale draft on the way through.
   const userReviews = await db.query.reviews.findMany({
-    where: eq(schema.reviews.userId, user.id),
+    where: and(
+      eq(schema.reviews.userId, user.id),
+      isNotNull(schema.reviews.publishedAt),
+    ),
     columns: { id: true, gameId: true },
   });
   const reviewByGameId = new Map(userReviews.map((r) => [r.gameId, r.id]));
