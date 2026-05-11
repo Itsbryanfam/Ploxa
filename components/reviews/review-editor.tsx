@@ -14,6 +14,8 @@ interface Props {
   initialBody: string;
   initialRating: number | null;
   initialIsPublic: boolean;
+  /** AI-assisted drafts can per-section regenerate; manual reviews can't. */
+  canRegenerate: boolean;
 }
 
 const LABELS = ["Hook", "Highs", "Lows", "Verdict"] as const;
@@ -29,6 +31,7 @@ export function ReviewEditor({
   initialBody,
   initialRating,
   initialIsPublic,
+  canRegenerate,
 }: Props) {
   const router = useRouter();
   const celebrate = useMascotStore((s) => s.celebrate);
@@ -106,6 +109,7 @@ export function ReviewEditor({
             reviewId={reviewId}
             text={sections[idx]}
             onChange={(next) => updateSection(idx as 0 | 1 | 2 | 3, next)}
+            canRegenerate={canRegenerate}
           />
         ))}
       </div>

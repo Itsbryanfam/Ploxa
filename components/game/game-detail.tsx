@@ -106,10 +106,10 @@ export function GameDetail({ game, screenshots, log, ownReview }: Props) {
         </div>
       ) : log ? (
         <Link
-          href={`/games/${game.slug}/review`}
+          href={`/games/${game.slug}/review?manual=1`}
           className="block rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-5 py-4 text-sm text-[var(--accent)] hover:border-[var(--accent)] transition"
         >
-          Write a review with the mascot →
+          Write a review →
         </Link>
       ) : null}
 

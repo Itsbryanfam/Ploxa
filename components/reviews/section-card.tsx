@@ -10,6 +10,9 @@ interface Props {
   reviewId: string;
   text: string;
   onChange: (next: string) => void;
+  /** When false (manual review), hide the Regenerate button — there's no
+   *  Q&A context to draw from, so AI regenerate would just hallucinate. */
+  canRegenerate: boolean;
 }
 
 async function readAccumulatedStream(
@@ -33,7 +36,14 @@ async function readAccumulatedStream(
   return last;
 }
 
-export function SectionCard({ label, sectionIndex, reviewId, text, onChange }: Props) {
+export function SectionCard({
+  label,
+  sectionIndex,
+  reviewId,
+  text,
+  onChange,
+  canRegenerate,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
   const [streaming, setStreaming] = useState(false);
@@ -84,9 +94,11 @@ export function SectionCard({ label, sectionIndex, reviewId, text, onChange }: P
             <Button variant="ghost" size="sm" onClick={startEdit} disabled={streaming}>
               Edit
             </Button>
-            <Button variant="ghost" size="sm" onClick={regenerate} disabled={pending || streaming}>
-              {streaming ? "Rewriting…" : "Regenerate"}
-            </Button>
+            {canRegenerate && (
+              <Button variant="ghost" size="sm" onClick={regenerate} disabled={pending || streaming}>
+                {streaming ? "Rewriting…" : "Regenerate"}
+              </Button>
+            )}
           </div>
         )}
       </div>
