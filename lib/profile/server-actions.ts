@@ -56,6 +56,12 @@ export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
 export async function getProfileByUsername(username: string) {
   const profile = await db.query.profiles.findFirst({
     where: eq(schema.profiles.username, username),
+    columns: {
+      userId: true,
+      username: true,
+      displayName: true,
+      bio: true,
+    },
   });
   return profile ?? null;
 }
