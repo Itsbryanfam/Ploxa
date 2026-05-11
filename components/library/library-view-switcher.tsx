@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { getUserLibrary, type LibraryItem, type SortKey } from "@/lib/logs/server-actions";
@@ -42,16 +43,19 @@ export function LibraryViewSwitcher({ initialData, initialFilter, initialSort }:
   const filter = asFilter(params.get("status"));
   const sort = asSort(params.get("sort"));
 
+  // Pin the hydration timestamp to first render via a lazy useState. Calling
+  // Date.now() inline each render would feed TanStack a fresh number on every
+  // render, which can defeat the staleTime check and trigger a redundant
+  // refetch after hydration. The lazy initializer runs exactly once.
+  const [initialUpdatedAt] = useState(() => Date.now());
+
   const { data: items = initialData } = useQuery({
     queryKey: ["library", filter, sort],
     queryFn: () => getUserLibrary({ status: filter, sort }),
     initialData: filter === initialFilter && sort === initialSort ? initialData : undefined,
     // Tell TanStack the server-rendered initialData is fresh so the 30s staleTime
     // from app/providers.tsx prevents a redundant post-hydration refetch.
-    // Date.now() here is intentional: it records when SSR data was hydrated into
-    // the client, not a reactive value — the eslint-disable is load-bearing.
-    // eslint-disable-next-line react-hooks/purity
-    initialDataUpdatedAt: Date.now(),
+    initialDataUpdatedAt: initialUpdatedAt,
   });
 
   function setView(v: View) {

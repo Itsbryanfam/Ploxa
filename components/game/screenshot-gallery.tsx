@@ -1,7 +1,7 @@
-"use client";
-
 import Image from "next/image";
 
+// Pure server component — zero interactivity (just <a> + <Image> wrappers),
+// so no "use client" boundary needed. Renders as part of the RSC payload.
 export function ScreenshotGallery({ urls }: { urls: string[] }) {
   if (urls.length === 0) return null;
   return (
