@@ -1,124 +1,23 @@
 {
   "planPath": "docs/superpowers/plans/2026-05-11-phase2-ai-reviews-plan.md",
   "tasks": [
-    {
-      "id": 0,
-      "subject": "Task 1: Foundation — packages, env, errors, cost",
-      "status": "pending",
-      "description": "**Goal:** Install AI SDK provider packages, add DEEPSEEK_API_KEY slot to .env.example, ship lib/ai/errors.ts + lib/ai/cost.ts.\n\n**Files:**\n- Modify: package.json\n- Modify: .env.example\n- Create: lib/ai/errors.ts\n- Create: lib/ai/cost.ts\n\n**Acceptance Criteria:**\n- [ ] @ai-sdk/groq + @ai-sdk/openai-compatible installed\n- [ ] DEEPSEEK_API_KEY= present in .env.example\n- [ ] errors.ts exports AIProvidersExhaustedError, RateLimitExceededError, AIRouterError\n- [ ] cost.ts exports PROVIDER_COST map + computeCostUsd()\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"package.json\",\".env.example\",\"lib/ai/errors.ts\",\"lib/ai/cost.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"AI SDK packages installed\",\"DeepSeek key slot present\",\"errors.ts exports 3 error classes\",\"cost.ts exports PROVIDER_COST + computeCostUsd\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 1,
-      "subject": "Task 2: AI provider clients (4 providers)",
-      "status": "pending",
-      "blockedBy": [0],
-      "description": "**Goal:** Uniform Provider interface across Cerebras, Groq, Cloudflare, DeepSeek.\n\n**Files:**\n- Create: lib/ai/providers/types.ts\n- Create: lib/ai/providers/cerebras.ts\n- Create: lib/ai/providers/groq.ts\n- Create: lib/ai/providers/cloudflare.ts\n- Create: lib/ai/providers/deepseek.ts\n\n**Acceptance Criteria:**\n- [ ] Shared Provider interface { name, model, isConfigured(), streamText() }\n- [ ] isConfigured returns false on missing env (no boot crash)\n- [ ] All four use Llama 3.3 70B except DeepSeek (deepseek-chat)\n- [ ] streamText returns { textStream, usage } via Vercel AI SDK\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/ai/providers/types.ts\",\"lib/ai/providers/cerebras.ts\",\"lib/ai/providers/groq.ts\",\"lib/ai/providers/cloudflare.ts\",\"lib/ai/providers/deepseek.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"4 provider modules created\",\"shared types.ts Provider interface\",\"isConfigured guards on env\",\"Llama 3.3 70B across free tiers + deepseek-chat\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 2,
-      "subject": "Task 3: Rate-limit helpers (Upstash counters)",
-      "status": "pending",
-      "blockedBy": [1],
-      "description": "**Goal:** Per-provider daily + minute counters and per-user daily review-start counter, all backed by Upstash with appropriate TTLs.\n\n**Files:**\n- Create: lib/ai/rate-limit.ts\n\n**Acceptance Criteria:**\n- [ ] Exports checkProviderDaily, checkProviderMinute, incrementProviderDaily, incrementProviderMinute, getUserDailyReviewCount, incrementUserDailyReviews, DAILY_REVIEW_CAP\n- [ ] PROVIDER_DAILY_CAP set ~10% under each provider's free-tier ceiling\n- [ ] All keys have 48h TTL (2min for minute keys)\n- [ ] incrementUserDailyReviews rolls back overflow before throwing RateLimitExceededError\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/ai/rate-limit.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"7 exports present\",\"DAILY_REVIEW_CAP = 10\",\"provider caps preempt 429s\",\"rollback before throw\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 3,
-      "subject": "Task 4: Telemetry (ai_calls writer)",
-      "status": "pending",
-      "blockedBy": [0],
-      "description": "**Goal:** Best-effort recordCall() writes one ai_calls row per AI invocation; failures logged but never thrown.\n\n**Files:**\n- Create: lib/ai/telemetry.ts\n\n**Acceptance Criteria:**\n- [ ] recordCall accepts userId, feature, provider, model, inputTokens, outputTokens, latencyMs, success, errorMessage\n- [ ] Computes cost_usd via computeCostUsd\n- [ ] DB errors logged via console.error and swallowed\n- [ ] Returns Promise<void> and never throws\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/ai/telemetry.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"recordCall signature complete\",\"cost computed via cost.ts\",\"errors swallowed\",\"never throws\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 4,
-      "subject": "Task 5: AI router (generate() orchestration)",
-      "status": "pending",
-      "blockedBy": [1, 2, 3],
-      "description": "**Goal:** Single public AI entry point. Iterates providers in order, preempts exhaustion, streams tokens, writes telemetry on completion.\n\n**Files:**\n- Create: lib/ai/router.ts\n\n**Acceptance Criteria:**\n- [ ] generate({ prompt, systemPrompt, feature, userId }) returns { textStream, providerUsed }\n- [ ] Iterates cerebras → groq → cloudflare → deepseek\n- [ ] Skips unconfigured or capped providers (preempts 429)\n- [ ] Per-provider catch routes to next tier\n- [ ] On success: increments daily + minute counters, writes telemetry\n- [ ] On exhaustion: throws AIProvidersExhaustedError with attempts list\n- [ ] wrapStream finalizer runs post-completion bookkeeping\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/ai/router.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"generate() orchestrates 4 providers\",\"preempts via rate-limit\",\"wrapStream handles bookkeeping\",\"exhaustion throws AIProvidersExhaustedError\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 5,
-      "subject": "Task 6: Review session helpers + prompt templates",
-      "status": "pending",
-      "blockedBy": [0],
-      "description": "**Goal:** Upstash interview session (questions + answers + 1h TTL) and the prompt library (system prompt + opener + follow-up + draft + regenerate).\n\n**Files:**\n- Create: lib/reviews/session.ts\n- Create: lib/reviews/prompts.ts\n\n**Acceptance Criteria:**\n- [ ] session.ts exports createSession, getSession, appendAnswer, appendQuestion, destroySession\n- [ ] Session shape: userId, logId, gameId, questions[], answers[], createdAt; Q1 set on create\n- [ ] 1h TTL refreshed on every mutation\n- [ ] prompts.ts exports SYSTEM_PROMPT, openerQuestion, followUpPrompt, draftPrompt, regenerateSectionPrompt\n- [ ] System prompt encodes sardonic-insider voice rules + 4-paragraph draft format\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/reviews/session.ts\",\"lib/reviews/prompts.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"session helpers with questions + answers arrays\",\"appendQuestion present for AI-generated Q persistence\",\"SYSTEM_PROMPT voice rules\",\"4 prompt builders\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 6,
-      "subject": "Task 7: startInterview + submitAnswer server actions",
-      "status": "pending",
-      "blockedBy": [4, 5],
-      "description": "**Goal:** First two review server actions — start the interview with cap check; stream Q2-Q4 via the router; persist AI questions to session as they complete.\n\n**Files:**\n- Create: lib/reviews/server-actions.ts (initial — appended in later tasks)\n\n**Acceptance Criteria:**\n- [ ] startInterview validates log ownership, checks 10/day cap, creates session with Q1, returns { interviewId, q1 }\n- [ ] submitAnswer validates session ownership, appends answer, streams next Q via createStreamableValue, calls appendQuestion after stream completes\n- [ ] After turn 4, submitAnswer returns { ready: true }\n- [ ] Rate-limit and exhaustion errors map to mascot-in-character messages\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/reviews/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"startInterview gated by daily cap\",\"submitAnswer streams + appendQuestion\",\"turn 4 returns ready\",\"errors are in-character\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 7,
-      "subject": "Task 8: generateDraft server action + persistence",
-      "status": "pending",
-      "blockedBy": [6],
-      "description": "**Goal:** Stream the AI draft, persist reviews row + 4 review_questions rows on stream end. Enforce one-review-per-game in app code.\n\n**Files:**\n- Modify: lib/reviews/server-actions.ts (append generateDraft)\n\n**Acceptance Criteria:**\n- [ ] Validates session ownership\n- [ ] Returns existingReviewId on (userId, gameId) collision\n- [ ] Inserts empty reviews row up front so reviewId is known immediately\n- [ ] Inserts 4 review_questions rows using session.questions + session.answers (both padded for skip-the-rest)\n- [ ] On stream end, writes final body and destroys session\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/reviews/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"generateDraft inserts empty row + 4 questions up front\",\"final body persisted on stream end\",\"one-per-game enforced\",\"existingReviewId returned on collision\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 8,
-      "subject": "Task 9: regenerateSection server action",
-      "status": "pending",
-      "blockedBy": [7],
-      "description": "**Goal:** Replace one paragraph (index 0-3) of an existing draft body. Stream the rewrite, persist on completion.\n\n**Files:**\n- Modify: lib/reviews/server-actions.ts (append regenerateSection)\n\n**Acceptance Criteria:**\n- [ ] Validates review ownership before reading\n- [ ] Loads source Q&A pair from review_questions for the target index\n- [ ] Streams rewrite; on completion, splits body on \\n\\n, pads to 4 if needed, replaces target, rejoins\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/reviews/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"ownership validated\",\"source answer loaded from review_questions\",\"only target paragraph changes\",\"body pad-to-4 handled\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 9,
-      "subject": "Task 10: publish/update/delete + likes server actions",
-      "status": "pending",
-      "blockedBy": [7],
-      "description": "**Goal:** Close out the lifecycle — publishReview, updateReview, deleteReview, likeReview, unlikeReview. All auth + ownership gated.\n\n**Files:**\n- Modify: lib/reviews/server-actions.ts (append 5 actions + reviewLookupForRevalidate helper)\n\n**Acceptance Criteria:**\n- [ ] publishReview is idempotent on re-publish (publishedAt ?? now())\n- [ ] updateReview updates body/rating/is_public; publishedAt unchanged\n- [ ] deleteReview hard-deletes (cascades to review_questions + likes)\n- [ ] likeReview INSERT ON CONFLICT DO NOTHING\n- [ ] unlikeReview DELETE\n- [ ] All paths revalidatePath the 4 relevant routes\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/reviews/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"5 server actions + helper\",\"all auth+ownership gated\",\"revalidatePath wired correctly\",\"like is idempotent insert\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 10,
-      "subject": "Task 11: ReviewInterview client component",
-      "status": "pending",
-      "blockedBy": [6],
-      "description": "**Goal:** 4-turn conversation UI. Mascot in top slot. Streams Q2-Q4 from router via readStreamableValue. localStorage shadow for resume.\n\n**Files:**\n- Create: components/reviews/review-interview.tsx\n\n**Acceptance Criteria:**\n- [ ] Renders Q1 immediately with mascot idle\n- [ ] Uses setMood + celebrate (NOT a non-existent set()) — confirmed mascot-store API\n- [ ] submitAnswer call → mascot thinking → reads stream → animates Q2 token-by-token\n- [ ] After Q4 submit, navigates to /games/{slug}/review?reviewId={id}\n- [ ] Editable answer chips truncate downstream Q&A\n- [ ] Skip-the-rest button from Q2 onward\n- [ ] localStorage shadow under phase2-interview:{interviewId}\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"components/reviews/review-interview.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"Q1 immediate; Q2-Q4 streamed\",\"mascot moods bound via setMood\",\"editable chips invalidate downstream\",\"localStorage shadow\",\"Skip-the-rest after Q1\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 11,
-      "subject": "Task 12: SectionCard + ReviewEditor components",
-      "status": "pending",
-      "blockedBy": [8, 9],
-      "description": "**Goal:** Sectioned editor. 4 cards mapped to body split on \\n\\n. Per-section edit + regenerate. Top bar: rating + privacy. Bottom bar: Cancel / Publish.\n\n**Files:**\n- Create: components/reviews/section-card.tsx\n- Create: components/reviews/review-editor.tsx\n\n**Acceptance Criteria:**\n- [ ] SectionCard hover-reveals Edit + Regenerate\n- [ ] Edit opens inline textarea; Save/Cancel\n- [ ] Regenerate streams in place via readStreamableValue\n- [ ] ReviewEditor uses celebrate() from mascot store on publish\n- [ ] Publish wires updateReview (flush manual edits) → publishReview\n- [ ] Publish disabled until all 4 sections non-empty AND rating > 0\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"components/reviews/section-card.tsx\",\"components/reviews/review-editor.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"SectionCard edit + regenerate\",\"ReviewEditor splits body to 4\",\"updateReview before publishReview\",\"celebrate() on publish\",\"validations gate publish\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 12,
-      "subject": "Task 13: Review routes (full + intercepted) + loading",
-      "status": "pending",
-      "blockedBy": [10, 11],
-      "description": "**Goal:** Mount the interview/editor at /games/[slug]/review. Editor branch when ?reviewId= is present; interview branch otherwise. Plus parallel-route slide-over.\n\n**Files:**\n- Create: app/(app)/games/[slug]/review/page.tsx\n- Create: app/(app)/games/[slug]/review/loading.tsx\n- Create: app/(app)/@modal/(.)games/[slug]/review/page.tsx\n\n**Acceptance Criteria:**\n- [ ] Auth-gated; redirect /login on no user\n- [ ] Redirect to /games/[slug] if no log exists\n- [ ] Editor branch loads existing review + passes initial body/rating/isPublic\n- [ ] Interview branch calls startInterview server-side\n- [ ] Intercepted variant wraps in GameDetailPanel\n- [ ] loading.tsx shows mascot thinking + caption\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"app/(app)/games/[slug]/review/page.tsx\",\"app/(app)/games/[slug]/review/loading.tsx\",\"app/(app)/@modal/(.)games/[slug]/review/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"full + intercepted routes mounted\",\"auth + log gating\",\"editor / interview branches on reviewId\",\"loading state\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 13,
-      "subject": "Task 14: Entry points — log card + game detail + Completed toast",
-      "status": "pending",
-      "blockedBy": [12],
-      "description": "**Goal:** Surface 'Write with mascot' in all three places per spec: log card button, game-detail CTA, Completed-transition Sonner toast.\n\n**Files:**\n- Modify: lib/logs/library-item.ts (add existingReviewId to LibraryItem)\n- Modify: lib/logs/server-actions.ts (attach existing-review ids in getUserLibrary)\n- Modify: components/game/log-card.tsx\n- Modify: components/game/game-detail.tsx\n- Modify: components/game/edit-log-modal.tsx\n- Modify: app/(app)/games/[slug]/page.tsx\n- Modify: app/(app)/@modal/(.)games/[slug]/page.tsx\n\n**Acceptance Criteria:**\n- [ ] LogCard renders 'Write with mascot' or 'Edit review' depending on existingReviewId\n- [ ] GameDetail renders own-review excerpt or 'Write with mascot' CTA or nothing\n- [ ] EditLogModal fires Sonner toast on completed-status transition\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"lib/logs/library-item.ts\",\"lib/logs/server-actions.ts\",\"components/game/log-card.tsx\",\"components/game/game-detail.tsx\",\"components/game/edit-log-modal.tsx\",\"app/(app)/games/[slug]/page.tsx\",\"app/(app)/@modal/(.)games/[slug]/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"LibraryItem.existingReviewId attached\",\"log card button conditional\",\"game detail conditional\",\"completed toast wired\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 14,
-      "subject": "Task 15: Public review pages + cards + LikeButton",
-      "status": "pending",
-      "blockedBy": [9],
-      "description": "**Goal:** Canonical review URL + list page + ReviewCard + ReviewListCard + LikeButton + DeleteReviewLink + /u/me redirect.\n\n**Files:**\n- Create: app/(app)/u/[username]/reviews/page.tsx\n- Create: app/(app)/u/[username]/reviews/[slug]/page.tsx\n- Create: app/(app)/u/me/reviews/[slug]/page.tsx\n- Create: components/reviews/review-card.tsx\n- Create: components/reviews/review-list-card.tsx\n- Create: components/reviews/like-button.tsx\n- Create: components/reviews/delete-review-link.tsx\n\n**Acceptance Criteria:**\n- [ ] /u/{username}/reviews lists public published reviews DESC\n- [ ] /u/{username}/reviews/{gameSlug} resolves by (userId, gameSlug); 404 on private+not-owner / unpublished / missing\n- [ ] /u/me/reviews/{slug} redirects to current user's canonical URL\n- [ ] LikeButton uses HeartFull / HeartEmpty from @/components/pixel/hearts (verified path)\n- [ ] DeleteReviewLink confirm-then-delete client island\n- [ ] isOwner gates Edit/Delete\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"app/(app)/u/[username]/reviews/page.tsx\",\"app/(app)/u/[username]/reviews/[slug]/page.tsx\",\"app/(app)/u/me/reviews/[slug]/page.tsx\",\"components/reviews/review-card.tsx\",\"components/reviews/review-list-card.tsx\",\"components/reviews/like-button.tsx\",\"components/reviews/delete-review-link.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"list + canonical + me-redirect mounted\",\"isOwner gates Edit/Delete\",\"HeartFull/HeartEmpty from pixel/hearts\",\"optimistic like toggle\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 15,
-      "subject": "Task 16: OG card endpoint + page metadata",
-      "status": "pending",
-      "blockedBy": [14],
-      "description": "**Goal:** /og/review/[id] ImageResponse + generateMetadata on canonical review page so Twitter/Discord render the share card.\n\n**Files:**\n- Create: app/og/review/[id]/route.tsx\n- Modify: app/(app)/u/[username]/reviews/[slug]/page.tsx (add generateMetadata)\n\n**Acceptance Criteria:**\n- [ ] 1200x630 ImageResponse with inlined mascot, cover, title, rating, hook quote\n- [ ] 24h cache-control header\n- [ ] 404 on private/unpublished/missing\n- [ ] generateMetadata exports openGraph.images + twitter.images = [/og/review/{id}]\n- [ ] twitter.card = summary_large_image\n- [ ] pnpm typecheck && pnpm lint && pnpm build clean\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build\n\n```json:metadata\n{\"files\":[\"app/og/review/[id]/route.tsx\",\"app/(app)/u/[username]/reviews/[slug]/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"OG endpoint returns ImageResponse\",\"24h cache header\",\"generateMetadata wires open graph + twitter\",\"private/unpublished -> 404\",\"build clean\"]}\n```"
-    },
-    {
-      "id": 16,
-      "subject": "Task 17: Verification gate + ship",
-      "status": "pending",
-      "blockedBy": [15],
-      "description": "**Goal:** Run the 18-item gate, document results, tag phase-2-complete, update memory.\n\n**Files:**\n- Create: docs/superpowers/gates/2026-05-11-phase2-gate.md\n- Create: ~/.claude/projects/.../memory/phase_2_complete.md\n- Modify: ~/.claude/projects/.../memory/MEMORY.md\n\n**Acceptance Criteria:**\n- [ ] Gate doc with 18 items: 5 pre-flight + 13 end-to-end (per spec verification section)\n- [ ] All 18 items pass (or have explicit non-blocking deferral note)\n- [ ] Tag phase-2-complete created\n- [ ] Memory file phase_2_complete.md captures what landed + tag + open items\n- [ ] MEMORY.md index updated\n\n**Verify:** pnpm typecheck && pnpm lint && pnpm build + 18-of-18 in gate doc\n\n```json:metadata\n{\"files\":[\"docs/superpowers/gates/2026-05-11-phase2-gate.md\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"18 gate items recorded\",\"all pass or have explicit deferral\",\"phase-2-complete tag\",\"memory updated\"]}\n```"
-    }
+    { "id": 0, "subject": "Task 1: Foundation", "status": "completed", "completedSha": "182281d" },
+    { "id": 1, "subject": "Task 2: AI provider clients", "status": "completed", "completedSha": "16e5b39", "followupSha": "1d34f32", "blockedBy": [0] },
+    { "id": 2, "subject": "Task 3: Rate-limit helpers", "status": "completed", "completedSha": "bf5bbe0", "blockedBy": [1] },
+    { "id": 3, "subject": "Task 4: Telemetry", "status": "completed", "completedSha": "6ab81f0", "blockedBy": [0] },
+    { "id": 4, "subject": "Task 5: AI router", "status": "completed", "completedSha": "258cb7f", "followupSha": "b26c4bc", "blockedBy": [1, 2, 3] },
+    { "id": 5, "subject": "Task 6: Review session + prompts", "status": "completed", "completedSha": "e001dcd", "blockedBy": [0] },
+    { "id": 6, "subject": "Task 7: startInterview + submitAnswer", "status": "completed", "completedSha": "c12994f", "blockedBy": [4, 5] },
+    { "id": 7, "subject": "Task 8: generateDraft", "status": "completed", "completedSha": "a40346f", "blockedBy": [6] },
+    { "id": 8, "subject": "Task 9: regenerateSection", "status": "completed", "completedSha": "5b27ae7", "blockedBy": [7] },
+    { "id": 9, "subject": "Task 10: publish/update/delete + likes", "status": "completed", "completedSha": "d92011f", "blockedBy": [7] },
+    { "id": 10, "subject": "Task 11: ReviewInterview", "status": "completed", "completedSha": "883a29b", "followupSha": "11e725c", "blockedBy": [6] },
+    { "id": 11, "subject": "Task 12: SectionCard + ReviewEditor", "status": "completed", "completedSha": "c0cc168", "blockedBy": [7, 8] },
+    { "id": 12, "subject": "Task 13: Review routes (full + intercepted)", "status": "completed", "completedSha": "373dcc1", "blockedBy": [10, 11] },
+    { "id": 13, "subject": "Task 14: Entry points", "status": "completed", "completedSha": "c3484b0", "blockedBy": [12] },
+    { "id": 14, "subject": "Task 15: Public review pages + cards + LikeButton", "status": "completed", "completedSha": "209c4f8", "blockedBy": [9] },
+    { "id": 15, "subject": "Task 16: OG card endpoint + page metadata", "status": "completed", "completedSha": "1ab437f", "blockedBy": [14] },
+    { "id": 16, "subject": "Task 17: Verification gate + ship", "status": "completed", "blockedBy": [15] }
   ],
-  "lastUpdated": "2026-05-11T00:00:00Z"
+  "lastUpdated": "2026-05-11T03:30:00Z"
 }
