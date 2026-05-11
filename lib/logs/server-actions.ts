@@ -126,7 +126,17 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
     )
     .orderBy(orderBy);
 
-  return rows.map((r) => mapRowToLibraryItem(r.log, r.game));
+  const items = rows.map((r) => mapRowToLibraryItem(r.log, r.game));
+
+  const userReviews = await db.query.reviews.findMany({
+    where: eq(schema.reviews.userId, user.id),
+    columns: { id: true, gameId: true },
+  });
+  const reviewByGameId = new Map(userReviews.map((r) => [r.gameId, r.id]));
+  return items.map((item) => ({
+    ...item,
+    existingReviewId: reviewByGameId.get(item.game.id),
+  }));
 }
 
 /**

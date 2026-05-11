@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { PlatformIcon } from "@/components/ui/platform-icon";
 import { ScreenshotGallery } from "./screenshot-gallery";
@@ -19,9 +20,10 @@ interface Props {
   };
   screenshots: string[];
   log: LibraryItem | null;
+  ownReview?: { id: string; body: string; rating: number | null } | null;
 }
 
-export function GameDetail({ game, screenshots, log }: Props) {
+export function GameDetail({ game, screenshots, log, ownReview }: Props) {
   return (
     <div className="space-y-6">
       {/* Hero */}
@@ -79,6 +81,29 @@ export function GameDetail({ game, screenshots, log }: Props) {
           Not logged. Press ⌘K to log it.
         </div>
       )}
+
+      {/* Own review excerpt OR write-review CTA */}
+      {ownReview ? (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-3">
+          <p className="text-xs uppercase tracking-wide text-[var(--text-faint)]">Your review</p>
+          <p className="text-sm leading-relaxed text-[var(--text)] line-clamp-4">
+            {ownReview.body.split("\n\n")[0]}
+          </p>
+          <Link
+            href={`/u/me/reviews/${game.slug}`}
+            className="text-sm text-[var(--accent)] hover:underline"
+          >
+            Read full →
+          </Link>
+        </div>
+      ) : log ? (
+        <Link
+          href={`/games/${game.slug}/review`}
+          className="block rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-5 py-4 text-sm text-[var(--accent)] hover:border-[var(--accent)] transition"
+        >
+          Write a review with the mascot →
+        </Link>
+      ) : null}
 
       {/* Description */}
       {game.description && <DescriptionBlock text={game.description} />}

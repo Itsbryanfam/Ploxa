@@ -22,6 +22,8 @@ export interface LibraryItem {
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Populated by `getUserLibrary` when the user has a review for this game. */
+  existingReviewId?: string;
   game: {
     id: number;
     slug: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { HeartRating } from "@/components/ui/heart-rating";
@@ -17,9 +18,21 @@ export function LogCard({ item }: { item: LibraryItem }) {
           <p className="text-xs uppercase tracking-wide text-[var(--text-faint)]">Your log</p>
           <StatusBadge status={item.status} size="lg" />
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
+        <div className="flex gap-1">
+          <Link
+            href={
+              item.existingReviewId
+                ? `/games/${item.game.slug}/review?reviewId=${item.existingReviewId}`
+                : `/games/${item.game.slug}/review`
+            }
+            className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)] transition px-2 py-1 border border-[var(--border)] rounded"
+          >
+            {item.existingReviewId ? "Edit review" : "Write with mascot"}
+          </Link>
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+        </div>
       </div>
 
       {item.rating != null && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import type { LibraryItem } from "@/lib/logs/server-actions";
@@ -10,6 +10,7 @@ import { COLORS, STATUS_ICONS } from "@/components/pixel/status-icons";
 import { HeartRating } from "@/components/ui/heart-rating";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const dateToInput = (d: Date | null): string =>
   d ? new Date(d).toISOString().slice(0, 10) : "";
@@ -28,6 +29,7 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
   const [pending, startTransition] = useTransition();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const initialStatusRef = useRef(item.status);
 
   function save() {
     setError(null);
@@ -50,6 +52,17 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
       }
       queryClient.invalidateQueries({ queryKey: ["library"] });
       router.refresh();
+      // Fire the review nudge toast only when transitioning into completed for the first time.
+      const wasCompleted = initialStatusRef.current === "completed";
+      const isCompletedNow = status === "completed";
+      if (!wasCompleted && isCompletedNow) {
+        toast("Nice. Want me to help you write this up?", {
+          action: {
+            label: "Write with mascot",
+            onClick: () => router.push(`/games/${item.game.slug}/review`),
+          },
+        });
+      }
       onClose();
     });
   }

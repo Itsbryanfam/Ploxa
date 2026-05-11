@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { and, eq } from "drizzle-orm";
+import { db, schema } from "@/lib/db";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetailBySlug, getScreenshots } from "@/lib/games/server-actions";
 import { getUserLogForGame } from "@/lib/logs/server-actions";
 import { GameDetail } from "@/components/game/game-detail";
@@ -17,10 +20,25 @@ export default async function InterceptedGamePage({
     notFound();
   }
 
-  const [screenshots, log] = await Promise.all([
+  const user = await getCachedUser();
+  const [screenshots, log, ownReviewRow] = await Promise.all([
     getScreenshots(game.id),
     getUserLogForGame(game.id, game),
+    user
+      ? db.query.reviews.findFirst({
+          where: and(eq(schema.reviews.userId, user.id), eq(schema.reviews.gameId, game.id)),
+          columns: { id: true, body: true, rating: true },
+        })
+      : Promise.resolve(null),
   ]);
+
+  const ownReview = ownReviewRow
+    ? {
+        id: ownReviewRow.id,
+        body: ownReviewRow.body,
+        rating: ownReviewRow.rating != null ? Number(ownReviewRow.rating) : null,
+      }
+    : null;
 
   return (
     <GameDetailPanel>
@@ -34,6 +52,7 @@ export default async function InterceptedGamePage({
         }}
         screenshots={screenshots}
         log={log}
+        ownReview={ownReview}
       />
     </GameDetailPanel>
   );
