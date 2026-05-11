@@ -3,6 +3,12 @@
 // server actions and client components — like `schema-types.ts`.
 import type { LogStatus } from "@/lib/db/schema-types";
 
+export interface UserStats {
+  total: number;
+  byStatus: Record<LogStatus, number>;
+  averageRating: number | null;
+}
+
 export interface LibraryItem {
   logId: string;
   status: LogStatus;
@@ -84,5 +90,31 @@ export function mapRowToLibraryItem(
       genres: game.genres ?? [],
       platforms: game.platforms ?? [],
     },
+  };
+}
+
+/**
+ * Derive `UserStats` from an already-fetched library array. Single-pass
+ * reduction — used by the dashboard (avoiding a second DB round-trip after
+ * Phase 1.5.15c) and by the public profile page. Pure function, no DB.
+ */
+export function computeUserStatsFromLibrary(items: LibraryItem[]): UserStats {
+  const byStatus: Record<LogStatus, number> = {
+    backlog: 0, playing: 0, completed: 0, dropped: 0, on_hold: 0, wishlist: 0,
+  };
+  let ratingSum = 0;
+  let ratingCount = 0;
+  for (const item of items) {
+    byStatus[item.status]++;
+    if (item.rating != null) {
+      ratingSum += item.rating;
+      ratingCount++;
+    }
+  }
+  return {
+    total: items.length,
+    byStatus,
+    averageRating:
+      ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
   };
 }

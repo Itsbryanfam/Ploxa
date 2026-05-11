@@ -1,10 +1,7 @@
 import { notFound } from "next/navigation";
 import { getGameDetailBySlug, getScreenshots } from "@/lib/games/server-actions";
-import { db, schema } from "@/lib/db";
-import { and, eq } from "drizzle-orm";
-import { getCachedUser } from "@/lib/supabase/auth-cache";
+import { getUserLogForGame } from "@/lib/logs/server-actions";
 import { GameDetail } from "@/components/game/game-detail";
-import { mapRowToLibraryItem, type LibraryItem } from "@/lib/logs/library-item";
 
 export default async function GamePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -16,19 +13,10 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
     notFound();
   }
 
-  const screenshots = await getScreenshots(game.id);
-
-  // Fetch the user's log if any
-  const user = await getCachedUser();
-  let log: LibraryItem | null = null;
-  if (user) {
-    const row = await db.query.logs.findFirst({
-      where: and(eq(schema.logs.userId, user.id), eq(schema.logs.gameId, game.id)),
-    });
-    if (row) {
-      log = mapRowToLibraryItem(row, game);
-    }
-  }
+  const [screenshots, log] = await Promise.all([
+    getScreenshots(game.id),
+    getUserLogForGame(game.id, game),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">

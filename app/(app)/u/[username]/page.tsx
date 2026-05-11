@@ -7,8 +7,12 @@ import { ShelfFrame } from "@/components/pixel/shelf-frame";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { Mascot } from "@/components/mascot/mascot";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
-import { mapRowToLibraryItem, type LibraryItem } from "@/lib/logs/library-item";
-import type { LogStatus } from "@/lib/db/schema-types";
+import {
+  mapRowToLibraryItem,
+  computeUserStatsFromLibrary,
+  type LibraryItem,
+} from "@/lib/logs/library-item";
+import { LOG_GAME_SELECT } from "@/lib/logs/select";
 
 export default async function ProfilePage({
   params,
@@ -16,40 +20,18 @@ export default async function ProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const profile = await getProfileByUsername(username);
-  if (!profile) notFound();
 
-  // Determine if viewing own profile
-  const user = await getCachedUser();
+  // Profile lookup and current-user check are independent — fire in parallel.
+  const [profile, user] = await Promise.all([
+    getProfileByUsername(username),
+    getCachedUser(),
+  ]);
+  if (!profile) notFound();
   const isOwn = user?.id === profile.userId;
 
   // Load library — own profile sees everything, public sees only non-private logs
   const rows = await db
-    .select({
-      log: {
-        id: schema.logs.id,
-        status: schema.logs.status,
-        rating: schema.logs.rating,
-        startedAt: schema.logs.startedAt,
-        finishedAt: schema.logs.finishedAt,
-        hoursPlayed: schema.logs.hoursPlayed,
-        platformPlayedOn: schema.logs.platformPlayedOn,
-        isReplay: schema.logs.isReplay,
-        isPrivate: schema.logs.isPrivate,
-        notes: schema.logs.notes,
-        createdAt: schema.logs.createdAt,
-        updatedAt: schema.logs.updatedAt,
-      },
-      game: {
-        id: schema.games.id,
-        slug: schema.games.slug,
-        title: schema.games.title,
-        coverUrl: schema.games.coverUrl,
-        released: schema.games.released,
-        genres: schema.games.genres,
-        platforms: schema.games.platforms,
-      },
-    })
+    .select(LOG_GAME_SELECT)
     .from(schema.logs)
     .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
     .where(
@@ -63,26 +45,7 @@ export default async function ProfilePage({
   const items: LibraryItem[] = rows.map((r) =>
     mapRowToLibraryItem(r.log, r.game),
   );
-
-  // Stats from visible items
-  const byStatus: Record<LogStatus, number> = {
-    backlog: 0, playing: 0, completed: 0, dropped: 0, on_hold: 0, wishlist: 0,
-  };
-  let ratingSum = 0;
-  let ratingCount = 0;
-  for (const i of items) {
-    byStatus[i.status]++;
-    if (i.rating != null) {
-      ratingSum += i.rating;
-      ratingCount++;
-    }
-  }
-  const stats = {
-    total: items.length,
-    byStatus,
-    averageRating:
-      ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
-  };
+  const stats = computeUserStatsFromLibrary(items);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 space-y-8">

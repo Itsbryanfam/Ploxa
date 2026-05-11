@@ -15,9 +15,11 @@ import { Button } from "@/components/ui/button";
 // The cropper is only needed when the user picks a non-GIF file (the dialog
 // opens at that point). Lazy-loading drops ~45KB gzip from the initial
 // /settings bundle. ssr: false because canvas/file APIs are browser-only.
+// The loading placeholder reserves the same h-96 black box as the cropper
+// itself so the dialog body doesn't collapse during the chunk fetch.
 const Cropper = dynamic(() => import("react-easy-crop"), {
   ssr: false,
-  loading: () => null,
+  loading: () => <div className="h-96 w-full bg-black" />,
 }) as typeof import("react-easy-crop").default;
 
 const MAX_BYTES = 5 * 1024 * 1024;

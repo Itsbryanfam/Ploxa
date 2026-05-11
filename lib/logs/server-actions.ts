@@ -7,12 +7,13 @@ import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetail } from "@/lib/games/server-actions";
 import { LOG_STATUSES, type LogStatus } from "@/lib/db/schema-types";
-import { mapRowToLibraryItem, type LibraryItem } from "./library-item";
+import { mapRowToLibraryItem, type LibraryItem, type UserStats } from "./library-item";
+import { LOG_GAME_SELECT } from "./select";
 
-// Re-exported so existing `import type { LibraryItem } from "@/lib/logs/server-actions"`
+// Re-exported so existing `import type { LibraryItem, UserStats } from "@/lib/logs/server-actions"`
 // callers keep working. Type-only re-exports are erased at compile time, so this is
 // allowed inside a `"use server"` module.
-export type { LibraryItem } from "./library-item";
+export type { LibraryItem, UserStats } from "./library-item";
 
 const createLogInput = z.object({
   rawgId: z.number().int().positive(),
@@ -114,31 +115,7 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
   })();
 
   const rows = await db
-    .select({
-      log: {
-        id: schema.logs.id,
-        status: schema.logs.status,
-        rating: schema.logs.rating,
-        startedAt: schema.logs.startedAt,
-        finishedAt: schema.logs.finishedAt,
-        hoursPlayed: schema.logs.hoursPlayed,
-        platformPlayedOn: schema.logs.platformPlayedOn,
-        isReplay: schema.logs.isReplay,
-        isPrivate: schema.logs.isPrivate,
-        notes: schema.logs.notes,
-        createdAt: schema.logs.createdAt,
-        updatedAt: schema.logs.updatedAt,
-      },
-      game: {
-        id: schema.games.id,
-        slug: schema.games.slug,
-        title: schema.games.title,
-        coverUrl: schema.games.coverUrl,
-        released: schema.games.released,
-        genres: schema.games.genres,
-        platforms: schema.games.platforms,
-      },
-    })
+    .select(LOG_GAME_SELECT)
     .from(schema.logs)
     .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
     .where(
@@ -150,6 +127,26 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
     .orderBy(orderBy);
 
   return rows.map((r) => mapRowToLibraryItem(r.log, r.game));
+}
+
+/**
+ * Fetch the current user's log for a given game, or `null` if none.
+ * Used by `/games/[slug]` and its intercepted-modal counterpart — both pages
+ * need the same shape of data, so this helper keeps them from drifting.
+ */
+export async function getUserLogForGame(
+  gameId: number,
+  game: {
+    id: number; slug: string; title: string; coverUrl: string | null;
+    released: Date | null; genres: string[] | null; platforms: string[] | null;
+  },
+): Promise<LibraryItem | null> {
+  const user = await getCachedUser();
+  if (!user) return null;
+  const row = await db.query.logs.findFirst({
+    where: and(eq(schema.logs.userId, user.id), eq(schema.logs.gameId, gameId)),
+  });
+  return row ? mapRowToLibraryItem(row, game) : null;
 }
 
 const updateStatusInput = z.object({
@@ -195,12 +192,12 @@ export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: s
   return { ok: true };
 }
 
-export interface UserStats {
-  total: number;
-  byStatus: Record<LogStatus, number>;
-  averageRating: number | null;
-}
-
+/**
+ * Compute stats via a dedicated DB aggregation (status + rating columns only).
+ * Kept for future callers that need stats without first fetching the full
+ * library. Not used by `/home` after the audit — that path derives stats
+ * locally via `computeUserStatsFromLibrary` to avoid a second DB round-trip.
+ */
 export async function getUserStats(): Promise<UserStats | null> {
   const user = await getCachedUser();
   if (!user) return null;
@@ -243,6 +240,12 @@ export interface ActivityEvent {
   at: Date;
 }
 
+/**
+ * Recent activity from a dedicated DB query (LIMIT N). Kept for future
+ * callers that don't have a pre-loaded library — e.g. a future "friend's
+ * activity" feed. Not used by `/home` after the audit — that path derives
+ * activity locally via `computeRecentActivityFromLibrary`.
+ */
 export async function getRecentActivity(limit = 10): Promise<ActivityEvent[]> {
   const user = await getCachedUser();
   if (!user) return [];

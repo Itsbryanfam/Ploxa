@@ -1,46 +1,20 @@
-import { getUserLibrary, type UserStats } from "@/lib/logs/server-actions";
-import type { LibraryItem, ActivityEvent } from "@/lib/logs/server-actions";
+import { getUserLibrary, type ActivityEvent } from "@/lib/logs/server-actions";
+import { computeUserStatsFromLibrary, type LibraryItem } from "@/lib/logs/library-item";
 import { MascotGreeting } from "@/components/dashboard/mascot-greeting";
 import { StatusStacks } from "@/components/library/status-stacks";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
 import { EmptyState } from "@/components/ui/empty-state";
-import { copy } from "@/lib/mascot/copy";
-import type { GreetingContext } from "@/lib/mascot/copy";
-import type { LogStatus } from "@/lib/db/schema-types";
-
-/**
- * Compute UserStats from an already-fetched library array, avoiding a second
- * DB round-trip. getUserStats() in server-actions.ts is kept for future callers
- * that need stats without first fetching the full library.
- */
-function computeUserStatsFromLibrary(items: LibraryItem[]): UserStats {
-  const byStatus: Record<LogStatus, number> = {
-    backlog: 0, playing: 0, completed: 0, dropped: 0, on_hold: 0, wishlist: 0,
-  };
-  let ratingSum = 0;
-  let ratingCount = 0;
-  for (const item of items) {
-    byStatus[item.status]++;
-    if (item.rating != null) {
-      ratingSum += item.rating;
-      ratingCount++;
-    }
-  }
-  return {
-    total: items.length,
-    byStatus,
-    averageRating: ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
-  };
-}
+import { copy, type GreetingContext } from "@/lib/mascot/copy";
 
 /**
  * Derive the recent-activity feed from an already-fetched library array,
  * avoiding a second DB round-trip on /home. The first 10 items of library
- * (sorted desc by updatedAt) ARE the activity feed.
+ * (caller must pass a library sorted desc by updatedAt — `getUserLibrary({})`
+ * satisfies this) ARE the activity feed.
  *
- * getRecentActivity() in server-actions.ts is kept for callers that don't
- * already have the library pre-loaded (e.g. future profile-page activity).
+ * `getRecentActivity()` in server-actions.ts is the standalone DB version,
+ * kept for future callers that don't have a pre-loaded library.
  */
 function computeRecentActivityFromLibrary(items: LibraryItem[]): ActivityEvent[] {
   return items.slice(0, 10).map((item) => ({
