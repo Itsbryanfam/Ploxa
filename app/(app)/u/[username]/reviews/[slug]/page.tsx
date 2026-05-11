@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
@@ -6,6 +7,50 @@ import { ReviewCard } from "@/components/reviews/review-card";
 
 interface Props {
   params: Promise<{ username: string; slug: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { username, slug } = await params;
+  const profile = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.username, username),
+    columns: { userId: true, username: true },
+  });
+  if (!profile) return { title: "Review not found" };
+  const game = await db.query.games.findFirst({
+    where: eq(schema.games.slug, slug),
+    columns: { id: true, title: true },
+  });
+  if (!game) return { title: "Review not found" };
+  const review = await db.query.reviews.findFirst({
+    where: and(
+      eq(schema.reviews.userId, profile.userId),
+      eq(schema.reviews.gameId, game.id),
+      eq(schema.reviews.isPublic, true),
+      isNotNull(schema.reviews.publishedAt),
+    ),
+    columns: { id: true, body: true },
+  });
+  if (!review) return { title: "Review not found" };
+
+  const hook = (review.body ?? "").split("\n\n")[0] ?? "";
+  const description = hook.length > 180 ? `${hook.slice(0, 180).trimEnd()}…` : hook;
+  const title = `@${profile.username} on ${game.title}`;
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: [`/og/review/${review.id}`],
+      type: "article",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [`/og/review/${review.id}`],
+    },
+  };
 }
 
 export default async function CanonicalReviewPage({ params }: Props) {
