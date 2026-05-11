@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import { usePaletteStore } from "@/lib/palette/palette-store";
 import { PaletteInput } from "./palette-input";
 import { GameSearchResults } from "./game-search-results";
 import { QuickLogForm } from "./quick-log-form";
 
+/**
+ * Command palette — backdrop + card, opened via the global Zustand store.
+ *
+ * Animations are pure CSS (see .palette-backdrop / .palette-card in
+ * globals.css) so framer-motion isn't pulled into this chunk anymore.
+ * To preserve the original exit fade, we keep the chrome mounted while a
+ * close animation plays via the `closing` flag, then unmount.
+ */
 export function CommandPalette() {
   const isOpen = usePaletteStore((s) => s.isOpen);
   const view = usePaletteStore((s) => s.view);
@@ -15,6 +22,7 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   // SSR-safe portal guard: defer createPortal until after first client render.
   // The set-state-in-effect lint rule targets logic loops; this is the
@@ -22,61 +30,64 @@ export function CommandPalette() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
-  // Auto-focus on open. The 50ms delay lets Framer Motion attach the card
-  // to the DOM before we focus the input (especially needed on iOS Safari).
-  // The cleanup clears the pending timer if the palette closes mid-animation.
   useEffect(() => {
     if (isOpen) {
+      // Abort any in-flight close animation when the palette re-opens before
+      // the previous exit finished. setState-in-effect is intentional here:
+      // closing is timer-coordinated lifecycle state, not derivable from props.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setClosing(false);
+      // Auto-focus on open. The 50ms delay lets the card attach to the DOM
+      // before we focus the input (especially needed on iOS Safari).
       const id = setTimeout(() => inputRef.current?.focus(), 50);
       return () => clearTimeout(id);
     }
-    // Reset query when the palette closes. setState-in-effect is intentional —
-    // local input state should not survive across opens.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQuery("");
-  }, [isOpen]);
+    if (!mounted) return;
+    // isOpen flipped to false → play exit animation, then unmount and clear
+    // local input state. 160ms covers both keyframes' 0.12/0.15s durations.
+    setClosing(true);
+    const t = setTimeout(() => {
+      setClosing(false);
+      setQuery("");
+    }, 160);
+    return () => clearTimeout(t);
+  }, [isOpen, mounted]);
 
-  if (!mounted) return null;
+  if (!mounted || (!isOpen && !closing)) return null;
 
   return createPortal(
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            onClick={close}
-            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-          />
-          {/* Card */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: -4 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="fixed left-1/2 top-[15vh] z-50 w-[92vw] max-w-2xl -translate-x-1/2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] shadow-[var(--shadow-elev)]"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Game search"
-          >
-            <div className="flex items-center gap-3 border-b border-[var(--border-soft)] px-5 py-4">
-              <PaletteSearchIcon />
-              <PaletteInput ref={inputRef} value={query} onChange={setQuery} />
-            </div>
-            <div className="max-h-[60vh] overflow-y-auto">
-              {view === "search" ? (
-                <GameSearchResults query={query} />
-              ) : (
-                <QuickLogForm />
-              )}
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>,
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={close}
+        className={
+          "palette-backdrop fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" +
+          (closing ? " is-closing" : "")
+        }
+      />
+      {/* Card */}
+      <div
+        className={
+          "palette-card fixed left-1/2 top-[15vh] z-50 w-[92vw] max-w-2xl -translate-x-1/2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] shadow-[var(--shadow-elev)]" +
+          (closing ? " is-closing" : "")
+        }
+        role="dialog"
+        aria-modal="true"
+        aria-label="Game search"
+      >
+        <div className="flex items-center gap-3 border-b border-[var(--border-soft)] px-5 py-4">
+          <PaletteSearchIcon />
+          <PaletteInput ref={inputRef} value={query} onChange={setQuery} />
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto">
+          {view === "search" ? (
+            <GameSearchResults query={query} />
+          ) : (
+            <QuickLogForm />
+          )}
+        </div>
+      </div>
+    </>,
     document.body,
   );
 }
@@ -89,4 +100,3 @@ function PaletteSearchIcon() {
     </svg>
   );
 }
-

@@ -191,3 +191,120 @@ body {
   content-visibility: auto;
   contain-intrinsic-size: 0 72px;
 }
+
+/* ─────────────────────────────────────────────────────────────
+ * Command palette — pure CSS open/close.
+ * Replaces framer-motion AnimatePresence so the palette chunk is
+ * Framer-free and the running animation stays on the compositor.
+ * The closing flag is toggled by command-palette.tsx for ~160ms so
+ * the exit keyframes play before unmount.
+ * ───────────────────────────────────────────────────────────── */
+@keyframes palette-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes palette-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes palette-card-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.95); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1);    }
+}
+@keyframes palette-card-out {
+  from { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1);    }
+  to   { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(0.97); }
+}
+.palette-backdrop            { animation: palette-fade-in 0.12s ease-out; }
+.palette-backdrop.is-closing { animation: palette-fade-out 0.12s ease-out forwards; }
+.palette-card                { animation: palette-card-in 0.15s ease-out; }
+.palette-card.is-closing     { animation: palette-card-out 0.12s ease-out forwards; }
+
+/* ─────────────────────────────────────────────────────────────
+ * Mascot — `data-mood` selectors drive each mood's idle loop on the
+ * compositor. Replaces framer-motion `variants` + `repeat: Infinity`,
+ * which was scheduling JS frames forever even on otherwise-idle pages.
+ * Speech-bubble entry uses @starting-style (Baseline 2024) so the
+ * "appear" animation is browser-native; in older browsers the bubble
+ * just snaps in (graceful degradation).
+ * ───────────────────────────────────────────────────────────── */
+@keyframes mascot-idle {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+@keyframes mascot-waving {
+  0%, 100% { transform: rotate(0); }
+  25%      { transform: rotate(-8deg); }
+  75%      { transform: rotate(8deg); }
+}
+@keyframes mascot-thinking {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+@keyframes mascot-celebrating {
+  0%   { transform: translateY(0)   rotate(0); }
+  25%  { transform: translateY(-16px) rotate(-10deg); }
+  50%  { transform: translateY(0)   rotate(10deg); }
+  75%  { transform: translateY(-8px)  rotate(-5deg); }
+  100% { transform: translateY(0)   rotate(0); }
+}
+@keyframes mascot-confused {
+  0%, 100% { transform: rotate(0); }
+  33%      { transform: rotate(5deg); }
+  66%      { transform: rotate(-5deg); }
+}
+@keyframes mascot-pointing {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(4px); }
+}
+@keyframes mascot-asleep {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(1px); }
+}
+
+.mascot-root[data-mood="idle"]        .mascot-sprite { animation: mascot-idle        3s   ease-in-out infinite; }
+.mascot-root[data-mood="waving"]      .mascot-sprite { animation: mascot-waving      1.5s ease-in-out infinite; }
+.mascot-root[data-mood="thinking"]    .mascot-sprite { animation: mascot-thinking    1.2s ease-in-out infinite; }
+.mascot-root[data-mood="celebrating"] .mascot-sprite { animation: mascot-celebrating 0.8s ease-in-out infinite; }
+.mascot-root[data-mood="confused"]    .mascot-sprite { animation: mascot-confused    1.5s ease-in-out infinite; }
+.mascot-root[data-mood="pointing"]    .mascot-sprite { animation: mascot-pointing    2s   ease-in-out infinite; }
+.mascot-root[data-mood="asleep"]      .mascot-sprite { animation: mascot-asleep      4s   ease-in-out infinite; filter: brightness(0.7) saturate(0.5); }
+
+/* Speech bubble — entry animation. Plain @keyframes so it works in every
+   browser without depending on @starting-style (still spotty in some
+   Chromium embeds even where it's nominally supported). `forwards` pins
+   the bubble at the end state once the 0.2s animation completes. */
+.mascot-bubble {
+  animation: mascot-bubble-in 0.2s ease forwards;
+}
+@keyframes mascot-bubble-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* Thinking dots — staggered bounce, three children share one keyframe. */
+.mascot-thinking-dots .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--accent);
+  opacity: 0.4;
+  animation: mascot-thinking-dot 0.9s ease-in-out infinite;
+}
+.mascot-thinking-dots .dot:nth-child(2) { animation-delay: 0.15s; }
+.mascot-thinking-dots .dot:nth-child(3) { animation-delay: 0.30s; }
+@keyframes mascot-thinking-dot {
+  0%, 100% { transform: translateY(0);    opacity: 0.4; }
+  50%      { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Honor the reduced-motion media query — palette + mascot both. */
+@media (prefers-reduced-motion: reduce) {
+  .palette-backdrop,
+  .palette-backdrop.is-closing,
+  .palette-card,
+  .palette-card.is-closing { animation-duration: 0.01s; }
+  .mascot-root .mascot-sprite { animation: none; }
+  .mascot-thinking-dots .dot  { animation: none; opacity: 0.7; }
+  .mascot-bubble              { animation: none; }
+}
