@@ -72,7 +72,15 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
         try {
           await incrementProviderDaily(provider.name);
           await incrementProviderMinute(provider.name);
-          const u = await usage;
+          // Usage promise may reject if the provider errors mid-stream. We
+          // still want a telemetry row for the call so the cost dashboard
+          // sees it happened — fall back to zero tokens in that case.
+          let u: { inputTokens: number; outputTokens: number };
+          try {
+            u = await usage;
+          } catch {
+            u = { inputTokens: 0, outputTokens: 0 };
+          }
           await recordCall({
             userId: args.userId,
             feature: args.feature,
@@ -91,8 +99,10 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
       return { textStream: wrapped, providerUsed: provider.name };
     } catch (err) {
       attempts.push({ provider: provider.name, error: err });
-      // Best-effort failure telemetry — don't await it
-      void recordCall({
+      // Fire-and-forget failure telemetry with explicit rejection logger
+      // (recordCall itself is best-effort but `.catch()` here is resilient
+      // to future changes that might let it reject).
+      recordCall({
         userId: args.userId,
         feature: args.feature,
         provider: provider.name,
@@ -102,7 +112,9 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
         latencyMs: Date.now() - start,
         success: false,
         errorMessage: err instanceof Error ? err.message : String(err),
-      });
+      }).catch((telemetryErr) =>
+        console.error("router failure telemetry write failed", telemetryErr),
+      );
       continue;
     }
   }
