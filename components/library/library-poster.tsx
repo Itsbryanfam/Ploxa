@@ -26,7 +26,7 @@ export const LibraryPoster = memo(function LibraryPoster({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
-      className="group relative aspect-[2/3] w-full overflow-hidden rounded-md bg-[var(--bg-elev)] border border-[var(--border-soft)] hover:border-[var(--accent-soft)] transition-colors"
+      className="lib-item-cv group relative aspect-[2/3] w-full overflow-hidden rounded-md bg-[var(--bg-elev)] border border-[var(--border-soft)] hover:border-[var(--accent-soft)] transition-colors"
     >
       <Link href={`/games/${item.game.slug}`} className="block w-full h-full">
         {item.game.coverUrl ? (

@@ -34,6 +34,7 @@ export function LibraryList({ items, filter }: Props) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="lib-item-cv"
           >
             <Link
               href={`/games/${item.game.slug}`}

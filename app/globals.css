@@ -170,3 +170,14 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-soft);
 }
+
+/* Library item viewport-clipped rendering.
+ * Skip layout/paint for off-viewport posters and list rows. DOM stays in
+ * place so Ctrl+F, screen readers, and scroll anchoring all keep working.
+ * 240px is a reservation height tuned for the shelf's 2:3 aspect posters;
+ * works as a minimum hint for list rows too.
+ */
+.lib-item-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 240px;
+}
