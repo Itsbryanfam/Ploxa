@@ -130,6 +130,19 @@ export function ReviewInterview({ interviewId, gameSlug, initialQ1 }: Props) {
       setMood("confused", { message: result.error });
       return;
     }
+    // Drain the draft stream so the server-side IIFE finishes writing the
+    // final body to reviews.body before we navigate. Otherwise the editor
+    // route would load with an empty body. We ignore intermediate chunks
+    // (the editor renders the final body from the DB on navigation).
+    try {
+      await readAccumulatedStream(result.stream, () => {
+        /* no UI update — mascot 'thinking' caption is enough */
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Drafting failed");
+      setMood("confused", { message: "Let me catch my breath. Try again?" });
+      return;
+    }
     window.localStorage.removeItem(`phase2-interview:${interviewId}`);
     router.push(`/games/${gameSlug}/review?reviewId=${result.reviewId}`);
   }
