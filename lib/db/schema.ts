@@ -1,6 +1,7 @@
-import { sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import {
   boolean,
+  index,
   integer,
   jsonb,
   numeric,
@@ -153,6 +154,8 @@ export const logs = pgTable(
   },
   (table) => ({
     userGameIdx: uniqueIndex("logs_user_game_replay_uniq").on(table.userId, table.gameId, table.isReplay),
+    userUpdatedAtIdx: index("logs_user_updated_at_idx").on(table.userId, desc(table.updatedAt)),
+    userStatusUpdatedIdx: index("logs_user_status_updated_at_idx").on(table.userId, table.status, desc(table.updatedAt)),
   }),
 );
 

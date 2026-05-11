@@ -15,6 +15,13 @@
       "when": 1778444664478,
       "tag": "0001_famous_songbird",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778482461107,
+      "tag": "0002_fancy_shard",
+      "breakpoints": true
     }
   ]
 }
