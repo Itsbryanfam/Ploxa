@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
@@ -81,6 +82,7 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
     return { ok: false, error: "Insert failed. Please try again." };
   }
 
+  revalidatePath("/", "layout");
   return { ok: true, logId: inserted.id, gameSlug: game.slug };
 }
 
@@ -169,6 +171,7 @@ export async function updateLogStatus(input: unknown): Promise<{ ok: boolean; er
     .returning({ id: schema.logs.id });
 
   if (result.length === 0) return { ok: false, error: "Log not found" };
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -188,6 +191,7 @@ export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: s
     .returning({ id: schema.logs.id });
 
   if (result.length === 0) return { ok: false, error: "Log not found" };
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -308,5 +312,6 @@ export async function updateLogFull(input: unknown): Promise<{ ok: boolean; erro
     .returning({ id: schema.logs.id });
 
   if (result.length === 0) return { ok: false, error: "Log not found" };
+  revalidatePath("/", "layout");
   return { ok: true };
 }
