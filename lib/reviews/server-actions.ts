@@ -23,6 +23,7 @@ import {
   openerQuestion,
   followUpPrompt,
   draftPrompt,
+  regenerateSectionPrompt,
   type SectionTarget,
   type GameContext,
 } from "./prompts";
@@ -227,9 +228,6 @@ export async function submitAnswer(input: unknown): Promise<SubmitAnswerResult> 
   return { ok: true, ready: false, stream: streamable.value };
 }
 
-// Future tasks (T9/T10) will append: regenerateSection,
-// publishReview, updateReview, deleteReview, likeReview, unlikeReview.
-
 // ---------------------------------------------------------------------------
 // generateDraft
 // ---------------------------------------------------------------------------
@@ -356,4 +354,93 @@ export async function generateDraft(input: unknown): Promise<GenerateDraftResult
   })();
 
   return { ok: true, reviewId, stream: streamable.value };
+}
+
+// ---------------------------------------------------------------------------
+// regenerateSection
+// ---------------------------------------------------------------------------
+
+const regenerateSectionInput = z.object({
+  reviewId: z.string().uuid(),
+  sectionIndex: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+});
+
+type RegenerateSectionResult =
+  | { ok: true; stream: ReadableStream<string> }
+  | { ok: false; error: string };
+
+export async function regenerateSection(input: unknown): Promise<RegenerateSectionResult> {
+  const parsed = regenerateSectionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const review = await db.query.reviews.findFirst({
+    where: and(
+      eq(schema.reviews.id, parsed.data.reviewId),
+      eq(schema.reviews.userId, user.id),
+    ),
+    columns: { id: true, body: true, gameId: true },
+  });
+  if (!review) return { ok: false, error: "Review not found" };
+
+  const game = await db.query.games.findFirst({
+    where: eq(schema.games.id, review.gameId),
+    columns: { title: true, released: true },
+  });
+  if (!game) return { ok: false, error: "Game not found" };
+
+  const questions = await db.query.reviewQuestions.findMany({
+    where: eq(schema.reviewQuestions.reviewId, review.id),
+    orderBy: (q, { asc }) => asc(q.position),
+    columns: { position: true, answer: true },
+  });
+  // Build a 4-length answers array indexed 0..3
+  const answers: string[] = [0, 1, 2, 3].map(
+    (i) => questions.find((q) => q.position === i + 1)?.answer ?? "",
+  );
+
+  const prompt = regenerateSectionPrompt({
+    game: { title: game.title, releasedYear: game.released?.getFullYear() },
+    answers,
+    sectionIndex: parsed.data.sectionIndex,
+  });
+
+  const streamable = createStreamableValue<string>("");
+  void (async () => {
+    try {
+      const { textStream } = await generate({
+        prompt,
+        systemPrompt: SYSTEM_PROMPT,
+        feature: "review_draft",
+        userId: user.id,
+        maxTokens: 250,
+        temperature: 0.7,
+      });
+      let acc = "";
+      for await (const chunk of textStream) {
+        acc += chunk;
+        streamable.update(acc);
+      }
+      // Split current body on \n\n, pad to 4, replace target, rejoin.
+      const sections = (review.body ?? "").split("\n\n");
+      while (sections.length < 4) sections.push("");
+      sections[parsed.data.sectionIndex] = acc.trim();
+      const newBody = sections.slice(0, 4).join("\n\n");
+      await db
+        .update(schema.reviews)
+        .set({ body: newBody, updatedAt: new Date() })
+        .where(eq(schema.reviews.id, review.id));
+      streamable.done(acc);
+    } catch (err) {
+      const message =
+        err instanceof AIProvidersExhaustedError
+          ? "Let me catch my breath. Try again?"
+          : "Couldn't rewrite that one. Try again?";
+      streamable.error(new Error(message));
+    }
+  })();
+
+  return { ok: true, stream: streamable.value };
 }
