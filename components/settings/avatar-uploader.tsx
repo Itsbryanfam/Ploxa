@@ -3,14 +3,6 @@
 import { useCallback, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Area } from "react-easy-crop";
-
-// The cropper is only needed when the user picks a non-GIF file (the dialog
-// opens at that point). Lazy-loading drops ~45KB gzip from the initial
-// /settings bundle. ssr: false because canvas/file APIs are browser-only.
-const Cropper = dynamic(() => import("react-easy-crop"), {
-  ssr: false,
-  loading: () => null,
-}) as typeof import("react-easy-crop").default;
 import {
   Dialog,
   DialogContent,
@@ -19,6 +11,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+
+// The cropper is only needed when the user picks a non-GIF file (the dialog
+// opens at that point). Lazy-loading drops ~45KB gzip from the initial
+// /settings bundle. ssr: false because canvas/file APIs are browser-only.
+const Cropper = dynamic(() => import("react-easy-crop"), {
+  ssr: false,
+  loading: () => null,
+}) as typeof import("react-easy-crop").default;
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
