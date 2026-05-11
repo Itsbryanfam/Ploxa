@@ -32,6 +32,7 @@ export async function streamOpenAICompat(
     maxOutputTokens: maxTokens,
     temperature,
   });
+  suppressUnhandledRejections(result);
   return {
     textStream: result.textStream,
     usage: Promise.resolve(result.usage).then((u) => ({
@@ -39,4 +40,28 @@ export async function streamOpenAICompat(
       outputTokens: u.outputTokens ?? 0,
     })),
   };
+}
+
+/**
+ * The Vercel AI SDK's streamText() returns a result object with several
+ * promise-shaped properties (usage, text, finishReason, providerMetadata,
+ * response, …). When the underlying API errors mid-stream, each of those
+ * promises rejects. If the consumer only reads textStream/usage and the
+ * router abandons the provider before awaiting them, the unawaited
+ * rejections escape as `unhandledRejection: AI_NoOutputGeneratedError`.
+ *
+ * This helper pre-attaches a no-op catch handler to every thenable on the
+ * result so rejections are always considered handled. Awaiting any of
+ * them downstream still sees the rejection as expected (attaching .catch
+ * doesn't consume the rejection from later .then chains).
+ */
+export function suppressUnhandledRejections(result: object): void {
+  for (const value of Object.values(result)) {
+    if (value && typeof (value as { then?: unknown }).then === "function") {
+      (value as PromiseLike<unknown>).then(
+        () => undefined,
+        () => undefined,
+      );
+    }
+  }
 }

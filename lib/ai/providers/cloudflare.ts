@@ -4,9 +4,8 @@ import { streamOpenAICompat } from "./_openai-compat";
 
 // Cloudflare Workers AI exposes an OpenAI-compatible endpoint per account:
 // https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1
-// gpt-oss-120b matches the model family used on Cerebras + Groq so prompts
-// behave consistently across all three free-tier providers.
-const MODEL = "@cf/openai/gpt-oss-120b";
+// Verified in Cloudflare's text-generation model catalog.
+const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 export const cloudflare: Provider = {
   name: "cloudflare",

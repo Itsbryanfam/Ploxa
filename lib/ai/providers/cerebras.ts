@@ -2,11 +2,12 @@ import "server-only";
 import type { Provider } from "./types";
 import { streamOpenAICompat } from "./_openai-compat";
 
-// Cerebras account doesn't expose Llama 3.3 70B; gpt-oss-120b is the
-// strongest model in our catalog and matches the model family we use on
-// Groq + Cloudflare so prompts behave consistently across all three
-// free-tier providers.
-const MODEL = "gpt-oss-120b";
+// Verified against /v1/chat/completions on our key: llama3.1-8b is the only
+// model that consistently returns 200. gpt-oss-120b and zai-glm-4.7 are
+// listed by /v1/models but return 404 on inference for this account.
+// qwen-3-235b is queue-gated. Smaller model but Cerebras's speed advantage
+// still makes it a useful tier-1.
+const MODEL = "llama3.1-8b";
 
 export const cerebras: Provider = {
   name: "cerebras",

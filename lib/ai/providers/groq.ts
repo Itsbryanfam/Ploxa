@@ -2,11 +2,12 @@ import "server-only";
 import { createGroq } from "@ai-sdk/groq";
 import { streamText } from "ai";
 import type { Provider } from "./types";
+import { suppressUnhandledRejections } from "./_openai-compat";
 
-// Common-denominator model across all three free tiers (Cerebras has
-// gpt-oss-120b, Groq has openai/gpt-oss-120b, Cloudflare has
-// @cf/openai/gpt-oss-120b). Same prompts behave the same way everywhere.
-const MODEL = "openai/gpt-oss-120b";
+// Verified in Groq's /v1/models. Llama 3.3 70B is too large to share with
+// Cerebras (which is gated to llama3.1-8b on our key) but each provider
+// uses what its account supports — prompts are model-agnostic enough.
+const MODEL = "llama-3.3-70b-versatile";
 
 export const groq: Provider = {
   name: "groq",
@@ -21,6 +22,7 @@ export const groq: Provider = {
       maxOutputTokens: maxTokens,
       temperature,
     });
+    suppressUnhandledRejections(result);
     return {
       textStream: result.textStream,
       usage: Promise.resolve(result.usage).then((u) => ({
