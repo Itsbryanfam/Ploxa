@@ -1,5 +1,5 @@
-import { getUserLibrary, getRecentActivity, type UserStats } from "@/lib/logs/server-actions";
-import type { LibraryItem } from "@/lib/logs/server-actions";
+import { getUserLibrary, type UserStats } from "@/lib/logs/server-actions";
+import type { LibraryItem, ActivityEvent } from "@/lib/logs/server-actions";
 import { MascotGreeting } from "@/components/dashboard/mascot-greeting";
 import { StatusStacks } from "@/components/library/status-stacks";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
@@ -34,12 +34,30 @@ function computeUserStatsFromLibrary(items: LibraryItem[]): UserStats {
   };
 }
 
+/**
+ * Derive the recent-activity feed from an already-fetched library array,
+ * avoiding a second DB round-trip on /home. The first 10 items of library
+ * (sorted desc by updatedAt) ARE the activity feed.
+ *
+ * getRecentActivity() in server-actions.ts is kept for callers that don't
+ * already have the library pre-loaded (e.g. future profile-page activity).
+ */
+function computeRecentActivityFromLibrary(items: LibraryItem[]): ActivityEvent[] {
+  return items.slice(0, 10).map((item) => ({
+    type: "logged" as const,
+    logId: item.logId,
+    status: item.status,
+    rating: item.rating,
+    gameTitle: item.game.title,
+    gameSlug: item.game.slug,
+    at: item.updatedAt,
+  }));
+}
+
 export async function CockpitDashboard() {
-  const [library, activity] = await Promise.all([
-    getUserLibrary({}),
-    getRecentActivity(10),
-  ]);
+  const library = await getUserLibrary({});
   const stats = computeUserStatsFromLibrary(library);
+  const activity = computeRecentActivityFromLibrary(library);
 
   // Build greeting context — Date.now() is safe in an async server component;
   // the purity rule is a false positive here (no re-render lifecycle on server).
