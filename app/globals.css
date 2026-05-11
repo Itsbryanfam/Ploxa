@@ -172,12 +172,22 @@ body {
 }
 
 /* Library item viewport-clipped rendering.
- * Skip layout/paint for off-viewport posters and list rows. DOM stays in
- * place so Ctrl+F, screen readers, and scroll anchoring all keep working.
- * 240px is a reservation height tuned for the shelf's 2:3 aspect posters;
- * works as a minimum hint for list rows too.
+ * Skip layout/paint for off-viewport items. DOM stays in place so Ctrl+F,
+ * screen readers, and scroll anchoring all keep working.
+ *
+ * Two variants because the shelf and list views have very different row
+ * heights — sharing one intrinsic-size hint would cause scrollbar jump on
+ * whichever view doesn't match.
+ *
+ * .lib-item-cv  — shelf posters (~210px actual; 240px gives 14% headroom)
+ * .lib-row-cv   — list rows    (~64px actual;  72px gives a small buffer)
  */
 .lib-item-cv {
   content-visibility: auto;
   contain-intrinsic-size: 0 240px;
+}
+
+.lib-row-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 72px;
 }
