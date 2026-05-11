@@ -34,8 +34,8 @@ export function LibraryShelf({ items, filter }: Props) {
       }}
     >
       <AnimatePresence mode="popLayout">
-        {items.map((item) => (
-          <LibraryPoster key={item.logId} item={item} />
+        {items.map((item, i) => (
+          <LibraryPoster key={item.logId} item={item} priority={i === 0} />
         ))}
       </AnimatePresence>
     </motion.div>

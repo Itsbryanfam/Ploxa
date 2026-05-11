@@ -26,6 +26,8 @@ export function StatusStacks({ items }: { items: LibraryItem[] }) {
     byStatus[s] = byStatus[s].slice(0, 12);
   }
 
+  const firstStackWithItems = SHELF_ORDER.find(({ status }) => byStatus[status].length > 0)?.status;
+
   return (
     <div className="space-y-8">
       {SHELF_ORDER.map(({ status, label }) => {
@@ -47,8 +49,12 @@ export function StatusStacks({ items }: { items: LibraryItem[] }) {
                 className="flex gap-3 overflow-x-auto pb-2"
                 style={{ scrollSnapType: "x mandatory" }}
               >
-                {shelfItems.map((item) => (
-                  <ShelfItem key={item.logId} item={item} />
+                {shelfItems.map((item, i) => (
+                  <ShelfItem
+                    key={item.logId}
+                    item={item}
+                    priority={status === firstStackWithItems && i === 0}
+                  />
                 ))}
               </div>
             )}
@@ -59,7 +65,7 @@ export function StatusStacks({ items }: { items: LibraryItem[] }) {
   );
 }
 
-function ShelfItem({ item }: { item: LibraryItem }) {
+function ShelfItem({ item, priority = false }: { item: LibraryItem; priority?: boolean }) {
   return (
     <Link
       href={`/games/${item.game.slug}`}
@@ -74,6 +80,7 @@ function ShelfItem({ item }: { item: LibraryItem }) {
             fill
             sizes="140px"
             className="object-cover"
+            priority={priority}
           />
         )}
       </div>

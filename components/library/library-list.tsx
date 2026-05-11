@@ -25,7 +25,7 @@ export function LibraryList({ items, filter }: Props) {
   return (
     <ul className="divide-y divide-[var(--border-soft)] rounded-lg border border-[var(--border-soft)] bg-[var(--bg-card)]">
       <AnimatePresence mode="popLayout">
-        {items.map((item) => (
+        {items.map((item, i) => (
           <motion.li
             key={item.logId}
             layout
@@ -47,6 +47,7 @@ export function LibraryList({ items, filter }: Props) {
                     fill
                     sizes="48px"
                     className="object-cover"
+                    priority={i === 0}
                   />
                 )}
               </div>

@@ -9,7 +9,13 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { HeartFull } from "@/components/pixel";
 import { PosterStatusMenu } from "./poster-status-menu";
 
-export const LibraryPoster = memo(function LibraryPoster({ item }: { item: LibraryItem }) {
+export const LibraryPoster = memo(function LibraryPoster({
+  item,
+  priority = false,
+}: {
+  item: LibraryItem;
+  priority?: boolean;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -30,6 +36,7 @@ export const LibraryPoster = memo(function LibraryPoster({ item }: { item: Libra
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 140px"
             className="object-cover"
+            priority={priority}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-xs text-[var(--text-faint)] p-2 text-center">
