@@ -89,12 +89,20 @@ export function GameDetail({ game, screenshots, log, ownReview }: Props) {
           <p className="text-sm leading-relaxed text-[var(--text)] line-clamp-4">
             {ownReview.body.split("\n\n")[0]}
           </p>
-          <Link
+          {/*
+            Plain <a> instead of <Link>. When GameDetail renders inside
+            the intercepted-route slide-over panel, a soft <Link>
+            navigation leaves the parallel @modal slot mounted — a known
+            Next.js parallel-routes quirk where default.tsx doesn't fire
+            for soft transitions out of an intercepted route. A hard
+            navigation guarantees the modal tears down cleanly.
+          */}
+          <a
             href={`/u/me/reviews/${game.slug}`}
             className="text-sm text-[var(--accent)] hover:underline"
           >
             Read full →
-          </Link>
+          </a>
         </div>
       ) : log ? (
         <Link
