@@ -57,21 +57,9 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
     return { ok: false, error: "Couldn't load that game. Please try again." };
   }
 
-  // Check for existing non-replay log on this game.
-  const existing = await db.query.logs.findFirst({
-    where: and(
-      eq(schema.logs.userId, user.id),
-      eq(schema.logs.gameId, game.id),
-      eq(schema.logs.isReplay, false),
-    ),
-  });
-  if (existing) {
-    return { ok: false, error: "Already logged. Edit the existing log instead." };
-  }
-
-  // Insert. Wrap in try/catch so the (userId, gameId, isReplay) unique-constraint
-  // race (between findFirst above and this insert) maps to the same friendly
-  // "Already logged" message instead of bubbling as an unhandled throw.
+  // Insert. The (userId, gameId, isReplay) unique index enforces dedup.
+  // SQLSTATE 23505 (unique violation) maps to the friendly "Already logged"
+  // message; no pre-check SELECT is needed.
   let inserted: { id: string } | undefined;
   try {
     [inserted] = await db
