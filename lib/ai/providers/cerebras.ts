@@ -2,7 +2,11 @@ import "server-only";
 import type { Provider } from "./types";
 import { streamOpenAICompat } from "./_openai-compat";
 
-const MODEL = "llama-3.3-70b";
+// Cerebras account doesn't expose Llama 3.3 70B; gpt-oss-120b is the
+// strongest model in our catalog and matches the model family we use on
+// Groq + Cloudflare so prompts behave consistently across all three
+// free-tier providers.
+const MODEL = "gpt-oss-120b";
 
 export const cerebras: Provider = {
   name: "cerebras",

@@ -3,7 +3,10 @@ import { createGroq } from "@ai-sdk/groq";
 import { streamText } from "ai";
 import type { Provider } from "./types";
 
-const MODEL = "llama-3.3-70b-versatile";
+// Common-denominator model across all three free tiers (Cerebras has
+// gpt-oss-120b, Groq has openai/gpt-oss-120b, Cloudflare has
+// @cf/openai/gpt-oss-120b). Same prompts behave the same way everywhere.
+const MODEL = "openai/gpt-oss-120b";
 
 export const groq: Provider = {
   name: "groq",

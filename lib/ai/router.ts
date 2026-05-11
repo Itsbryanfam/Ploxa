@@ -66,9 +66,26 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
         temperature: args.temperature,
       });
 
+      // Peek the first chunk eagerly. The Vercel AI SDK's streamText()
+      // call returns synchronously (no API request yet); the real fetch
+      // happens lazily when textStream is read. A 4xx/5xx response from
+      // the provider surfaces here as a throw — *not* on the original
+      // streamText() call. By awaiting the first iterator step inside
+      // this try/catch, mid-stream failures correctly fall through to
+      // the next provider instead of escaping as unhandled rejections.
+      const iter = textStream[Symbol.asyncIterator]();
+      const first = await iter.next();
+      if (first.done) {
+        throw new Error(`${provider.name} returned an empty stream`);
+      }
+
+      // Provider committed. Build a combined stream that yields the
+      // already-fetched first chunk plus the remainder of the iterator.
+      const committedStream = combineStream(first.value, iter);
+
       // Wrap the stream so we can write telemetry on completion without
       // forcing the caller to await usage themselves.
-      const wrapped = wrapStream(textStream, async () => {
+      const wrapped = wrapStream(committedStream, async () => {
         try {
           await incrementProviderDaily(provider.name);
           await incrementProviderMinute(provider.name);
@@ -139,5 +156,22 @@ async function* wrapStream(
     }
   } finally {
     await onComplete();
+  }
+}
+
+/**
+ * Prepend a previously-peeked chunk back onto an iterator and re-expose
+ * it as an AsyncIterable. Used by the router to commit to a provider
+ * after eagerly verifying its first chunk arrived without error.
+ */
+async function* combineStream(
+  firstChunk: string,
+  rest: AsyncIterator<string>,
+): AsyncIterable<string> {
+  yield firstChunk;
+  while (true) {
+    const next = await rest.next();
+    if (next.done) return;
+    yield next.value;
   }
 }
