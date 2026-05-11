@@ -16,11 +16,13 @@ import {
   getSession,
   appendAnswer,
   appendQuestion,
+  destroySession,
 } from "./session";
 import {
   SYSTEM_PROMPT,
   openerQuestion,
   followUpPrompt,
+  draftPrompt,
   type SectionTarget,
   type GameContext,
 } from "./prompts";
@@ -225,9 +227,133 @@ export async function submitAnswer(input: unknown): Promise<SubmitAnswerResult> 
   return { ok: true, ready: false, stream: streamable.value };
 }
 
-// Future tasks (T8/T9/T10) will append: generateDraft, regenerateSection,
+// Future tasks (T9/T10) will append: regenerateSection,
 // publishReview, updateReview, deleteReview, likeReview, unlikeReview.
 
-// Re-export destroySession for T8's generateDraft so it can either import
-// from here or directly from session.ts.
-export { destroySession as _destroyInterviewSession } from "./session";
+// ---------------------------------------------------------------------------
+// generateDraft
+// ---------------------------------------------------------------------------
+
+const generateDraftInput = z.object({ interviewId: z.string().uuid() });
+
+type GenerateDraftResult =
+  | { ok: true; reviewId: string; stream: ReadableStream<string> }
+  | { ok: false; error: string; existingReviewId?: string };
+
+export async function generateDraft(input: unknown): Promise<GenerateDraftResult> {
+  const parsed = generateDraftInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const session = await getSession(parsed.data.interviewId);
+  if (!session || session.userId !== user.id) {
+    return { ok: false, error: "Session expired" };
+  }
+  if (session.answers.length === 0) {
+    return { ok: false, error: "No answers to draft from" };
+  }
+
+  // One-per-game cardinality enforcement (app-side; no DB unique index).
+  const existing = await db.query.reviews.findFirst({
+    where: and(
+      eq(schema.reviews.userId, user.id),
+      eq(schema.reviews.gameId, session.gameId),
+    ),
+    columns: { id: true },
+  });
+  if (existing) {
+    return { ok: false, error: "You've already reviewed this game", existingReviewId: existing.id };
+  }
+
+  const game = await db.query.games.findFirst({
+    where: eq(schema.games.id, session.gameId),
+    columns: { title: true, genres: true, themes: true, released: true, slug: true },
+  });
+  if (!game) return { ok: false, error: "Game not found" };
+
+  // Insert the empty draft row up front so the client can navigate to
+  // /games/{slug}/review?reviewId={id} and start rendering streamed sections.
+  const [inserted] = await db
+    .insert(schema.reviews)
+    .values({
+      userId: user.id,
+      gameId: session.gameId,
+      logId: session.logId,
+      body: "",
+      isAiAssisted: true,
+      isPublic: true,
+    })
+    .returning({ id: schema.reviews.id });
+  if (!inserted) return { ok: false, error: "Could not create draft" };
+  const reviewId = inserted.id;
+
+  // Insert 4 review_questions rows. Padding both arrays with empty strings
+  // for Skip-the-rest scenarios so position is preserved and questions[i]
+  // is paired with answers[i].
+  const paddedQuestions: string[] = [
+    session.questions[0] ?? "",
+    session.questions[1] ?? "",
+    session.questions[2] ?? "",
+    session.questions[3] ?? "",
+  ];
+  const paddedAnswers: string[] = [
+    session.answers[0] ?? "",
+    session.answers[1] ?? "",
+    session.answers[2] ?? "",
+    session.answers[3] ?? "",
+  ];
+  await db.insert(schema.reviewQuestions).values(
+    paddedAnswers.map((answer, idx) => ({
+      reviewId,
+      position: idx + 1,
+      question: paddedQuestions[idx] || `Turn ${idx + 1}`,
+      answer,
+    })),
+  );
+
+  const prompt = draftPrompt({
+    game: {
+      title: game.title,
+      genres: game.genres,
+      themes: game.themes,
+      releasedYear: game.released?.getFullYear(),
+    },
+    answers: paddedAnswers.filter((a) => a.length > 0),
+  });
+
+  const streamable = createStreamableValue<string>("");
+  void (async () => {
+    try {
+      const { textStream } = await generate({
+        prompt,
+        systemPrompt: SYSTEM_PROMPT,
+        feature: "review_draft",
+        userId: user.id,
+        maxTokens: 700,
+        temperature: 0.7,
+      });
+      let acc = "";
+      for await (const chunk of textStream) {
+        acc += chunk;
+        streamable.update(acc);
+      }
+      // Persist the final body
+      await db
+        .update(schema.reviews)
+        .set({ body: acc, updatedAt: new Date() })
+        .where(eq(schema.reviews.id, reviewId));
+      await destroySession(parsed.data.interviewId);
+      streamable.done(acc);
+    } catch (err) {
+      const message =
+        err instanceof AIProvidersExhaustedError
+          ? "Let me catch my breath — your draft will be saved. Try again?"
+          : "Something glitched while drafting. Try again?";
+      streamable.error(new Error(message));
+    }
+  })();
+
+  return { ok: true, reviewId, stream: streamable.value };
+}
