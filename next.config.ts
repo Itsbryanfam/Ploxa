@@ -8,6 +8,24 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "media.rawg.io" }],
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
+  },
+  compiler: {
+    removeConsole: { exclude: ["error", "warn"] },
+  },
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "framer-motion",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-slot",
+    ],
+    staleTimes: {
+      dynamic: 30,
+      static: 180,
+    },
   },
 };
 
