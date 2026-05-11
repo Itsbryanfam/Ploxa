@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getProfileByUsername } from "@/lib/profile/server-actions";
 import { LibraryShelf } from "@/components/library/library-shelf";
@@ -52,12 +52,17 @@ export default async function ProfilePage({
     })
     .from(schema.logs)
     .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
-    .where(eq(schema.logs.userId, profile.userId))
+    .where(
+      and(
+        eq(schema.logs.userId, profile.userId),
+        isOwn ? undefined : eq(schema.logs.isPrivate, false),
+      ),
+    )
     .orderBy(desc(schema.logs.updatedAt));
 
-  const items: LibraryItem[] = rows
-    .filter((r) => isOwn || !r.log.isPrivate)
-    .map((r) => mapRowToLibraryItem(r.log, r.game));
+  const items: LibraryItem[] = rows.map((r) =>
+    mapRowToLibraryItem(r.log, r.game),
+  );
 
   // Stats from visible items
   const byStatus: Record<LogStatus, number> = {
