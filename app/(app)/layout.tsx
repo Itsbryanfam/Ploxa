@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { env } from "@/lib/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 
 import { AppHeader } from "@/components/layout/app-header";
 import { CommandPalette } from "@/components/palette/command-palette";
@@ -23,10 +23,7 @@ export default async function AppLayout({
 
   // Single auth check: we own the redirect path, then pass the verified user
   // into getHeaderUser so the profile lookup doesn't re-verify the session.
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const authUser = await getCachedUser();
   if (!authUser) {
     redirect("/login");
   }

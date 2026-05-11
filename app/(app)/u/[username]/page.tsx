@@ -6,7 +6,7 @@ import { LibraryShelf } from "@/components/library/library-shelf";
 import { ShelfFrame } from "@/components/pixel/shelf-frame";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { Mascot } from "@/components/mascot/mascot";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { mapRowToLibraryItem, type LibraryItem } from "@/lib/logs/library-item";
 import type { LogStatus } from "@/lib/db/schema-types";
 
@@ -20,10 +20,7 @@ export default async function ProfilePage({
   if (!profile) notFound();
 
   // Determine if viewing own profile
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   const isOwn = user?.id === profile.userId;
 
   // Load library — own profile sees everything, public sees only non-private logs

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import {
   AVATAR_ALLOWED_MIMES,
   AVATAR_MAX_BYTES,
@@ -25,10 +25,7 @@ function isAllowedMime(t: string): t is AllowedMime {
 export async function uploadAvatar(
   formData: FormData,
 ): Promise<UploadAvatarResult> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   const file = formData.get("file");

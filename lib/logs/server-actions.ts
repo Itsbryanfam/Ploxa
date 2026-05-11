@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetail } from "@/lib/games/server-actions";
 import { LOG_STATUSES, type LogStatus } from "@/lib/db/schema-types";
 import { mapRowToLibraryItem, type LibraryItem } from "./library-item";
@@ -40,10 +40,7 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   const { rawgId, status, rating, note } = parsed.data;
 
   // Auth check
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
   // Ensure the game exists in our DB (write-through from RAWG if missing).
@@ -95,10 +92,7 @@ export interface GetLibraryArgs {
 }
 
 export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<LibraryItem[]> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return [];
 
   const orderBy = (() => {
@@ -165,10 +159,7 @@ export async function updateLogStatus(input: unknown): Promise<{ ok: boolean; er
   const parsed = updateStatusInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
   const result = await db
@@ -188,10 +179,7 @@ export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: s
     return { ok: false, error: "Invalid log ID" };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
   const result = await db
@@ -210,10 +198,7 @@ export interface UserStats {
 }
 
 export async function getUserStats(): Promise<UserStats | null> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return null;
 
   const rows = await db
@@ -255,10 +240,7 @@ export interface ActivityEvent {
 }
 
 export async function getRecentActivity(limit = 10): Promise<ActivityEvent[]> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return [];
 
   const rows = await db
@@ -304,10 +286,7 @@ export async function updateLogFull(input: unknown): Promise<{ ok: boolean; erro
   const parsed = updateLogFullInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
   const d = parsed.data;

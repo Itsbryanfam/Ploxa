@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getGameDetailBySlug, getScreenshots } from "@/lib/games/server-actions";
 import { db, schema } from "@/lib/db";
 import { and, eq } from "drizzle-orm";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { GameDetail } from "@/components/game/game-detail";
 import { mapRowToLibraryItem, type LibraryItem } from "@/lib/logs/library-item";
 
@@ -19,10 +19,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
   const screenshots = await getScreenshots(game.id);
 
   // Fetch the user's log if any
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   let log: LibraryItem | null = null;
   if (user) {
     const row = await db.query.logs.findFirst({

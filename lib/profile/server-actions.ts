@@ -5,6 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { usernameSchema } from "./username-schema";
 import { RESERVED_USERNAMES } from "./reserved-usernames";
 import { UsernameCollisionError } from "./errors";
@@ -79,10 +80,7 @@ export async function checkUsernameAvailability(
 }
 
 export async function ensureMyProfile(opts?: { username?: string }) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return null;
 
   const existing = await db.query.profiles.findFirst({
@@ -191,10 +189,7 @@ export type UpdateUsernameResult =
 export async function updateUsername(
   newUsername: string,
 ): Promise<UpdateUsernameResult> {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   const parsed = usernameSchema.safeParse(newUsername);

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { getGameDetailBySlug, getScreenshots } from "@/lib/games/server-actions";
 import { db, schema } from "@/lib/db";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { GameDetail } from "@/components/game/game-detail";
 import { GameDetailPanel } from "@/components/game/game-detail-panel";
 import { mapRowToLibraryItem, type LibraryItem } from "@/lib/logs/library-item";
@@ -22,10 +22,7 @@ export default async function InterceptedGamePage({
 
   const screenshots = await getScreenshots(game.id);
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   let log: LibraryItem | null = null;
   if (user) {
     const row = await db.query.logs.findFirst({

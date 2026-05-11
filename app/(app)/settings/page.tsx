@@ -1,13 +1,10 @@
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getHeaderUser } from "@/lib/profile/server-actions";
 import { ProfileSection } from "./_sections/profile-section";
 
 export default async function SettingsPage() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const authUser = await getCachedUser();
   if (!authUser) {
     redirect("/login");
   }
