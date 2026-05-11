@@ -11,6 +11,7 @@ import {
   incrementUserDailyReviews,
 } from "@/lib/ai/rate-limit";
 import { RateLimitExceededError, AIProvidersExhaustedError } from "@/lib/ai/errors";
+import { revalidatePath } from "next/cache";
 import {
   createSession,
   getSession,
@@ -443,4 +444,220 @@ export async function regenerateSection(input: unknown): Promise<RegenerateSecti
   })();
 
   return { ok: true, stream: streamable.value };
+}
+
+// ---------------------------------------------------------------------------
+// publishReview
+// ---------------------------------------------------------------------------
+
+const publishInput = z.object({
+  reviewId: z.string().uuid(),
+  rating: z.number().min(0).max(10),
+  isPublic: z.boolean(),
+});
+
+type PublishResult =
+  | { ok: true; username: string; gameSlug: string }
+  | { ok: false; error: string };
+
+export async function publishReview(input: unknown): Promise<PublishResult> {
+  const parsed = publishInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const review = await db.query.reviews.findFirst({
+    where: and(eq(schema.reviews.id, parsed.data.reviewId), eq(schema.reviews.userId, user.id)),
+    columns: { id: true, gameId: true, publishedAt: true },
+  });
+  if (!review) return { ok: false, error: "Review not found" };
+
+  const [game, profile] = await Promise.all([
+    db.query.games.findFirst({
+      where: eq(schema.games.id, review.gameId),
+      columns: { slug: true },
+    }),
+    db.query.profiles.findFirst({
+      where: eq(schema.profiles.userId, user.id),
+      columns: { username: true },
+    }),
+  ]);
+  if (!game || !profile) return { ok: false, error: "Lookup failed" };
+
+  await db
+    .update(schema.reviews)
+    .set({
+      publishedAt: review.publishedAt ?? new Date(),
+      rating: String(parsed.data.rating),
+      isPublic: parsed.data.isPublic,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.reviews.id, review.id));
+
+  revalidatePath(`/u/${profile.username}`);
+  revalidatePath(`/u/${profile.username}/reviews`);
+  revalidatePath(`/u/${profile.username}/reviews/${game.slug}`);
+  revalidatePath(`/games/${game.slug}`);
+
+  return { ok: true, username: profile.username, gameSlug: game.slug };
+}
+
+// ---------------------------------------------------------------------------
+// updateReview
+// ---------------------------------------------------------------------------
+
+const updateInput = z.object({
+  reviewId: z.string().uuid(),
+  body: z.string().trim().min(1).max(20_000),
+  rating: z.number().min(0).max(10),
+  isPublic: z.boolean(),
+});
+
+type UpdateResult = { ok: true } | { ok: false; error: string };
+
+export async function updateReview(input: unknown): Promise<UpdateResult> {
+  const parsed = updateInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const review = await db.query.reviews.findFirst({
+    where: and(eq(schema.reviews.id, parsed.data.reviewId), eq(schema.reviews.userId, user.id)),
+    columns: { id: true, gameId: true },
+  });
+  if (!review) return { ok: false, error: "Review not found" };
+
+  const [game, profile] = await Promise.all([
+    db.query.games.findFirst({
+      where: eq(schema.games.id, review.gameId),
+      columns: { slug: true },
+    }),
+    db.query.profiles.findFirst({
+      where: eq(schema.profiles.userId, user.id),
+      columns: { username: true },
+    }),
+  ]);
+  if (!game || !profile) return { ok: false, error: "Lookup failed" };
+
+  await db
+    .update(schema.reviews)
+    .set({
+      body: parsed.data.body,
+      rating: String(parsed.data.rating),
+      isPublic: parsed.data.isPublic,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.reviews.id, review.id));
+
+  revalidatePath(`/u/${profile.username}/reviews`);
+  revalidatePath(`/u/${profile.username}/reviews/${game.slug}`);
+  revalidatePath(`/games/${game.slug}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// deleteReview
+// ---------------------------------------------------------------------------
+
+const deleteInput = z.object({ reviewId: z.string().uuid() });
+
+export async function deleteReview(input: unknown): Promise<UpdateResult> {
+  const parsed = deleteInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const review = await db.query.reviews.findFirst({
+    where: and(eq(schema.reviews.id, parsed.data.reviewId), eq(schema.reviews.userId, user.id)),
+    columns: { id: true, gameId: true },
+  });
+  if (!review) return { ok: false, error: "Review not found" };
+
+  const [game, profile] = await Promise.all([
+    db.query.games.findFirst({
+      where: eq(schema.games.id, review.gameId),
+      columns: { slug: true },
+    }),
+    db.query.profiles.findFirst({
+      where: eq(schema.profiles.userId, user.id),
+      columns: { username: true },
+    }),
+  ]);
+
+  await db.delete(schema.reviews).where(eq(schema.reviews.id, review.id));
+
+  if (profile) {
+    revalidatePath(`/u/${profile.username}/reviews`);
+    if (game) revalidatePath(`/u/${profile.username}/reviews/${game.slug}`);
+  }
+  if (game) revalidatePath(`/games/${game.slug}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// likeReview / unlikeReview
+// ---------------------------------------------------------------------------
+
+const likeInput = z.object({ reviewId: z.string().uuid() });
+
+export async function likeReview(input: unknown): Promise<UpdateResult> {
+  const parsed = likeInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  await db
+    .insert(schema.likes)
+    .values({ userId: user.id, reviewId: parsed.data.reviewId })
+    .onConflictDoNothing();
+
+  const ctx = await reviewLookupForRevalidate(parsed.data.reviewId);
+  if (ctx) revalidatePath(`/u/${ctx.username}/reviews/${ctx.gameSlug}`);
+  return { ok: true };
+}
+
+export async function unlikeReview(input: unknown): Promise<UpdateResult> {
+  const parsed = likeInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input" };
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  await db
+    .delete(schema.likes)
+    .where(
+      and(eq(schema.likes.userId, user.id), eq(schema.likes.reviewId, parsed.data.reviewId)),
+    );
+
+  const ctx = await reviewLookupForRevalidate(parsed.data.reviewId);
+  if (ctx) revalidatePath(`/u/${ctx.username}/reviews/${ctx.gameSlug}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// reviewLookupForRevalidate (internal helper)
+// ---------------------------------------------------------------------------
+
+async function reviewLookupForRevalidate(
+  reviewId: string,
+): Promise<{ username: string; gameSlug: string } | null> {
+  const r = await db.query.reviews.findFirst({
+    where: eq(schema.reviews.id, reviewId),
+    columns: { userId: true, gameId: true },
+  });
+  if (!r) return null;
+  const [profile, game] = await Promise.all([
+    db.query.profiles.findFirst({
+      where: eq(schema.profiles.userId, r.userId),
+      columns: { username: true },
+    }),
+    db.query.games.findFirst({
+      where: eq(schema.games.id, r.gameId),
+      columns: { slug: true },
+    }),
+  ]);
+  if (!profile || !game) return null;
+  return { username: profile.username, gameSlug: game.slug };
 }
