@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { SVGProps } from "react";
 
 interface StatusIconProps extends Omit<SVGProps<SVGSVGElement>, "viewBox"> {
@@ -15,7 +16,7 @@ export const COLORS = {
   wishlist: "#ffb84a",
 } as const;
 
-export function BacklogIcon({ size = 16, ...rest }: StatusIconProps) {
+export const BacklogIcon = memo(function BacklogIcon({ size = 16, ...rest }: StatusIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Stack of 3 cartridges */}
@@ -28,9 +29,9 @@ export function BacklogIcon({ size = 16, ...rest }: StatusIconProps) {
       <rect x="2" y="12" width="12" height="1" fill="#1a1a24" />
     </svg>
   );
-}
+});
 
-export function PlayingIcon({ size = 16, ...rest }: StatusIconProps) {
+export const PlayingIcon = memo(function PlayingIcon({ size = 16, ...rest }: StatusIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Controller body */}
@@ -47,9 +48,9 @@ export function PlayingIcon({ size = 16, ...rest }: StatusIconProps) {
       <rect x="12" y="9" width="1" height="1" fill="#fff" />
     </svg>
   );
-}
+});
 
-export function CompletedIcon({ size = 16, ...rest }: StatusIconProps) {
+export const CompletedIcon = memo(function CompletedIcon({ size = 16, ...rest }: StatusIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Trophy cup */}
@@ -63,9 +64,9 @@ export function CompletedIcon({ size = 16, ...rest }: StatusIconProps) {
       <rect x="5" y="11" width="6" height="2" fill={COLORS.completed} />
     </svg>
   );
-}
+});
 
-export function DroppedIcon({ size = 16, ...rest }: StatusIconProps) {
+export const DroppedIcon = memo(function DroppedIcon({ size = 16, ...rest }: StatusIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Cartridge top half */}
@@ -77,9 +78,9 @@ export function DroppedIcon({ size = 16, ...rest }: StatusIconProps) {
       <rect x="6" y="9" width="1" height="1" fill="#1a1a24" />
     </svg>
   );
-}
+});
 
-export function OnHoldIcon({ size = 16, ...rest }: StatusIconProps) {
+export const OnHoldIcon = memo(function OnHoldIcon({ size = 16, ...rest }: StatusIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Pause bars in a circle */}
@@ -96,9 +97,9 @@ export function OnHoldIcon({ size = 16, ...rest }: StatusIconProps) {
       <rect x="9" y="6" width="1" height="4" fill={COLORS.on_hold} />
     </svg>
   );
-}
+});
 
-export function WishlistIcon({ size = 16, ...rest }: StatusIconProps) {
+export const WishlistIcon = memo(function WishlistIcon({ size = 16, ...rest }: StatusIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* 5-point pixel star */}
@@ -112,7 +113,7 @@ export function WishlistIcon({ size = 16, ...rest }: StatusIconProps) {
       <rect x="10" y="12" width="3" height="2" fill={COLORS.wishlist} />
     </svg>
   );
-}
+});
 
 // Lookup helper for dynamic rendering
 export const STATUS_ICONS = {

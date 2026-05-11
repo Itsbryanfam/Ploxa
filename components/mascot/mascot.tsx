@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { cn } from "@/lib/utils";
@@ -32,7 +33,7 @@ const SIZE_PX: Record<NonNullable<MascotProps["size"]>, number> = {
  * Until then, this stub establishes the state-machine wiring, animation
  * timings, and consistent sizing so swapping the artwork is mechanical.
  */
-export function Mascot({ size = "md", className, mood: moodProp, message: msgProp, silent }: MascotProps) {
+export const Mascot = memo(function Mascot({ size = "md", className, mood: moodProp, message: msgProp, silent }: MascotProps) {
   const storeState = useMascotStore((s) => s.state);
   const mood = moodProp ?? storeState.mood;
   const message = msgProp ?? storeState.message;
@@ -60,7 +61,7 @@ export function Mascot({ size = "md", className, mood: moodProp, message: msgPro
       </AnimatePresence>
     </div>
   );
-}
+});
 
 function MascotSprite({ mood, sizePx }: { mood: MascotMood; sizePx: number }) {
   // Animation variants per mood — Framer Motion handles easings nicely.

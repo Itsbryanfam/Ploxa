@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { SVGProps } from "react";
 
 interface PlatformIconProps extends Omit<SVGProps<SVGSVGElement>, "viewBox"> {
@@ -6,7 +7,7 @@ interface PlatformIconProps extends Omit<SVGProps<SVGSVGElement>, "viewBox"> {
 
 // ─── PC ────────────────────────────────────────────────────────
 // Monitor: outer frame, inner screen (dark), stand + base
-export function PCIcon({ size = 16, ...rest }: PlatformIconProps) {
+export const PCIcon = memo(function PCIcon({ size = 16, ...rest }: PlatformIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Monitor outer frame */}
@@ -21,12 +22,12 @@ export function PCIcon({ size = 16, ...rest }: PlatformIconProps) {
       <rect x="4" y="14" width="8" height="1" fill="#9494a8" />
     </svg>
   );
-}
+});
 
 // ─── Steam ─────────────────────────────────────────────────────
 // Ring circle with a spiral wedge cutout (top-right quarter removed + inner dot)
 // Recognizable as the Steam logo's circular form at small sizes
-export function SteamIcon({ size = 16, ...rest }: PlatformIconProps) {
+export const SteamIcon = memo(function SteamIcon({ size = 16, ...rest }: PlatformIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Outer ring — pixel-circle approximation */}
@@ -57,11 +58,11 @@ export function SteamIcon({ size = 16, ...rest }: PlatformIconProps) {
       <rect x="6" y="10" width="4" height="1" fill="#7c5cff" />
     </svg>
   );
-}
+});
 
 // ─── Xbox ──────────────────────────────────────────────────────
 // Circle ring with an X through it (Xbox green)
-export function XboxIcon({ size = 16, ...rest }: PlatformIconProps) {
+export const XboxIcon = memo(function XboxIcon({ size = 16, ...rest }: PlatformIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Circle ring */}
@@ -88,13 +89,13 @@ export function XboxIcon({ size = 16, ...rest }: PlatformIconProps) {
       <rect x="4" y="10" width="2" height="2" fill="#4ade80" />
     </svg>
   );
-}
+});
 
 // ─── PSN ───────────────────────────────────────────────────────
 // Four PlayStation button glyphs in 2x2 grid:
 //   triangle (top), circle (right), cross (bottom), square (left)
 // Colors: triangle=green, circle=red, cross=blue, square=pink
-export function PSNIcon({ size = 16, ...rest }: PlatformIconProps) {
+export const PSNIcon = memo(function PSNIcon({ size = 16, ...rest }: PlatformIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Triangle (top-center) — 3-pixel upward triangle */}
@@ -120,11 +121,11 @@ export function PSNIcon({ size = 16, ...rest }: PlatformIconProps) {
       <rect x="3" y="7" width="2" height="2" fill="#1a1a24" />
     </svg>
   );
-}
+});
 
 // ─── Switch ────────────────────────────────────────────────────
 // Two Joy-Con rectangles (left=cyan, right=red) flanking a slim body
-export function SwitchIcon({ size = 16, ...rest }: PlatformIconProps) {
+export const SwitchIcon = memo(function SwitchIcon({ size = 16, ...rest }: PlatformIconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} shapeRendering="crispEdges" {...rest}>
       {/* Left Joy-Con (cyan) */}
@@ -154,7 +155,7 @@ export function SwitchIcon({ size = 16, ...rest }: PlatformIconProps) {
       <rect x="14" y="5" width="1" height="1" fill="#fff" opacity="0.8" />
     </svg>
   );
-}
+});
 
 export const PLATFORM_ICONS = {
   pc: PCIcon,

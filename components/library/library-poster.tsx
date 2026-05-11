@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { HeartFull } from "@/components/pixel";
 import { PosterStatusMenu } from "./poster-status-menu";
 
-export function LibraryPoster({ item }: { item: LibraryItem }) {
+export const LibraryPoster = memo(function LibraryPoster({ item }: { item: LibraryItem }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -76,4 +76,4 @@ export function LibraryPoster({ item }: { item: LibraryItem }) {
       </AnimatePresence>
     </motion.div>
   );
-}
+});

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { SVGProps } from "react";
 
 const HEART_RED = "#ef4444";
@@ -13,7 +14,7 @@ interface HeartProps extends Omit<SVGProps<SVGSVGElement>, "viewBox"> {
  * Half-heart is vertically split (left half full, right half empty).
  * Color: bright red fill, dark outline, single highlight pixel.
  */
-export function HeartFull({ size = 16, ...rest }: HeartProps) {
+export const HeartFull = memo(function HeartFull({ size = 16, ...rest }: HeartProps) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -59,9 +60,9 @@ export function HeartFull({ size = 16, ...rest }: HeartProps) {
       <rect x="3" y="5" width="1" height="1" fill={HEART_HIGHLIGHT} />
     </svg>
   );
-}
+});
 
-export function HeartHalf({ size = 16, ...rest }: HeartProps) {
+export const HeartHalf = memo(function HeartHalf({ size = 16, ...rest }: HeartProps) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -105,9 +106,9 @@ export function HeartHalf({ size = 16, ...rest }: HeartProps) {
       <rect x="3" y="5" width="1" height="1" fill={HEART_HIGHLIGHT} />
     </svg>
   );
-}
+});
 
-export function HeartEmpty({ size = 16, ...rest }: HeartProps) {
+export const HeartEmpty = memo(function HeartEmpty({ size = 16, ...rest }: HeartProps) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -137,4 +138,4 @@ export function HeartEmpty({ size = 16, ...rest }: HeartProps) {
       <rect x="7" y="14" width="2" height="1" fill={HEART_OUTLINE} />
     </svg>
   );
-}
+});
