@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { HeartRating } from "@/components/ui/heart-rating";
@@ -47,6 +47,15 @@ export function ReviewEditor({
   // gameSlug is reserved for future use (e.g. a "back to /games/{slug}" link).
   void gameSlug;
 
+  // Track the post-publish redirect timer so we can clear it if the user
+  // navigates away before the celebration animation finishes.
+  const navigateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (navigateTimerRef.current) clearTimeout(navigateTimerRef.current);
+    };
+  }, []);
+
   function updateSection(idx: 0 | 1 | 2 | 3, next: string) {
     setSections((prev) => {
       const out = [...prev] as [string, string, string, string];
@@ -75,7 +84,7 @@ export function ReviewEditor({
       }
       celebrate("Live!");
       // Give the celebration animation a beat before navigating (matches 1500ms celebrate duration).
-      setTimeout(
+      navigateTimerRef.current = setTimeout(
         () => router.push(`/u/${result.username}/reviews/${result.gameSlug}`),
         1200,
       );

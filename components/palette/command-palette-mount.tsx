@@ -13,6 +13,14 @@ function loadPalette() {
   return palettePromise;
 }
 
+// Reset the cached promise on failure so the next attempt actually retries
+// instead of returning the already-rejected promise. Logs the failure so a
+// silent network blip is at least visible in DevTools.
+function handlePaletteLoadError(err: unknown) {
+  console.error("CommandPalette chunk failed to load", err);
+  palettePromise = null;
+}
+
 // Feature-detect via `typeof X === "function"` — the `"prop" in obj` form
 // narrows `window` to a type missing the prop in the else branch, which TS
 // then collapses to `never` for the setTimeout fallback. `typeof` checks
@@ -53,7 +61,9 @@ export function CommandPaletteMount() {
   useEffect(() => {
     if (Palette) return;
     const handle = scheduleIdle(() => {
-      loadPalette().then((m) => setPalette(() => m.CommandPalette));
+      loadPalette()
+        .then((m) => setPalette(() => m.CommandPalette))
+        .catch(handlePaletteLoadError);
     });
     return () => cancelIdle(handle);
   }, [Palette]);
@@ -61,7 +71,9 @@ export function CommandPaletteMount() {
   // Eager fetch if the user opens before idle prefetch lands.
   useEffect(() => {
     if (isOpen && !Palette) {
-      loadPalette().then((m) => setPalette(() => m.CommandPalette));
+      loadPalette()
+        .then((m) => setPalette(() => m.CommandPalette))
+        .catch(handlePaletteLoadError);
     }
   }, [isOpen, Palette]);
 

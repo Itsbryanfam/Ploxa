@@ -7,7 +7,16 @@ export function ImportsNudge() {
   if (dismissed) return null;
 
   function dismiss() {
-    document.cookie = "imports-nudge-dismissed=1; max-age=31536000; path=/";
+    // SameSite=Lax keeps the cookie on top-level nav while blocking
+    // CSRF-y cross-site GETs from sending it; Secure gates it to HTTPS in
+    // production (browsers ignore Secure on http://localhost so dev is
+    // fine). Most browsers default SameSite to Lax, but being explicit
+    // protects against the small slice that don't.
+    const isSecure =
+      typeof window !== "undefined" && window.location.protocol === "https:";
+    document.cookie =
+      "imports-nudge-dismissed=1; max-age=31536000; path=/; SameSite=Lax" +
+      (isSecure ? "; Secure" : "");
     setDismissed(true);
   }
 

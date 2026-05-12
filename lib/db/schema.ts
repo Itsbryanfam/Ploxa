@@ -43,6 +43,8 @@ export const importStatusEnum = pgEnum("import_status", [
 
 export const platformEnum = pgEnum("platform_kind", ["steam", "xbox", "psn"]);
 
+// Forward-looking: Phase 4 (Taste Fingerprint + Recommendations).
+// Schema lives in DB now; no app reads it yet.
 export const recAlgorithmEnum = pgEnum("rec_algorithm", [
   "similarity",
   "ai",
@@ -57,6 +59,7 @@ export const aiFeatureEnum = pgEnum("ai_feature", [
   "interview_question",
 ]);
 
+// Forward-looking: Phase 5 (Social Layer). Schema lives in DB; no app reads yet.
 export const notificationTypeEnum = pgEnum("notification_type", [
   "new_follower",
   "review_liked",
@@ -175,23 +178,39 @@ export const logs = pgTable(
 // ─────────────────────────────────────────────────────────────
 // Reviews
 // ─────────────────────────────────────────────────────────────
-export const reviews = pgTable("reviews", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  gameId: integer("game_id")
-    .notNull()
-    .references(() => games.id, { onDelete: "restrict" }),
-  logId: uuid("log_id").references(() => logs.id, { onDelete: "set null" }),
-  body: text("body").notNull(),
-  rating: numeric("rating", { precision: 3, scale: 1 }),
-  isAiAssisted: boolean("is_ai_assisted").notNull().default(false),
-  publishedAt: timestamp("published_at", { withTimezone: true }),
-  isPublic: boolean("is_public").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "restrict" }),
+    logId: uuid("log_id").references(() => logs.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    rating: numeric("rating", { precision: 3, scale: 1 }),
+    isAiAssisted: boolean("is_ai_assisted").notNull().default(false),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    isPublic: boolean("is_public").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // (userId, gameId) — used by every existing-review lookup in
+    // lib/reviews/server-actions.ts (draftStart, regenerateSection, save,
+    // publish, getReviewBySlug). Without it those run as seq-scans once the
+    // table grows past a few thousand rows.
+    userGameIdx: index("reviews_user_game_idx").on(table.userId, table.gameId),
+    // (userId, publishedAt DESC) WHERE publishedAt IS NOT NULL — drives the
+    // public per-user review list at /u/[username]/reviews. Partial because
+    // unpublished drafts dominate the row count.
+    userPublishedAtIdx: index("reviews_user_published_at_idx")
+      .on(table.userId, desc(table.publishedAt))
+      .where(sql`${table.publishedAt} IS NOT NULL`),
+  }),
+);
 
 export const reviewQuestions = pgTable("review_questions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -204,7 +223,8 @@ export const reviewQuestions = pgTable("review_questions", {
 });
 
 // ─────────────────────────────────────────────────────────────
-// AI taste fingerprint + recommendations
+// AI taste fingerprint + recommendations — Forward-looking (Phase 4)
+// Tables exist in DB; no app reads yet. Will fill in Phase 4 (weeks 15-20).
 // ─────────────────────────────────────────────────────────────
 export const tasteFingerprints = pgTable("taste_fingerprints", {
   userId: uuid("user_id")
@@ -237,7 +257,9 @@ export const recommendations = pgTable("recommendations", {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Social
+// Social — Forward-looking (Phase 5)
+// Tables exist in DB; no app reads yet. Will fill in Phase 5 (weeks 21-26).
+// Exception: `likes` IS used by Phase 2 (review like-count + heart toggle).
 // ─────────────────────────────────────────────────────────────
 export const follows = pgTable(
   "follows",
@@ -268,6 +290,11 @@ export const likes = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.userId, table.reviewId] }),
+    // reviewId alone — used by the like-count aggregate on the canonical
+    // review page. The PK leads with userId, so a filter on reviewId alone
+    // can't use it; without this index the query degrades to a seq-scan
+    // once likes counts climb.
+    reviewIdIdx: index("likes_review_id_idx").on(table.reviewId),
   }),
 );
 
@@ -389,7 +416,8 @@ export const aiCalls = pgTable("ai_calls", {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Year-in-review
+// Year-in-review — Forward-looking (Phase 6)
+// Table exists in DB; no app reads yet. Will fill in Phase 6 (weeks 27-30).
 // ─────────────────────────────────────────────────────────────
 export const yearInReviews = pgTable(
   "year_in_reviews",

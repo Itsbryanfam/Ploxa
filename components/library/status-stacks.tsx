@@ -53,7 +53,10 @@ export function StatusStacks({ items }: { items: LibraryItem[] }) {
                   <ShelfItem
                     key={item.logId}
                     item={item}
-                    priority={status === firstStackWithItems && i === 0}
+                    // Prioritize the first 4 posters in the first shelf — those
+                    // are reliably above the fold on /home and feed into LCP.
+                    // The previous `i === 0` only loaded one priority image.
+                    priority={status === firstStackWithItems && i < 4}
                   />
                 ))}
               </div>

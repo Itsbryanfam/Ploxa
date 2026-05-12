@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ensureMyProfile } from "@/lib/profile/server-actions";
 import { UsernameCollisionError } from "@/lib/profile/errors";
+import { safeRedirectPath } from "@/lib/auth/safe-next";
 
 /**
  * OAuth + magic link callback handler.
@@ -14,9 +15,9 @@ import { UsernameCollisionError } from "@/lib/profile/errors";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
-  // Only honor relative paths — prevents open-redirect via crafted `?next=`.
-  const rawNext = searchParams.get("next") ?? "/home";
-  const next = rawNext.startsWith("/") ? rawNext : "/home";
+  // Sanitize `next` to prevent open-redirect via protocol-relative
+  // (`//evil.com`) or backslash-protocol (`/\evil.com`) URLs.
+  const next = safeRedirectPath(searchParams.get("next"));
 
   if (code) {
     const supabase = await createSupabaseServerClient();

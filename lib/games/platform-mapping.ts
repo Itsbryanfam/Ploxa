@@ -3,7 +3,7 @@
 // so this module remains free of the visual asset's runtime cost.
 import type { PLATFORM_ICONS } from "@/components/pixel/platform-icons";
 
-export type PlatformKey = keyof typeof PLATFORM_ICONS;
+type PlatformKey = keyof typeof PLATFORM_ICONS;
 
 // RAWG platform name → our internal icon key.
 // First-match wins; order matters.

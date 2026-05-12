@@ -213,7 +213,9 @@ export function logSuccessCopy(status: string, rating: number, title: string): s
 }
 
 export interface GreetingContext {
-  hour: number; // 0-23
+  /** Local hour 0-23. Null means "decide client-side" — server can't know
+   *  the user's tz, and a server-derived hour leaks UTC to non-UTC users. */
+  hour: number | null;
   daysSinceLastLog: number | null;
   currentlyPlaying: { title: string; daysSinceStarted: number } | null;
 }
@@ -230,10 +232,13 @@ export function dashboardGreeting(ctx: GreetingContext): string {
       days: ctx.currentlyPlaying.daysSinceStarted,
     });
   }
-  // Time of day
-  if (ctx.hour < 5) return copy("dashboard.greeting.night");
-  if (ctx.hour < 12) return copy("dashboard.greeting.morning");
-  if (ctx.hour < 17) return copy("dashboard.greeting.afternoon");
-  if (ctx.hour < 22) return copy("dashboard.greeting.evening");
+  // Time of day — fall back to the user's local hour when hour is null.
+  // dashboardGreeting is consumed inside MascotGreeting ("use client"), so
+  // `new Date().getHours()` resolves against the browser's timezone.
+  const hour = ctx.hour ?? new Date().getHours();
+  if (hour < 5) return copy("dashboard.greeting.night");
+  if (hour < 12) return copy("dashboard.greeting.morning");
+  if (hour < 17) return copy("dashboard.greeting.afternoon");
+  if (hour < 22) return copy("dashboard.greeting.evening");
   return copy("dashboard.greeting.night");
 }

@@ -55,8 +55,3 @@ export async function cachedScreenshots(rawgId: number): Promise<RawgScreenshots
   await redis.set(key, fresh, { ex: SCREENSHOTS_TTL_SECONDS });
   return fresh;
 }
-
-/** Bypass + refresh helpers — for admin use or tests. */
-export async function invalidateGame(rawgId: number) {
-  await redis.del(`rawg:game:${rawgId}`, `rawg:screenshots:${rawgId}`);
-}

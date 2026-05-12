@@ -24,14 +24,3 @@ export interface MascotState {
 }
 
 export const DEFAULT_MASCOT_STATE: MascotState = { mood: "idle" };
-
-/** Animation timings per mood (CSS animation duration) */
-export const MOOD_TIMINGS: Record<MascotMood, { animation: string; duration: string }> = {
-  idle: { animation: "mascot-bob", duration: "3s" },
-  waving: { animation: "mascot-wave", duration: "1.5s" },
-  thinking: { animation: "mascot-think", duration: "1.2s" },
-  celebrating: { animation: "mascot-celebrate", duration: "0.8s" },
-  confused: { animation: "mascot-confused", duration: "1.5s" },
-  pointing: { animation: "mascot-point", duration: "2s" },
-  asleep: { animation: "mascot-sleep", duration: "4s" },
-};

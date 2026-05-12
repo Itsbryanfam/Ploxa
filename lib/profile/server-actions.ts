@@ -9,6 +9,11 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { usernameSchema } from "./username-schema";
 import { RESERVED_USERNAMES } from "./reserved-usernames";
 import { UsernameCollisionError } from "./errors";
+import {
+  enforceRateLimit,
+  clientIpForRateLimit,
+  RateLimitedError,
+} from "@/lib/security/rate-limit";
 
 export interface HeaderUser {
   id: string;
@@ -61,6 +66,10 @@ export async function getProfileByUsername(username: string) {
       username: true,
       displayName: true,
       bio: true,
+      // Returned so callers can `notFound()` when the profile is private and
+      // the viewer isn't the owner. Phase 3 sibling routes (/u/.../reviews)
+      // already filter on this; the index page now does too.
+      isPublic: true,
     },
   });
   return profile ?? null;
@@ -73,6 +82,26 @@ export type CheckUsernameResult =
 export async function checkUsernameAvailability(
   value: string,
 ): Promise<CheckUsernameResult> {
+  // Rate-limit per IP — without this, the action enumerates usernames
+  // wholesale via wordlist scraping. 30/min matches a fast-typing user
+  // with debounce keystroke checks without enabling scrapes.
+  try {
+    const ip = await clientIpForRateLimit();
+    await enforceRateLimit({
+      scope: "username:check",
+      identifier: ip,
+      limit: 30,
+      windowSeconds: 60,
+    });
+  } catch (err) {
+    if (err instanceof RateLimitedError) {
+      // Surface as "invalid" so the input shows the generic error message
+      // instead of leaking that we're rate-limiting.
+      return { ok: false, reason: "invalid" };
+    }
+    throw err;
+  }
+
   // Check reserved first — cheapest, no DB round-trip.
   if (RESERVED_USERNAMES.has(value)) return { ok: false, reason: "reserved" };
   const parsed = usernameSchema.safeParse(value);
@@ -110,23 +139,31 @@ export async function ensureMyProfile(opts?: { username?: string }) {
     // silently picking a different name from what the user chose.
     username = explicitUsername;
   } else {
-    // Email-prefix derivation with varchar(32) length safety.
-    // Reserve 2 chars for the numeric retry suffix so a 31-char base + "10"
-    // doesn't blow past the schema's varchar(32) limit.
+    // Email-prefix derivation, capped at usernameSchema's 24-char ceiling.
+    // Reserve 2 chars for the numeric retry suffix so a 22-char base + "10"
+    // still fits. The DB column is varchar(32) — we use less of it to keep
+    // auto-derived usernames inside the regex the rest of the app validates
+    // against (lib/profile/username-schema.ts:6).
     const baseUsername = (user.email?.split("@")[0] ?? "user")
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, "");
-    const baseTruncated = baseUsername.slice(0, 30);
-    username = (baseUsername.slice(0, 32) || `user${Date.now()}`).slice(0, 32);
+    const baseTruncated = baseUsername.slice(0, 22);
+    const initialFallback = (baseUsername.slice(0, 24) || `user${Date.now()}`).slice(0, 24);
 
-    // Ensure unique — append numeric suffix if collision.
-    for (let i = 0; i < 10; i++) {
-      const conflict = await db.query.profiles.findFirst({
-        where: eq(schema.profiles.username, username),
-      });
-      if (!conflict) break;
-      username = `${baseTruncated}${i + 1}`;
-    }
+    // Build all candidates up-front (initial + 10 numeric suffixes) and look
+    // them all up in a single inArray query — replaces an O(N) round-trip
+    // loop with one query.
+    const candidates = [
+      initialFallback,
+      ...Array.from({ length: 10 }, (_, i) => `${baseTruncated}${i + 1}`),
+    ];
+    const taken = await db
+      .select({ username: schema.profiles.username })
+      .from(schema.profiles)
+      .where(inArray(schema.profiles.username, candidates));
+    const takenSet = new Set(taken.map((t) => t.username));
+
+    username = candidates.find((c) => !takenSet.has(c)) ?? `user${Date.now()}`.slice(0, 24);
   }
 
   // Postgres unique-violation SQLSTATE — handles the TOCTOU race between the

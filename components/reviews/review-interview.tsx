@@ -6,6 +6,7 @@ import { Mascot } from "@/components/mascot/mascot";
 import { Button } from "@/components/ui/button";
 import { useMascotStore } from "@/components/mascot/mascot-store";
 import { submitAnswer, generateDraft } from "@/lib/reviews/server-actions";
+import { readAccumulatedStream } from "@/lib/streams/read-accumulated";
 
 interface Props {
   interviewId: string;
@@ -16,27 +17,6 @@ interface Props {
 type Turn = { question: string; answer?: string; streaming?: boolean };
 
 const MAX_TURNS = 4;
-
-async function readAccumulatedStream(
-  stream: ReadableStream<string>,
-  onChunk: (latest: string) => void,
-): Promise<string> {
-  const reader = stream.getReader();
-  let last = "";
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value !== undefined) {
-        last = value;
-        onChunk(value);
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return last;
-}
 
 export function ReviewInterview({ interviewId, gameSlug, initialQ1 }: Props) {
   const router = useRouter();

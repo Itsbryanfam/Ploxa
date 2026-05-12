@@ -56,22 +56,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function CanonicalReviewPage({ params }: Props) {
   const { username, slug } = await params;
 
-  const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.username, username),
-    columns: { userId: true, username: true, isPublic: true },
-  });
+  // Stage 1: profile, game, viewer — all independent, fire in parallel.
+  // (Previously serialized into 3 sequential round-trips on the share-link
+  // load path; this page is the canonical OG/unfurl destination.)
+  const [profile, game, viewer] = await Promise.all([
+    db.query.profiles.findFirst({
+      where: eq(schema.profiles.username, username),
+      columns: { userId: true, username: true, isPublic: true },
+    }),
+    db.query.games.findFirst({
+      where: eq(schema.games.slug, slug),
+      columns: { id: true, slug: true, title: true, coverUrl: true, posterUrl: true },
+    }),
+    getCachedUser(),
+  ]);
   if (!profile) notFound();
-
-  const game = await db.query.games.findFirst({
-    where: eq(schema.games.slug, slug),
-    columns: { id: true, slug: true, title: true, coverUrl: true, posterUrl: true },
-  });
   if (!game) notFound();
 
-  const viewer = await getCachedUser();
   const isOwner = viewer?.id === profile.userId;
   if (!profile.isPublic && !isOwner) notFound();
 
+  // Stage 2: review row depends on profile.userId + game.id.
   const review = await db.query.reviews.findFirst({
     where: and(
       eq(schema.reviews.userId, profile.userId),
@@ -83,21 +88,21 @@ export default async function CanonicalReviewPage({ params }: Props) {
   });
   if (!review) notFound();
 
-  // Like context — count + did-viewer-like
-  const countResult = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(schema.likes)
-    .where(eq(schema.likes.reviewId, review.id));
+  // Stage 3: like count + viewer-liked — both depend on review.id, run in parallel.
+  const [countResult, viewerLikedRow] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.likes)
+      .where(eq(schema.likes.reviewId, review.id)),
+    viewer
+      ? db.query.likes.findFirst({
+          where: and(eq(schema.likes.reviewId, review.id), eq(schema.likes.userId, viewer.id)),
+          columns: { reviewId: true },
+        })
+      : Promise.resolve(undefined),
+  ]);
   const count = countResult[0]?.count ?? 0;
-
-  let viewerLiked = false;
-  if (viewer) {
-    const liked = await db.query.likes.findFirst({
-      where: and(eq(schema.likes.reviewId, review.id), eq(schema.likes.userId, viewer.id)),
-      columns: { reviewId: true },
-    });
-    viewerLiked = Boolean(liked);
-  }
+  const viewerLiked = Boolean(viewerLikedRow);
 
   return (
     <ReviewCard

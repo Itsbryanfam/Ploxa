@@ -18,6 +18,20 @@ const eslintConfig = defineConfig([
     // same errors N times. Mirrors .gitignore.
     ".claude/**",
   ]),
+  // Honor the underscore convention for intentionally-unused parameters
+  // (e.g. interface methods that must accept an arg the impl ignores).
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

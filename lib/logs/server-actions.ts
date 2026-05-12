@@ -7,7 +7,7 @@ import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetail } from "@/lib/games/server-actions";
 import { LOG_STATUSES, type LogStatus } from "@/lib/db/schema-types";
-import { mapRowToLibraryItem, type LibraryItem, type UserStats } from "./library-item";
+import { mapRowToLibraryItem, type LibraryItem } from "./library-item";
 import { LOG_GAME_SELECT } from "./select";
 
 // Re-exported so existing `import type { LibraryItem, UserStats } from "@/lib/logs/server-actions"`
@@ -287,43 +287,10 @@ export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: s
 }
 
 /**
- * Compute stats via a dedicated DB aggregation (status + rating columns only).
- * Kept for future callers that need stats without first fetching the full
- * library. Not used by `/home` after the audit — that path derives stats
- * locally via `computeUserStatsFromLibrary` to avoid a second DB round-trip.
+ * Shape of a single activity-timeline event. Derived locally by
+ * `computeRecentActivityFromLibrary` (in cockpit-dashboard.tsx) from a
+ * pre-loaded library array; no dedicated DB fetch.
  */
-export async function getUserStats(): Promise<UserStats | null> {
-  const user = await getCachedUser();
-  if (!user) return null;
-
-  const rows = await db
-    .select({
-      status: schema.logs.status,
-      rating: schema.logs.rating,
-    })
-    .from(schema.logs)
-    .where(eq(schema.logs.userId, user.id));
-
-  const byStatus: Record<LogStatus, number> = {
-    backlog: 0, playing: 0, completed: 0, dropped: 0, on_hold: 0, wishlist: 0,
-  };
-  let ratingSum = 0;
-  let ratingCount = 0;
-  for (const r of rows) {
-    byStatus[r.status as LogStatus]++;
-    if (r.rating != null) {
-      ratingSum += Number(r.rating);
-      ratingCount++;
-    }
-  }
-
-  return {
-    total: rows.length,
-    byStatus,
-    averageRating: ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
-  };
-}
-
 export interface ActivityEvent {
   type: "logged";
   logId: string;
@@ -332,42 +299,6 @@ export interface ActivityEvent {
   gameTitle: string;
   gameSlug: string;
   at: Date;
-}
-
-/**
- * Recent activity from a dedicated DB query (LIMIT N). Kept for future
- * callers that don't have a pre-loaded library — e.g. a future "friend's
- * activity" feed. Not used by `/home` after the audit — that path derives
- * activity locally via `computeRecentActivityFromLibrary`.
- */
-export async function getRecentActivity(limit = 10): Promise<ActivityEvent[]> {
-  const user = await getCachedUser();
-  if (!user) return [];
-
-  const rows = await db
-    .select({
-      logId: schema.logs.id,
-      status: schema.logs.status,
-      rating: schema.logs.rating,
-      title: schema.games.title,
-      slug: schema.games.slug,
-      at: schema.logs.updatedAt,
-    })
-    .from(schema.logs)
-    .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
-    .where(eq(schema.logs.userId, user.id))
-    .orderBy(desc(schema.logs.updatedAt))
-    .limit(limit);
-
-  return rows.map((r) => ({
-    type: "logged" as const,
-    logId: r.logId,
-    status: r.status as LogStatus,
-    rating: r.rating ? Number(r.rating) : null,
-    gameTitle: r.title,
-    gameSlug: r.slug,
-    at: r.at,
-  }));
 }
 
 const updateLogFullInput = z.object({

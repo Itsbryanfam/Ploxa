@@ -1,6 +1,8 @@
 "use server";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { z } from "zod";
 
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { db } from "@/lib/db";
@@ -9,8 +11,11 @@ import { requireEnv } from "@/lib/env";
 import { steamAdapter } from "./adapters/steam";
 import { xboxAdapter } from "./adapters/xbox";
 import { decryptSecret } from "./encryption";
+import { enforceRateLimit, RateLimitedError } from "@/lib/security/rate-limit";
 
 type Platform = "steam" | "xbox";
+
+const platformSchema = z.enum(["steam", "xbox"]);
 
 async function requireUser() {
   const user = await getCachedUser();
@@ -30,14 +35,33 @@ async function fireImportEdge(importId: string) {
 }
 
 export async function triggerImport(platform: Platform): Promise<{ importId: string }> {
+  // Runtime-validate the platform — server actions take raw deserialized
+  // values from the wire; the TS type alone is not a barrier.
+  const validatedPlatform = platformSchema.parse(platform);
   const user = await requireUser();
+  // 1 import trigger per user per 30s — each call queues an import row +
+  // fires an Edge Function. Without throttling an authenticated user can
+  // burn cron quota and Steam/Xbox rate-limit themselves.
+  try {
+    await enforceRateLimit({
+      scope: "import:trigger",
+      identifier: user.id,
+      limit: 1,
+      windowSeconds: 30,
+    });
+  } catch (err) {
+    if (err instanceof RateLimitedError) {
+      throw new Error("RATE_LIMITED");
+    }
+    throw err;
+  }
   const [conn] = await db
     .select()
     .from(platformConnections)
     .where(
       and(
         eq(platformConnections.userId, user.id),
-        eq(platformConnections.platform, platform),
+        eq(platformConnections.platform, validatedPlatform),
         eq(platformConnections.isActive, true),
       ),
     )
@@ -46,10 +70,14 @@ export async function triggerImport(platform: Platform): Promise<{ importId: str
 
   const [row] = await db
     .insert(imports)
-    .values({ userId: user.id, platform, status: "queued", surfaced: true })
+    .values({ userId: user.id, platform: validatedPlatform, status: "queued", surfaced: true })
     .returning({ id: imports.id });
 
-  void fireImportEdge(row.id);
+  // `after()` defers the trigger fetch until the response is sent, then
+  // keeps the Vercel function instance alive until it resolves. Replaces
+  // the prior `void fireImportEdge(...)` which could be killed mid-flight
+  // when the serverless instance froze immediately after returning.
+  after(() => fireImportEdge(row.id));
   revalidatePath("/settings");
   return { importId: row.id };
 }
@@ -98,53 +126,86 @@ export interface ConnectionSummary {
     status: "queued" | "running" | "completed" | "failed";
     importedCount: number;
     totalCount: number;
+    /** Typed error code from the adapter (e.g. STEAM_PRIVATE_PROFILE,
+     *  XBOX_KEY_INVALID). Drives platform-card recovery copy + CTA label. */
+    errorMessage: string | null;
     createdAt: Date;
     surfaced: boolean;
   } | null;
 }
 
+interface RawCountRow { platform: string; count: number }
+interface RawLatestRow {
+  id: string;
+  platform: string;
+  status: "queued" | "running" | "completed" | "failed";
+  imported_count: number;
+  total_count: number;
+  error_message: string | null;
+  created_at: Date;
+  surfaced: boolean;
+}
+
 export async function listConnections(): Promise<ConnectionSummary[]> {
   const user = await requireUser();
-  const rows = await db
-    .select()
-    .from(platformConnections)
-    .where(eq(platformConnections.userId, user.id));
 
-  const summaries = await Promise.all(
-    rows.map(async (r) => {
-      // game count: distinct game_ids in logs for this user where platforms contains this platform
-      const countRows = await db.execute<{ count: number }>(sql`
-        SELECT COUNT(DISTINCT game_id)::int AS count FROM logs
-        WHERE user_id = ${user.id} AND ${r.platform} = ANY(platforms)
-      `);
-      const gameCount = Number((countRows as unknown as Array<{ count: number }>)[0]?.count ?? 0);
+  // Three parallel queries replace the prior O(connections) N+1:
+  //   1. platform_connections rows for this user
+  //   2. one aggregate over logs — distinct game count per platform
+  //   3. one DISTINCT ON over imports — latest import per platform
+  // Counts query unnests the platforms[] array so a single GROUP BY
+  // produces a per-platform tally; latest query uses DISTINCT ON to
+  // grab the most-recent row per platform in a single sort.
+  const [rows, countRowsRaw, latestRowsRaw] = await Promise.all([
+    db
+      .select()
+      .from(platformConnections)
+      .where(eq(platformConnections.userId, user.id)),
+    db.execute(sql`
+      SELECT unnest(platforms) AS platform, COUNT(DISTINCT game_id)::int AS count
+      FROM logs
+      WHERE user_id = ${user.id}
+      GROUP BY 1
+    `),
+    db.execute(sql`
+      SELECT DISTINCT ON (platform)
+        id, platform, status, imported_count, total_count,
+        error_message, created_at, surfaced
+      FROM imports
+      WHERE user_id = ${user.id}
+      ORDER BY platform, created_at DESC
+    `),
+  ]);
 
-      const [latest] = await db
-        .select({
-          id: imports.id,
-          status: imports.status,
-          importedCount: imports.importedCount,
-          totalCount: imports.totalCount,
-          createdAt: imports.createdAt,
-          surfaced: imports.surfaced,
-        })
-        .from(imports)
-        .where(and(eq(imports.userId, user.id), eq(imports.platform, r.platform)))
-        .orderBy(desc(imports.createdAt))
-        .limit(1);
+  const countRows = countRowsRaw as unknown as RawCountRow[];
+  const latestRows = latestRowsRaw as unknown as RawLatestRow[];
 
-      return {
-        platform: r.platform,
-        externalId: r.externalId,
-        lastSyncedAt: r.lastSyncedAt,
-        isActive: r.isActive,
-        gameCount,
-        latestImport: latest ?? null,
-      } satisfies ConnectionSummary;
-    }),
-  );
+  const countByPlatform = new Map<string, number>();
+  for (const c of countRows) countByPlatform.set(c.platform, Number(c.count));
+  const latestByPlatform = new Map<string, RawLatestRow>();
+  for (const l of latestRows) latestByPlatform.set(l.platform, l);
 
-  return summaries;
+  return rows.map((r) => {
+    const latest = latestByPlatform.get(r.platform);
+    return {
+      platform: r.platform,
+      externalId: r.externalId,
+      lastSyncedAt: r.lastSyncedAt,
+      isActive: r.isActive,
+      gameCount: countByPlatform.get(r.platform) ?? 0,
+      latestImport: latest
+        ? {
+            id: latest.id,
+            status: latest.status,
+            importedCount: Number(latest.imported_count),
+            totalCount: Number(latest.total_count),
+            errorMessage: latest.error_message,
+            createdAt: new Date(latest.created_at),
+            surfaced: latest.surfaced,
+          }
+        : null,
+    } satisfies ConnectionSummary;
+  });
 }
 
 /**

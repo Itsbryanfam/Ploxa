@@ -19,9 +19,9 @@ import { env } from "@/lib/env";
  * because a flaky external is not worth crashing a backfill batch over.
  */
 
-export type PosterSource = "steam" | "sgdb";
+type PosterSource = "steam" | "sgdb";
 
-export interface PosterResult {
+interface PosterResult {
   url: string;
   source: PosterSource;
   steamAppId?: number;

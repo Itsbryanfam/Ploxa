@@ -6,6 +6,19 @@ import { db, schema } from "@/lib/db";
 import { cachedSearch, cachedGameDetail, cachedScreenshots } from "@/lib/rawg/cache";
 import type { RawgGameDetail, RawgSearchItem } from "@/lib/rawg/types";
 import { resolvePoster } from "@/lib/games/poster-source";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
+
+/**
+ * Every action in this module is callable as a server-action endpoint by
+ * anyone who can extract its action id from the deployed bundle. The site
+ * is auth-walled for browsing, but the actions themselves don't enforce
+ * that — without these gates a single anonymous burst could exhaust the
+ * RAWG free-tier quota (catalog reads) or SteamGridDB calls (enrichment).
+ */
+async function requireAuthedUser(): Promise<{ id: string } | null> {
+  const user = await getCachedUser();
+  return user ? { id: user.id } : null;
+}
 
 export interface SearchResult {
   rawgId: number;
@@ -22,6 +35,11 @@ const searchInput = z.object({ query: z.string().min(2).max(100) });
 export async function searchGames(query: string): Promise<SearchResult[]> {
   const parsed = searchInput.safeParse({ query });
   if (!parsed.success) return [];
+  // Auth-gate: the palette that drives this is auth-walled UI, but the
+  // server-action endpoint itself is reachable without auth via its
+  // generated id. Without this, an attacker can scrape RAWG free-tier
+  // quota one keystroke at a time.
+  if (!(await requireAuthedUser())) return [];
 
   const response = await cachedSearch(parsed.data.query);
   const results = response.results.map(toSearchResult);
@@ -63,6 +81,9 @@ function toSearchResult(item: RawgSearchItem): SearchResult {
  * (write-through populated from RAWG if missing or stale).
  */
 export async function getGameDetail(rawgId: number) {
+  // Auth-gate: same rationale as searchGames — RAWG quota protection.
+  if (!(await requireAuthedUser())) throw new Error("UNAUTHORIZED");
+
   // Already in our DB?
   const existing = await db.query.games.findFirst({ where: eq(schema.games.id, rawgId) });
   if (existing) {
@@ -77,6 +98,7 @@ export async function getGameDetail(rawgId: number) {
 }
 
 export async function getGameDetailBySlug(slug: string) {
+  if (!(await requireAuthedUser())) throw new Error("UNAUTHORIZED");
   const existing = await db.query.games.findFirst({ where: eq(schema.games.slug, slug) });
   if (existing) return getGameDetail(existing.id);
   // Not in DB — search RAWG by slug
@@ -87,6 +109,7 @@ export async function getGameDetailBySlug(slug: string) {
 }
 
 export async function getScreenshots(rawgId: number): Promise<string[]> {
+  if (!(await requireAuthedUser())) return [];
   const data = await cachedScreenshots(rawgId);
   return data.results.map((r) => r.image);
 }
@@ -120,7 +143,9 @@ async function upsertGameFromRawg(rawg: RawgGameDetail) {
     cachedAt: new Date(),
   };
 
-  await db
+  // Single round-trip via .returning() — drops the previous follow-up SELECT.
+  // postgres-js + Drizzle supports RETURNING on ON CONFLICT DO UPDATE.
+  const [updated] = await db
     .insert(schema.games)
     .values(row)
     .onConflictDoUpdate({
@@ -138,9 +163,14 @@ async function upsertGameFromRawg(rawg: RawgGameDetail) {
         rawgRating: row.rawgRating,
         cachedAt: row.cachedAt,
       },
-    });
-
-  return (await db.query.games.findFirst({ where: eq(schema.games.id, rawg.id) }))!;
+    })
+    .returning();
+  if (!updated) {
+    // Should be unreachable — INSERT ... ON CONFLICT DO UPDATE always
+    // returns the affected row. Surface a clear error rather than `!`.
+    throw new Error(`Upsert for game ${rawg.id} returned no row`);
+  }
+  return updated;
 }
 
 /**
@@ -157,6 +187,13 @@ const MAX_ENRICH_PER_CALL = 200;
 const ENRICH_CONCURRENCY = 8;
 
 export async function enrichPostersForImport(): Promise<{ enriched: number; skipped: number }> {
+  // Auth-gate: this server action runs up to 200 RAWG/SGDB lookups per
+  // invocation (concurrency 8). Without an auth check it's a cost-
+  // amplification trap — anyone with the action id can drain the free-
+  // tier quota in a single call. A zero-result return is acceptable
+  // since the import-summary page short-circuits on `enriched === 0`.
+  if (!(await requireAuthedUser())) return { enriched: 0, skipped: 0 };
+
   // Newest cachedAt first — fresh RAWG-on-miss insertions float to the top.
   const rows = (await db
     .select({ id: schema.games.id, title: schema.games.title })

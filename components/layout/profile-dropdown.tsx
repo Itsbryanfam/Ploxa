@@ -41,7 +41,18 @@ export function ProfileDropdown({ user }: Props) {
           <Link href="/settings">Settings</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => startTransition(() => logoutAction())}>
+        <DropdownMenuItem
+          onSelect={() =>
+            startTransition(async () => {
+              // Await the server action so the transition correctly tracks the
+              // signOut+redirect promise. The previous `() => logoutAction()`
+              // synchronously returned the promise; startTransition treated
+              // the callback as complete after the first tick, before the
+              // server-side redirect actually landed.
+              await logoutAction();
+            })
+          }
+        >
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>

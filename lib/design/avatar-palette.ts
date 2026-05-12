@@ -1,6 +1,6 @@
 // 8 pixel-art-friendly colors used as deterministic backgrounds for the
 // initials-fallback avatar. Tuned for legibility against white initials.
-export const AVATAR_PALETTE = [
+const AVATAR_PALETTE = [
   "#7c3aed", // violet
   "#0891b2", // cyan
   "#16a34a", // green
@@ -15,7 +15,7 @@ export const AVATAR_PALETTE = [
  * Stable hash → palette index. Pure function, deterministic for the same
  * userId. djb2-style; sufficient for 8-bucket distribution.
  */
-export function paletteIndexFor(userId: string): number {
+function paletteIndexFor(userId: string): number {
   let hash = 5381;
   for (let i = 0; i < userId.length; i++) {
     hash = ((hash << 5) + hash) ^ userId.charCodeAt(i);

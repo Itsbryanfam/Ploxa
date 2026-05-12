@@ -1,16 +1,25 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import postgres from "npm:postgres@3.4.9";
+import { requireServiceRole } from "../_shared/auth.ts";
+
+// `EdgeRuntime` is injected by the Supabase Edge Functions Deno runtime.
+// `waitUntil` keeps the isolate alive until the promise settles, so our
+// fire-and-forget trigger fetches actually complete after we return the
+// response to the cron caller. Without it the isolate may terminate
+// mid-fetch and trigger requests silently drop.
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<unknown>): void;
+} | undefined;
 
 Deno.serve(async (req) => {
-  // Auth via `apikey` header (sb_secret_* keys aren't JWTs; deploy with --no-verify-jwt).
-  const apikey = req.headers.get("apikey");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!apikey || !serviceRoleKey || apikey !== serviceRoleKey) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorized = requireServiceRole(req);
+  if (unauthorized) return unauthorized;
 
   const databaseUrl = Deno.env.get("DATABASE_URL")!;
-  const functionsUrl = Deno.env.get("SUPABASE_FUNCTIONS_URL") ?? Deno.env.get("SUPABASE_URL") + "/functions/v1";
+  const functionsUrl =
+    Deno.env.get("SUPABASE_FUNCTIONS_URL") ??
+    Deno.env.get("SUPABASE_URL") + "/functions/v1";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const sql = postgres(databaseUrl, { prepare: false });
 
   try {
@@ -31,15 +40,25 @@ Deno.serve(async (req) => {
           VALUES (${c.user_id}, ${c.platform}::platform_kind, 'queued', false)
           RETURNING id
         `;
-        // Fire-and-forget — apikey header per sb_secret_* convention
-        fetch(`${functionsUrl}/import-platform`, {
+        // Background trigger: kick off import-platform but don't block
+        // the cron response on it. `EdgeRuntime.waitUntil` keeps the
+        // isolate alive so the fetch isn't truncated when we return.
+        const triggerPromise = fetch(`${functionsUrl}/import-platform`, {
           method: "POST",
           headers: {
             apikey: serviceRoleKey,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ importId: row.id }),
-        }).catch((err) => console.error("import-platform trigger failed:", err));
+        }).catch((err) =>
+          console.error("import-platform trigger failed:", row.id, err),
+        );
+        if (typeof EdgeRuntime !== "undefined") {
+          EdgeRuntime.waitUntil(triggerPromise);
+        } else {
+          // Local-dev fallback (no EdgeRuntime global) — await inline.
+          await triggerPromise;
+        }
         scheduled++;
       });
       await Promise.all(jobs);

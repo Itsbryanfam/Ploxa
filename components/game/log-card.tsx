@@ -1,12 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { HeartRating } from "@/components/ui/heart-rating";
 import { Button } from "@/components/ui/button";
-import { EditLogModal } from "./edit-log-modal";
+
+// Lazy-load the edit modal — it pulls in react-query mutations + sonner +
+// HeartRating wiring + status icons that only matter once the user clicks
+// "Edit". Trims the /games/[slug] interactive bundle by ~3-8KB gzip.
+const EditLogModal = dynamic(
+  () => import("./edit-log-modal").then((m) => ({ default: m.EditLogModal })),
+  { ssr: false },
+);
 
 export function LogCard({ item }: { item: LibraryItem }) {
   const [editing, setEditing] = useState(false);

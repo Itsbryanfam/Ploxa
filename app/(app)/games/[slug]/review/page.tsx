@@ -62,7 +62,13 @@ export default async function ReviewRoute({ params, searchParams }: Props) {
       redirect(`/games/${slug}/review?reviewId=${existing.id}`);
     }
     if (existing) {
-      await db.delete(schema.reviews).where(eq(schema.reviews.id, existing.id));
+      // Defense-in-depth: scope delete by userId too. The preceding findFirst
+      // already filters by userId, so this is redundant today — but if that
+      // query is ever refactored to drop the userId filter, this delete
+      // would become a "delete by id only" footgun. Cheap to be safe.
+      await db
+        .delete(schema.reviews)
+        .where(and(eq(schema.reviews.id, existing.id), eq(schema.reviews.userId, user.id)));
     }
     const [inserted] = await db
       .insert(schema.reviews)

@@ -4,7 +4,7 @@ import { requireEnv } from "@/lib/env";
 
 const RAWG_BASE = "https://api.rawg.io/api";
 
-export class RawgError extends Error {
+class RawgError extends Error {
   constructor(message: string, public status?: number) {
     super(message);
     this.name = "RawgError";

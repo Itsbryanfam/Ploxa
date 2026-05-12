@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { regenerateSection } from "@/lib/reviews/server-actions";
+import { readAccumulatedStream } from "@/lib/streams/read-accumulated";
 
 interface Props {
   label: "Hook" | "Highs" | "Lows" | "Verdict";
@@ -13,27 +14,6 @@ interface Props {
   /** When false (manual review), hide the Regenerate button — there's no
    *  Q&A context to draw from, so AI regenerate would just hallucinate. */
   canRegenerate: boolean;
-}
-
-async function readAccumulatedStream(
-  stream: ReadableStream<string>,
-  onChunk: (latest: string) => void,
-): Promise<string> {
-  const reader = stream.getReader();
-  let last = "";
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value !== undefined) {
-        last = value;
-        onChunk(value);
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return last;
 }
 
 export function SectionCard({

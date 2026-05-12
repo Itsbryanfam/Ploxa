@@ -5,16 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-export function relativeTime(date: Date | string): string {
+/**
+ * Compact "Xm ago" / "Xh ago" / "Xd ago" / "Xw ago" / locale-date relative timestamp.
+ * Returns "never" for null/undefined (used by platform connection cards).
+ * Accepts Date or ISO string.
+ */
+export function relativeTime(date: Date | string | null | undefined): string {
+  if (!date) return "never";
   const d = typeof date === "string" ? new Date(date) : date;
   const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
 

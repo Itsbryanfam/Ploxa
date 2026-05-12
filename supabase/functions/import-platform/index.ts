@@ -5,19 +5,16 @@ import {
   type ImportRow,
   type ConnectionRow,
 } from "../_shared/import-engine.ts";
+import { requireServiceRole } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
-  // Auth: service-role key via `apikey` header (NOT `Authorization: Bearer`).
-  // Supabase's newer `sb_secret_*` keys are not JWTs — Edge Functions must be
-  // deployed with `--no-verify-jwt` and validate via string-equality on the
-  // `apikey` header. See:
+  // Auth: service-role key via `apikey` header. See _shared/auth.ts for
+  // constant-time comparison rationale. Supabase's newer `sb_secret_*`
+  // keys aren't JWTs — Edge Functions deploy with `--no-verify-jwt`.
   //   https://supabase.com/docs/guides/api/api-keys
   //   https://supabase.com/docs/guides/functions/auth
-  const apikey = req.headers.get("apikey");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!apikey || !serviceRoleKey || apikey !== serviceRoleKey) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorized = requireServiceRole(req);
+  if (unauthorized) return unauthorized;
 
   let body: { importId?: string };
   try {

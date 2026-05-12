@@ -4,7 +4,7 @@ import { useState, useId } from "react";
 import { cn } from "@/lib/utils";
 import { avatarColorFor } from "@/lib/design/avatar-palette";
 
-export type AvatarKind = "static" | "gif";
+type AvatarKind = "static" | "gif";
 
 export interface AvatarUser {
   id: string;
@@ -38,8 +38,13 @@ export function Avatar({ user, size, className }: AvatarProps) {
   const id = useId();
 
   // Static image (jpg/png/webp): plain <img>.
+  // Intentional <img> rather than next/image because (a) the URL is Supabase
+  // Storage which isn't in remotePatterns by default, (b) the rendered size
+  // is 24-96px so optimization savings are negligible, and (c) keeping img
+  // here parallels the GIF branch below which can't use next/image at all.
   if (user.profilePictureUrl && user.profilePictureKind === "static") {
     return (
+      // eslint-disable-next-line @next/next/no-img-element -- see comment above
       <img
         src={user.profilePictureUrl}
         alt={user.username ?? user.email}
@@ -67,6 +72,9 @@ export function Avatar({ user, size, className }: AvatarProps) {
         <span id={hintId} className="sr-only">
           Animated avatar. Hover or focus to play.
         </span>
+        {/* Intentional <img>: next/image strips animated GIF frames during */}
+        {/* optimization, breaking the hover-to-animate src swap. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={user.username ?? user.email}

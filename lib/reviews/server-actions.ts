@@ -272,7 +272,10 @@ export async function generateDraft(input: unknown): Promise<GenerateDraftResult
     return { ok: false, error: "You've already reviewed this game", existingReviewId: existing.id };
   }
   if (existing) {
-    await db.delete(schema.reviews).where(eq(schema.reviews.id, existing.id));
+    // Defense-in-depth: redundant userId filter (findFirst above scoped it).
+    await db
+      .delete(schema.reviews)
+      .where(and(eq(schema.reviews.id, existing.id), eq(schema.reviews.userId, user.id)));
   }
 
   const game = await db.query.games.findFirst({
@@ -434,10 +437,13 @@ export async function regenerateSection(input: unknown): Promise<RegenerateSecti
         streamable.update(acc);
       }
       // Split current body on \n\n, pad to 4, replace target, rejoin.
+      // Preserve any paragraphs beyond the 4-section structure — users
+      // who've added extra paragraphs in the editor shouldn't lose them
+      // when regenerating one section.
       const sections = (review.body ?? "").split("\n\n");
       while (sections.length < 4) sections.push("");
       sections[parsed.data.sectionIndex] = acc.trim();
-      const newBody = sections.slice(0, 4).join("\n\n");
+      const newBody = sections.join("\n\n");
       await db
         .update(schema.reviews)
         .set({ body: newBody, updatedAt: new Date() })
@@ -596,7 +602,11 @@ export async function deleteReview(input: unknown): Promise<UpdateResult> {
     }),
   ]);
 
-  await db.delete(schema.reviews).where(eq(schema.reviews.id, review.id));
+  // Defense-in-depth: redundant userId filter (the findFirst above scoped
+  // it to the authenticated user).
+  await db
+    .delete(schema.reviews)
+    .where(and(eq(schema.reviews.id, review.id), eq(schema.reviews.userId, user.id)));
 
   if (profile) {
     revalidatePath(`/u/${profile.username}/reviews`);

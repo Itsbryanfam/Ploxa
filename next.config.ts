@@ -31,7 +31,6 @@ const nextConfig: NextConfig = {
       "framer-motion",
       "@radix-ui/react-dialog",
       "@radix-ui/react-dropdown-menu",
-      "@radix-ui/react-slot",
     ],
     staleTimes: {
       dynamic: 30,

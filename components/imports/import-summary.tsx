@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
@@ -56,16 +56,26 @@ export function ImportSummary({ importId, platform, mergedCovers = [], newCovers
   // posterUrl; this kicks off the Steam/SGDB resolver so the next render
   // of /library shows proper box art. We deliberately don't surface a
   // loading state — the user already sees their library, art just appears.
-  const enrichmentFiredRef = useRef(false);
+  //
+  // Guard via localStorage (not a useRef) so revisiting the summary page
+  // doesn't re-fire — refs reset on remount, so the prior implementation
+  // would hammer RAWG/SGDB every time the user clicked back to this URL.
   useEffect(() => {
     if (data?.status !== "completed") return;
-    if (enrichmentFiredRef.current) return;
-    enrichmentFiredRef.current = true;
+    const key = `import:enriched:${importId}`;
+    try {
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, String(Date.now()));
+    } catch {
+      // Private mode / quota-full / no-storage browsers — fall through and
+      // run enrichment anyway. The server-side action is bounded
+      // (MAX_ENRICH_PER_CALL=200) so a duplicate fire is contained.
+    }
     enrichPostersForImport().catch(() => {
       // Best-effort. Failures here don't affect the import; user sees
       // landscape RAWG art for the long tail until the next backfill.
     });
-  }, [data?.status]);
+  }, [data?.status, importId]);
 
   if (!data) return <div className="text-sm text-[var(--text-muted)]">Loading import…</div>;
 

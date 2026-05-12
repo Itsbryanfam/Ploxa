@@ -10,8 +10,8 @@ const XBL_BASE = "https://xbl.io/api/v2";
 const DELTA_CACHE_TTL_S = 25 * 60 * 60; // 25h — daily sync is every 23h
 
 export class XboxKeyInvalidError extends Error { name = "XboxKeyInvalidError"; }
-export class XboxRateLimitError extends Error { name = "XboxRateLimitError"; }
-export class XboxApiError extends Error { name = "XboxApiError"; }
+class XboxRateLimitError extends Error { name = "XboxRateLimitError"; }
+class XboxApiError extends Error { name = "XboxApiError"; }
 
 interface XblTitle {
   titleId: string;

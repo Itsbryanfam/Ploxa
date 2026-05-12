@@ -63,7 +63,18 @@ export function UsernameInput({
     onChangeRef.current = onChange;
   });
 
+  // Skip the first-mount notification so the parent isn't surprised by an
+  // onChange call with the initial value it just passed in. Subsequent
+  // value/status changes notify as expected. This prevents the redundant
+  // render in profile-section.tsx when the user opens the edit form, and
+  // protects future callers from the "did the parent expect a mount-time
+  // signal?" footgun.
+  const isFirstRunRef = useRef(true);
   useEffect(() => {
+    if (isFirstRunRef.current) {
+      isFirstRunRef.current = false;
+      return;
+    }
     onChangeRef.current(value, status.kind === "available");
   }, [value, status]);
 

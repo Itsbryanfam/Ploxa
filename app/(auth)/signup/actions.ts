@@ -12,6 +12,11 @@ import {
 } from "@/lib/profile/server-actions";
 import { UsernameCollisionError } from "@/lib/profile/errors";
 import { usernameSchema } from "@/lib/profile/username-schema";
+import {
+  enforceRateLimit,
+  clientIpForRateLimit,
+  RateLimitedError,
+} from "@/lib/security/rate-limit";
 
 const signupSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -30,6 +35,23 @@ export async function signup(_: ActionResult, formData: FormData): Promise<Actio
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  // 5 signups per IP per hour — caps account-creation flooding while
+  // staying generous enough for shared NAT setups (family / office WiFi).
+  try {
+    const ip = await clientIpForRateLimit();
+    await enforceRateLimit({
+      scope: "auth:signup",
+      identifier: ip,
+      limit: 5,
+      windowSeconds: 3600,
+    });
+  } catch (err) {
+    if (err instanceof RateLimitedError) {
+      return { error: "Too many signups from this network. Try again later." };
+    }
+    throw err;
   }
 
   // Server-side availability check — fast path before hitting auth.signUp.

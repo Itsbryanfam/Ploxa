@@ -6,9 +6,9 @@ import type {
 
 const STEAM_API = "https://api.steampowered.com";
 
-export class SteamRateLimitError extends Error { name = "SteamRateLimitError"; }
-export class SteamPrivateProfileError extends Error { name = "SteamPrivateProfileError"; }
-export class SteamApiError extends Error { name = "SteamApiError"; }
+class SteamRateLimitError extends Error { name = "SteamRateLimitError"; }
+class SteamPrivateProfileError extends Error { name = "SteamPrivateProfileError"; }
+class SteamApiError extends Error { name = "SteamApiError"; }
 
 interface SteamOwnedGame {
   appid: number;
@@ -86,10 +86,7 @@ class SteamAdapter implements LibraryImporter {
     return { games: imported, nextCursor: null };
   }
 
-  async disconnect(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _connection: PlatformConnection,
-  ): Promise<void> {
+  async disconnect(_connection: PlatformConnection): Promise<void> {
     // No-op — Steam has no token to revoke; we only stored the SteamID.
   }
 }

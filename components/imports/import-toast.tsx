@@ -33,6 +33,11 @@ export function ImportToast() {
       const d = q.state.data as LatestResponse | undefined;
       return d?.active && d.active.status !== "failed" ? 2000 : false;
     },
+    // Cross-page nav reuses the cached response for 2 minutes so the toast
+    // mount in the app layout doesn't re-pull on every navigation. During
+    // an active import the 2s refetchInterval overrides this anyway.
+    staleTime: 120_000,
+    gcTime: 120_000,
   });
 
   // Surface deltas exactly once on mount; use join(",") so the effect dep

@@ -40,7 +40,11 @@ export async function CockpitDashboard() {
   const playing = library.find((l) => l.status === "playing");
   const lastLog = library[0]; // already sorted by recent
   const greetingCtx: GreetingContext = {
-    hour: new Date(now).getHours(),
+    // null = decide client-side. Vercel runs server-side in UTC, so a
+    // server-derived getHours() returns UTC — wrong "morning/night"
+    // greeting for every non-UTC user. MascotGreeting resolves this
+    // against the browser's local tz once it mounts.
+    hour: null,
     daysSinceLastLog: lastLog
       ? Math.floor((now - new Date(lastLog.updatedAt).getTime()) / 86_400_000)
       : null,

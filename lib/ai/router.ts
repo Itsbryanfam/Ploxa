@@ -11,7 +11,7 @@ import {
   incrementProviderMinute,
 } from "./rate-limit";
 import { recordCall } from "./telemetry";
-import { AIProvidersExhaustedError, RateLimitExceededError } from "./errors";
+import { AIProvidersExhaustedError } from "./errors";
 import type { aiFeatureEnum } from "@/lib/db/schema";
 
 type AIFeature = (typeof aiFeatureEnum.enumValues)[number];
@@ -138,8 +138,6 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
 
   throw new AIProvidersExhaustedError(attempts);
 }
-
-export { RateLimitExceededError };
 
 /**
  * Wrap an async iterable so that a finalizer runs after the consumer

@@ -6,6 +6,12 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
 import { ensureMyProfile } from "@/lib/profile/server-actions";
+import { safeRedirectPath } from "@/lib/auth/safe-next";
+import {
+  enforceRateLimit,
+  clientIpForRateLimit,
+  RateLimitedError,
+} from "@/lib/security/rate-limit";
 
 const passwordSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -31,6 +37,23 @@ export async function loginWithPassword(_: ActionResult, formData: FormData): Pr
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
+  // 10 password attempts per IP per 5 minutes — caps credential-stuffing
+  // without locking out legitimate users typo'ing their own password.
+  try {
+    const ip = await clientIpForRateLimit();
+    await enforceRateLimit({
+      scope: "auth:login",
+      identifier: ip,
+      limit: 10,
+      windowSeconds: 300,
+    });
+  } catch (err) {
+    if (err instanceof RateLimitedError) {
+      return { error: `Too many login attempts. Try again in ${Math.ceil(err.retryAfterSeconds / 60)} minute(s).` };
+    }
+    throw err;
+  }
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
@@ -42,9 +65,7 @@ export async function loginWithPassword(_: ActionResult, formData: FormData): Pr
   }
 
   await ensureMyProfile();
-  // Only honor relative paths — prevents open-redirect via crafted `next=`.
-  const safeNext = parsed.data.next?.startsWith("/") ? parsed.data.next : "/home";
-  redirect(safeNext);
+  redirect(safeRedirectPath(parsed.data.next));
 }
 
 export async function sendMagicLink(_: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -57,8 +78,27 @@ export async function sendMagicLink(_: ActionResult, formData: FormData): Promis
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
+  // 3 magic links per email per hour — emails are expensive (Resend
+  // free-tier cap) and the request-as-someone-else abuse case is real.
+  try {
+    await enforceRateLimit({
+      scope: "auth:magic-link",
+      identifier: parsed.data.email.toLowerCase(),
+      limit: 3,
+      windowSeconds: 3600,
+    });
+  } catch (err) {
+    if (err instanceof RateLimitedError) {
+      return { error: "Too many magic-link requests. Try again later." };
+    }
+    throw err;
+  }
+
   const supabase = await createSupabaseServerClient();
-  const next = parsed.data.next ? `?next=${encodeURIComponent(parsed.data.next)}` : "";
+  // Validate `next` BEFORE passing it through the email redirect so the
+  // generated link can't be hijacked into an open-redirect either.
+  const validatedNext = safeRedirectPath(parsed.data.next);
+  const next = validatedNext !== "/home" ? `?next=${encodeURIComponent(validatedNext)}` : "";
 
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data.email,

@@ -24,17 +24,18 @@ export async function matchToRawg(imported: ImportedGame): Promise<number | null
   const normalized = normalizeTitle(imported.title);
   if (!normalized) return null;
 
-  // 1. Exact match on normalized title
-  const exact = await db.select({ id: games.id }).from(games)
-    .where(sql`lower(${games.title}) = ${normalized}`).limit(1);
+  // 1+2. Exact title match and alias match are independent point lookups
+  //      on different tables — run in parallel. Exact wins if both hit.
+  const [exact, alias] = await Promise.all([
+    db.select({ id: games.id }).from(games)
+      .where(sql`lower(${games.title}) = ${normalized}`).limit(1),
+    db.select({ id: gameAliases.gameId }).from(gameAliases)
+      .where(sql`lower(${gameAliases.alias}) = ${normalized}`).limit(1),
+  ]);
   if (exact.length > 0) return exact[0].id;
-
-  // 2. Alias match
-  const alias = await db.select({ id: gameAliases.gameId }).from(gameAliases)
-    .where(sql`lower(${gameAliases.alias}) = ${normalized}`).limit(1);
   if (alias.length > 0) return alias[0].id;
 
-  // 3. ILIKE prefix
+  // 3. ILIKE prefix — runs only when both point lookups missed.
   const prefix = await db.select({ id: games.id, title: games.title, released: games.released })
     .from(games).where(ilike(games.title, `${normalized}%`)).limit(5);
   if (prefix.length === 1) return prefix[0].id;

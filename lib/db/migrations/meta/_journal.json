@@ -36,6 +36,13 @@
       "when": 1778561729694,
       "tag": "0004_colorful_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778571588654,
+      "tag": "0005_green_kree",
+      "breakpoints": true
     }
   ]
 }

@@ -59,7 +59,12 @@ export default async function InterceptedReviewRoute({ params, searchParams }: P
       redirect(`/games/${slug}/review?reviewId=${existing.id}`);
     }
     if (existing) {
-      await db.delete(schema.reviews).where(eq(schema.reviews.id, existing.id));
+      // Defense-in-depth: scope delete by userId too. The preceding findFirst
+      // already filters by userId; this keeps the delete safe if that filter
+      // is ever refactored away.
+      await db
+        .delete(schema.reviews)
+        .where(and(eq(schema.reviews.id, existing.id), eq(schema.reviews.userId, user.id)));
     }
     const [inserted] = await db
       .insert(schema.reviews)

@@ -28,6 +28,10 @@ export default async function ProfilePage({
   ]);
   if (!profile) notFound();
   const isOwn = user?.id === profile.userId;
+  // Private profiles are 404'd to non-owners. Returning `notFound()` rather
+  // than a styled "private" page matches sibling routes (/u/.../reviews)
+  // and avoids leaking that the user exists.
+  if (!profile.isPublic && !isOwn) notFound();
 
   // Load library — own profile sees everything, public sees only non-private logs
   const rows = await db

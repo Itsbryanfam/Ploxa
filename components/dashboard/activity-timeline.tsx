@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ActivityEvent } from "@/lib/logs/server-actions";
+import { relativeTime } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { HeartFull } from "@/components/pixel";
 
@@ -32,14 +33,3 @@ export function ActivityTimeline({ events }: { events: ActivityEvent[] }) {
   );
 }
 
-function relativeTime(d: Date): string {
-  const ms = Date.now() - new Date(d).getTime();
-  const min = ms / 60_000;
-  const hr = min / 60;
-  const day = hr / 24;
-  if (min < 1) return "just now";
-  if (min < 60) return `${Math.floor(min)}m ago`;
-  if (hr < 24) return `${Math.floor(hr)}h ago`;
-  if (day < 7) return `${Math.floor(day)}d ago`;
-  return new Date(d).toLocaleDateString();
-}

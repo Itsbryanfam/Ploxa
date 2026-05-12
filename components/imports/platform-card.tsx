@@ -1,13 +1,23 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { SteamIcon, XboxIcon } from "@/components/pixel/platform-icons";
 import { syncNow, disconnectPlatform } from "@/lib/imports/server-actions";
 import type { ConnectionSummary } from "@/lib/imports/server-actions";
-import { XboxConnectModal } from "./xbox-connect-modal";
+import { relativeTime } from "@/lib/utils";
+
+// Lazy-load the OpenXBL walkthrough modal — it ships the pixel-art
+// illustrations + 4-step state machine that only matters when the user
+// is mid-connect. Saves a few KB on /settings for everyone who isn't
+// actively walking through Xbox.
+const XboxConnectModal = dynamic(
+  () => import("./xbox-connect-modal").then((m) => ({ default: m.XboxConnectModal })),
+  { ssr: false },
+);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -61,20 +71,6 @@ function deriveState(props: Props): CardState {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function relativeTime(date: Date | null): string {
-  if (!date) return "never";
-  const now = Date.now();
-  const diff = now - date.getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString();
-}
 
 function platformLabel(platform: Platform): string {
   if (platform === "steam") return "Steam";
@@ -265,17 +261,7 @@ export function PlatformCard(props: Props) {
       ? "border-[var(--danger,#ef4444)]"
       : "border-[var(--border)]";
 
-  // errorMessage may exist on the runtime object even if not in the TS type
-  // (e.g., if the query is extended); safe optional-chain access.
-  const rawErrorCode =
-    (
-      props.summary?.latestImport as
-        | (NonNullable<ConnectionSummary["latestImport"]> & {
-            errorMessage?: string | null;
-          })
-        | null
-        | undefined
-    )?.errorMessage ?? "";
+  const rawErrorCode = props.summary?.latestImport?.errorMessage ?? "";
   const recovery = RECOVERY_COPY[rawErrorCode] ?? DEFAULT_RECOVERY;
 
   const importedCount = props.summary?.latestImport?.importedCount ?? 0;

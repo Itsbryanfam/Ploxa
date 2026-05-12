@@ -103,12 +103,14 @@ export async function matchToRawg(
   const normalized = normalizeTitle(imported.title);
   if (!normalized) return null;
 
-  const exact =
-    await sql`SELECT id FROM games WHERE lower(title) = ${normalized} LIMIT 1`;
+  // Exact and alias are independent point lookups — run in parallel.
+  // Mirrors the parallelization in lib/imports/rawg-match.ts. On a 200-
+  // game Steam import that's bounded-time DB load savings.
+  const [exact, alias] = await Promise.all([
+    sql`SELECT id FROM games WHERE lower(title) = ${normalized} LIMIT 1`,
+    sql`SELECT game_id AS id FROM game_aliases WHERE lower(alias) = ${normalized} LIMIT 1`,
+  ]);
   if (exact.length) return exact[0].id;
-
-  const alias =
-    await sql`SELECT game_id AS id FROM game_aliases WHERE lower(alias) = ${normalized} LIMIT 1`;
   if (alias.length) return alias[0].id;
 
   const prefix =

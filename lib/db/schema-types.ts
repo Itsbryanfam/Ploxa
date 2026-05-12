@@ -1,11 +1,9 @@
 // Type-only imports — fully erased at compile time, so this file stays
 // safe to import from client components without dragging Drizzle/postgres
 // into the client bundle.
-import type { logStatusEnum, platformEnum, importStatusEnum } from "./schema";
+import type { logStatusEnum } from "./schema";
 
 export type LogStatus = (typeof logStatusEnum.enumValues)[number];
-export type PlatformKind = (typeof platformEnum.enumValues)[number];
-export type ImportStatus = (typeof importStatusEnum.enumValues)[number];
 
 // Hardcoded runtime array (kept hardcoded rather than reading
 // `logStatusEnum.enumValues` so this file remains client-bundle clean).
