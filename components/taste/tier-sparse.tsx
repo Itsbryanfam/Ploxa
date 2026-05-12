@@ -39,6 +39,7 @@ export function TierSparse({
           </p>
           <div className="mt-3 flex gap-2">
             <button
+              type="button"
               disabled
               className="rounded border border-zinc-800 px-3 py-1 text-xs text-zinc-600"
               title="Available once you reach 10 logs"
@@ -46,6 +47,7 @@ export function TierSparse({
               Refresh fingerprint
             </button>
             <button
+              type="button"
               disabled
               className="rounded border border-zinc-800 px-3 py-1 text-xs text-zinc-600"
               title="Available once you reach 10 logs"

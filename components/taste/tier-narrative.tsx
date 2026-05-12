@@ -77,6 +77,7 @@ export function TierNarrative({
  * narrative tier renders the disabled-state UX (and tooltip messaging
  * around the public/private gate) without needing a temporary import.
  */
+// TODO(T17): swap stub for share modal (components/taste/share-modal.tsx)
 function ShareButton({ disabled }: { disabled: boolean }) {
   return (
     <button
