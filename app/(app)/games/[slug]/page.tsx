@@ -1,9 +1,6 @@
 import { notFound } from "next/navigation";
-import { and, eq, isNotNull } from "drizzle-orm";
-import { db, schema } from "@/lib/db";
-import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetailBySlug, getScreenshots } from "@/lib/games/server-actions";
-import { getUserLogForGame } from "@/lib/logs/server-actions";
+import { getGameDetailUserState } from "@/lib/logs/server-actions";
 import { GameDetail } from "@/components/game/game-detail";
 
 export default async function GamePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -16,31 +13,13 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
     notFound();
   }
 
-  const user = await getCachedUser();
-  const [screenshots, log, ownReviewRow] = await Promise.all([
+  // Two round-trips total: (1) Redis-backed RAWG screenshots, (2) one combined
+  // SQL query for log + published review. Previously this was three (separate
+  // log query + separate review query) running in parallel on Promise.all.
+  const [screenshots, { log, ownReview }] = await Promise.all([
     getScreenshots(game.id),
-    getUserLogForGame(game.id, game),
-    user
-      ? db.query.reviews.findFirst({
-          // Published reviews only — unpublished drafts shouldn't render the
-          // "Your review" excerpt on the game detail page.
-          where: and(
-            eq(schema.reviews.userId, user.id),
-            eq(schema.reviews.gameId, game.id),
-            isNotNull(schema.reviews.publishedAt),
-          ),
-          columns: { id: true, body: true, rating: true },
-        })
-      : Promise.resolve(null),
+    getGameDetailUserState(game.id, game),
   ]);
-
-  const ownReview = ownReviewRow
-    ? {
-        id: ownReviewRow.id,
-        body: ownReviewRow.body,
-        rating: ownReviewRow.rating != null ? Number(ownReviewRow.rating) : null,
-      }
-    : null;
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">

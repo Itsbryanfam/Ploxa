@@ -166,6 +166,81 @@ export async function getUserLogForGame(
   return row ? mapRowToLibraryItem(row, game) : null;
 }
 
+/**
+ * Combined fetch for both `/games/[slug]` and its intercepted-modal
+ * counterpart: returns the user's log AND their published review for a
+ * single game in one DB round-trip.
+ *
+ * Anchored on the `games` row (always 1 row, since the caller already
+ * resolved the game) with two LEFT JOINs so:
+ *   - log === null   if the user hasn't logged this game
+ *   - ownReview === null if the user hasn't published a review for it
+ *
+ * The orphan-review case (review without log) is preserved: `reviews.logId`
+ * is `onDelete: "set null"`, so deleting a log keeps its review row alive.
+ * Anchoring on `games` (not `logs`) means we still surface those.
+ *
+ * Replaces what used to be two parallel queries — `getUserLogForGame` + a
+ * direct `db.query.reviews.findFirst` — on every game detail page render.
+ */
+export interface GameDetailUserState {
+  log: LibraryItem | null;
+  ownReview: { id: string; body: string; rating: number | null } | null;
+}
+
+export async function getGameDetailUserState(
+  gameId: number,
+  game: {
+    id: number; slug: string; title: string; coverUrl: string | null;
+    released: Date | null; genres: string[] | null; platforms: string[] | null;
+  },
+): Promise<GameDetailUserState> {
+  const user = await getCachedUser();
+  if (!user) return { log: null, ownReview: null };
+
+  const rows = await db
+    .select({
+      log: schema.logs,
+      review: {
+        id: schema.reviews.id,
+        body: schema.reviews.body,
+        rating: schema.reviews.rating,
+      },
+    })
+    .from(schema.games)
+    .leftJoin(
+      schema.logs,
+      and(
+        eq(schema.logs.gameId, schema.games.id),
+        eq(schema.logs.userId, user.id),
+      ),
+    )
+    .leftJoin(
+      schema.reviews,
+      and(
+        eq(schema.reviews.gameId, schema.games.id),
+        eq(schema.reviews.userId, user.id),
+        isNotNull(schema.reviews.publishedAt),
+      ),
+    )
+    .where(eq(schema.games.id, gameId))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return { log: null, ownReview: null };
+
+  return {
+    log: row.log ? mapRowToLibraryItem(row.log, game) : null,
+    ownReview: row.review
+      ? {
+          id: row.review.id,
+          body: row.review.body,
+          rating: row.review.rating != null ? Number(row.review.rating) : null,
+        }
+      : null,
+  };
+}
+
 const updateStatusInput = z.object({
   logId: z.string().uuid(),
   status: z.enum(LOG_STATUSES as [LogStatus, ...LogStatus[]]),
