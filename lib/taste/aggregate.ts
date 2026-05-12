@@ -1,7 +1,5 @@
 import type { SparseVector, VectorBundle } from "@/lib/taste/vectors";
-
-/** Status enum mirroring lib/db/schema.ts:logStatusEnum. */
-type LogStatus = "backlog" | "wishlist" | "playing" | "completed" | "played" | "dropped";
+import type { LogStatus } from "@/lib/db/schema-types";
 
 export type AggregateInputRow = {
   /** Required */
@@ -34,7 +32,7 @@ export type AggregateResult = VectorBundle & {
  * Q1 — per-log weight.
  *
  * - Rating dominates: 1.0 baseline + intensity bonus (up to ×1.3 when |r-5|/5 = 1).
- * - Engaged (status ∈ {playing, completed, played, dropped}) without rating: 0.6.
+ * - Engaged (status ∈ {playing, completed, on_hold, dropped}) without rating: 0.6.
  * - Backlog / wishlist: 0.2 (implicit interest, e.g. bought in a bundle).
  * - Review-bearing logs get an extra ×1.15 because the user spent the most
  *   effort on them.
@@ -47,14 +45,15 @@ export function weight(row: AggregateInputRow): number {
   } else if (
     row.status === "playing" ||
     row.status === "completed" ||
-    row.status === "played" ||
+    row.status === "on_hold" ||
     row.status === "dropped"
   ) {
     w = 0.6;
   } else if (row.status === "backlog" || row.status === "wishlist") {
     w = 0.2;
   } else {
-    w = 0;
+    // Exhaustiveness check — every LogStatus must be handled above.
+    assertNever(row.status);
   }
   if (row.hasPublishedReview) w *= 1.15;
   return w;
@@ -150,4 +149,8 @@ export function aggregateFingerprint(input: AggregateInput): AggregateResult {
     lengthPreference,
     totalLogsAtGeneration: input.rows.length,
   };
+}
+
+function assertNever(x: never): never {
+  throw new Error(`Unexpected status: ${String(x)}`);
 }

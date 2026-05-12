@@ -7,7 +7,7 @@ import {
 
 function row(partial: Partial<AggregateInputRow>): AggregateInputRow {
   return {
-    status: "played",
+    status: "playing",
     rating: null,
     hasPublishedReview: false,
     genres: [],
@@ -42,6 +42,10 @@ const cases: Case[] = [
     fn: () => Math.abs(weight(row({ status: "backlog" })) - 0.2) < 1e-6,
   },
   {
+    name: "weight: status=on_hold, no rating → 0.6 (engaged tier)",
+    fn: () => Math.abs(weight(row({ status: "on_hold" })) - 0.6) < 1e-6,
+  },
+  {
     name: "weight: review bonus stacks (rating=8, hasReview=true)",
     fn: () => {
       const w = weight(row({ rating: 8, hasPublishedReview: true }));
@@ -68,6 +72,10 @@ const cases: Case[] = [
   {
     name: "sign: no rating, backlog → +1 (weak positive interest)",
     fn: () => sign(row({ status: "backlog" })) === 1,
+  },
+  {
+    name: "sign: no rating, on_hold → +1 (engaged, not dropped)",
+    fn: () => sign(row({ status: "on_hold" })) === 1,
   },
   {
     name: "aggregate: empty → empty vectors",
