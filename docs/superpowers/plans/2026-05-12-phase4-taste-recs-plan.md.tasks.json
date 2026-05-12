@@ -31,7 +31,7 @@
     {
       "id": 5,
       "subject": "Task 5: refreshFingerprint server action + rate limit",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** Server action callable from client island. Auth + 3/24h rate-limit + tier-gating + invocation of Edge Function + cache invalidation.\n\n**Files:** lib/taste/server-actions.ts (add refreshFingerprint)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/taste/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"refreshFingerprint() auth-gated\",\"rate-limit 3/24h via enforceRateLimit with key taste:refresh:${userId}\",\"tier=empty fast-fails\",\"on success: deletes non-dismissed rec rows\",\"returns structured failure reasons (unauthorized/rate-limited/ai-failure)\"]}\n```"
     },
@@ -141,5 +141,5 @@
       "description": "**Goal:** 39 automated checks across 9 groups (mirrors verify-phase-3 shape) + 4 manual items + ceremony (tag, memory file, MEMORY.md update).\n\n**Files:** scripts/verify-phase-4.ts, memory/phase_4_complete.md, memory/MEMORY.md (modify)\n\n**Verify:** `pnpm tsx scripts/verify-phase-4.ts` → 39/39 → manual M1-M4 → ceremony\n\n```json:metadata\n{\"files\":[\"scripts/verify-phase-4.ts\",\"memory/phase_4_complete.md\",\"memory/MEMORY.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-4.ts\",\"acceptanceCriteria\":[\"39/39 automated pass\",\"M1: narrative quality at 30 logs (concrete genres + confident voice + no hedging/emoji)\",\"M2: rec reasoning explicitly references filter context\",\"M3: share card previews in Discord\",\"M4: pose mapping correct across 3 synthetic clusters\",\"git tag phase-4-complete\",\"memory/phase_4_complete.md written\",\"MEMORY.md updated\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-12T20:30:00Z"
+  "lastUpdated": "2026-05-12T22:00:00Z"
 }
