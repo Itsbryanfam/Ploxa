@@ -339,11 +339,21 @@ export async function runImport(opts: {
     await sql`UPDATE imports SET total_count = ${games.length} WHERE id = ${importRow.id}`;
 
     const CHUNK = 50;
-    const conflicts: unknown[] = [];
-    const unmatched: unknown[] = [];
-    let imported = 0;
+    // Resume support: pick up where a prior invocation left off. The Supabase
+    // Free-tier Edge Function wall-clock cap is ~150s; libraries larger than
+    // ~50 games per pass need re-invocation. imported_count is the chunk
+    // boundary the previous pass committed; conflicts/unmatched are already
+    // accumulated in the row. Starting empty here would overwrite them.
+    const startIdx = Math.min(importRow.imported_count ?? 0, games.length);
+    const conflicts: unknown[] = Array.isArray(importRow.conflicts_jsonb)
+      ? [...importRow.conflicts_jsonb]
+      : [];
+    const unmatched: unknown[] = Array.isArray(importRow.unmatched_jsonb)
+      ? [...importRow.unmatched_jsonb]
+      : [];
+    let imported = startIdx;
 
-    for (let i = 0; i < games.length; i += CHUNK) {
+    for (let i = startIdx; i < games.length; i += CHUNK) {
       const chunk = games.slice(i, i + CHUNK);
       for (const g of chunk) {
         const gameId = await matchToRawg(sql, g);
