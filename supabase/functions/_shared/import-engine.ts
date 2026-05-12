@@ -304,6 +304,93 @@ export async function fetchLibrary(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// PER-GAME PROCESSING — atomic UPSERT with merge semantics.
+//
+// Replaces the previous 2-step "SELECT existing then INSERT or UPDATE" pattern
+// with a single round-trip ON CONFLICT DO UPDATE. Three benefits:
+//   1. One DB roundtrip per game instead of two → ~50ms saved per game.
+//   2. Atomic — no race between SELECT and write under parallel execution.
+//   3. RETURNING (xmax = 0) tells us insert-vs-update so we can still
+//      classify each game into "new" or "merged" buckets.
+//
+// Merge semantics preserved from lib/imports/merge.ts:
+//   - status/rating/notes/started_at/finished_at NEVER touched on update
+//   - platforms = union of (existing legacy or array) ∪ {platform}
+//   - hours_played = greatest of (existing, imported)
+//   - status defaults to 'backlog' on insert
+// ──────────────────────────────────────────────────────────────────────────────
+
+type ProcessGameResult =
+  | { kind: "inserted"; logId: string; gameId: number }
+  | { kind: "merged"; logId: string; gameId: number }
+  | {
+      kind: "unmatched";
+      item: { externalId: string; title: string; platform: string };
+    };
+
+async function processGame(
+  sql: ReturnType<typeof postgres>,
+  importRow: ImportRow,
+  g: ImportedGame,
+): Promise<ProcessGameResult> {
+  const gameId = await matchToRawg(sql, g);
+  if (gameId == null) {
+    return {
+      kind: "unmatched",
+      item: {
+        externalId: g.externalId,
+        title: g.title,
+        platform: importRow.platform,
+      },
+    };
+  }
+
+  // Single atomic UPSERT. Merge rules encoded in the ON CONFLICT clause:
+  //   platforms: union (treating COALESCE for legacy platform_played_on)
+  //   hours_played: greatest-of
+  // status / rating / notes / etc are NEVER referenced in SET → untouched.
+  const rows = await sql<Array<{ id: string; inserted: boolean }>>`
+    INSERT INTO logs (user_id, game_id, status, platforms, platform_played_on, hours_played)
+    VALUES (
+      ${importRow.user_id},
+      ${gameId},
+      'backlog',
+      ${[importRow.platform]},
+      ${importRow.platform},
+      ${g.hoursPlayed}
+    )
+    ON CONFLICT (user_id, game_id, is_replay) DO UPDATE
+    SET
+      platforms = (
+        SELECT array_agg(DISTINCT p ORDER BY p)
+        FROM unnest(
+          COALESCE(
+            logs.platforms,
+            CASE WHEN logs.platform_played_on IS NOT NULL
+                 THEN ARRAY[logs.platform_played_on]
+                 ELSE ARRAY[]::text[] END
+          ) || excluded.platforms
+        ) p
+      ),
+      hours_played = GREATEST(logs.hours_played, excluded.hours_played)
+    RETURNING id, (xmax = 0) AS inserted
+  `;
+
+  if (!rows.length) {
+    // Shouldn't happen — UPSERT always returns the affected row
+    return {
+      kind: "unmatched",
+      item: { externalId: g.externalId, title: g.title, platform: importRow.platform },
+    };
+  }
+
+  const row = rows[0];
+  return row.inserted
+    ? { kind: "inserted", logId: row.id, gameId }
+    : { kind: "merged", logId: row.id, gameId };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // MAIN ENGINE
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -353,61 +440,30 @@ export async function runImport(opts: {
       : [];
     let imported = startIdx;
 
+    // CONCURRENCY: per-game work is parallelizable. The slow step is the
+    // optional RAWG fetch (~300ms); DB queries are ~50ms each. Running games
+    // in parallel turns a 50-game chunk from ~30s serial into ~3s parallel.
+    // Cap = 10 to stay friendly with the pooler's per-session connection limit
+    // and avoid hammering the RAWG free tier.
+    const CONCURRENCY = 10;
+
     for (let i = startIdx; i < games.length; i += CHUNK) {
       const chunk = games.slice(i, i + CHUNK);
-      for (const g of chunk) {
-        const gameId = await matchToRawg(sql, g);
-        if (gameId == null) {
-          unmatched.push({
-            externalId: g.externalId,
-            title: g.title,
-            platform: importRow.platform,
-          });
-          continue;
-        }
-        const existing = await sql`
-          SELECT id, platforms, platform_played_on, hours_played
-          FROM logs
-          WHERE user_id = ${importRow.user_id}
-            AND game_id = ${gameId}
-            AND is_replay = false
-          LIMIT 1
-        `;
-        const merge = mergeImportedGame(
-          { ...g, gameId },
-          existing.length
-            ? {
-                id: existing[0].id,
-                platforms: existing[0].platforms,
-                platformPlayedOn: existing[0].platform_played_on,
-                hoursPlayed: existing[0].hours_played
-                  ? Number(existing[0].hours_played)
-                  : null,
-              }
-            : null,
-          importRow.platform,
+      // Process each chunk in waves of CONCURRENCY parallel game-processings.
+      for (let waveStart = 0; waveStart < chunk.length; waveStart += CONCURRENCY) {
+        const wave = chunk.slice(waveStart, waveStart + CONCURRENCY);
+        const waveResults = await Promise.all(
+          wave.map((g) => processGame(sql, importRow, g)),
         );
-        if (merge.action === "insert") {
-          await sql`
-            INSERT INTO logs (user_id, game_id, status, platforms, platform_played_on, hours_played)
-            VALUES (
-              ${importRow.user_id},
-              ${merge.row.gameId},
-              ${merge.row.status},
-              ${merge.row.platforms},
-              ${merge.row.platformPlayedOn},
-              ${merge.row.hoursPlayed}
-            )
-            ON CONFLICT (user_id, game_id, is_replay) DO NOTHING
-          `;
-        } else {
-          await sql`
-            UPDATE logs
-            SET platforms = ${merge.set.platforms},
-                hours_played = ${merge.set.hoursPlayed}
-            WHERE id = ${merge.logId}
-          `;
-          conflicts.push({ logId: merge.logId, gameId, rule: merge.rule });
+        for (const r of waveResults) {
+          if (r.kind === "unmatched") unmatched.push(r.item);
+          else if (r.kind === "merged") {
+            conflicts.push({
+              logId: r.logId,
+              gameId: r.gameId,
+              rule: "platform_merge",
+            });
+          }
         }
       }
       imported += chunk.length;
