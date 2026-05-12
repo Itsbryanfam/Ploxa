@@ -46,10 +46,27 @@ function fmtLength(pref: Record<string, number>): string {
   return `Length preference (% of weighted logs):\n${lines.join("\n")}`;
 }
 
+/**
+ * Render the per-user fingerprint into a (system, user) prompt pair for
+ * the narrative model. The system prompt encodes voice + style guards
+ * (no emoji, no hedging, no quoted titles) plus a tier-aware confidence
+ * hint. The user prompt formats top-8 vectors per field, length
+ * distribution, and the most recent liked/disliked games.
+ *
+ * Prompt-text changes MUST bump NARRATIVE_PROMPT_VERSION so the resulting
+ * narrative_model_version on disk reflects the new prompt and the daily
+ * drift cron can re-narrate users with stale prompts.
+ */
 export function buildNarrativePrompt(input: NarrativePromptInput): {
   system: string;
   user: string;
 } {
+  // The third arm fires for sparse/empty tiers. In production the Edge
+  // function short-circuits both before calling buildNarrativePrompt
+  // (sparse → vectors-only path; empty → no rows at all), so this branch
+  // only fires when called from a context that bypasses those guards
+  // (e.g. unit tests, future callers, or local prompt iteration). Kept
+  // for safety — better to render a tentative narrative than to throw.
   const confidenceHint =
     input.tier === "full"
       ? "Write with confident specificity — name concrete patterns."

@@ -93,15 +93,26 @@ export async function callRouter(input: CallRouterInput): Promise<CallRouterResu
       });
 
       if (!resp.ok) {
+        // Log the full provider response body for debugging, but don't
+        // include it in the error chain — provider responses occasionally
+        // echo request shape, and that error eventually serializes via
+        // AIProvidersExhaustedError.message which could surface to logs
+        // or telemetry. Defense-in-depth: keep the user-visible chain to
+        // {provider, status only}; full body lives in console.error.
         const errText = await resp.text().catch(() => "<unreadable>");
+        console.error(
+          `ai-router: ${provider.name} returned HTTP ${resp.status}: ${errText.slice(0, 500)}`,
+        );
         attempts.push({
           provider: provider.name,
-          error: `HTTP ${resp.status}: ${errText.slice(0, 200)}`,
+          error: `HTTP ${resp.status}`,
         });
         // 4xx is a config error (bad model, bad key, bad request shape).
         // 5xx is a provider problem — fall through to next provider.
         // Either way, try the next one; bailing on 4xx is more brittle
         // than just trying everything since key issues vary per provider.
+        // Cost: one wasted roundtrip on identical-shape failures (e.g.
+        // a malformed body that both providers reject the same way).
         continue;
       }
 

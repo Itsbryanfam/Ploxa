@@ -7,6 +7,9 @@ import { buildNarrativePrompt, NARRATIVE_PROMPT_VERSION } from "../_shared/promp
 
 type Tier = "empty" | "sparse" | "sharpening" | "full";
 
+// Mirrored from lib/taste/tier.ts:tierForUser. Edge runtime can't import
+// from `lib/` (no @/ alias resolution), so we duplicate. Keep these in
+// sync — boundary changes (currently 0 / 10 / 30) are calibrated.
 function tierForUser(count: number): Tier {
   if (count <= 0) return "empty";
   if (count < 10) return "sparse";
@@ -19,6 +22,14 @@ Deno.serve(async (req) => {
   const unauthorized = requireServiceRole(req);
   if (unauthorized) return unauthorized;
 
+  // Auth boundary note: this Edge function trusts body.userId because
+  // requireServiceRole gates the entire handler. Anyone with the
+  // SUPABASE_SERVICE_ROLE_KEY (which lives only on the Next-side server)
+  // can trigger a refresh for any userId. Callers MUST derive userId from
+  // their own auth check before invoking this function — see T5's
+  // refreshFingerprint server action. Do NOT expose this Edge function
+  // to public traffic. T11 (rerank-recs) and T18 (drift-cron) will reuse
+  // this same internal-service pattern.
   let body: { userId?: string; reason?: string };
   try {
     body = (await req.json()) as { userId?: string; reason?: string };
@@ -54,10 +65,7 @@ Deno.serve(async (req) => {
     `;
 
     if (rows.length === 0) {
-      return new Response(JSON.stringify({ tier: "empty", skipped: "no logs" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      return Response.json({ tier: "empty", skipped: "no logs" });
     }
 
     const agg = aggregate(rows);
@@ -86,10 +94,7 @@ Deno.serve(async (req) => {
           total_logs_at_generation = EXCLUDED.total_logs_at_generation,
           vectors_generated_at = NOW()
       `;
-      return new Response(
-        JSON.stringify({ tier, narrative: null, skipped: "sparse-tier-no-ai" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+      return Response.json({ tier, narrative: null, skipped: "sparse-tier-no-ai" });
     }
 
     // 3. Build narrative-prompt inputs (sharpening/full tier).
@@ -130,9 +135,59 @@ Deno.serve(async (req) => {
       maxTokens: 200,
     });
 
+    // Length sanity check — guard against AI failure modes that produce
+    // empty/truncated/run-on output. callRouter already rejects empty strings;
+    // this catches the next class of issues. Bounds: max_tokens=200 typically
+    // caps at ~800-1000 chars; we allow up to 1500 for tokenization variance.
+    // Refusal patterns ("I cannot help with that", "As an AI…") are not
+    // length-detectable — content-quality filtering is plan Step 7 (manual
+    // prompt iteration) territory.
+    const narrative = result.text.trim();
+    if (narrative.length < 20 || narrative.length > 1500) {
+      console.warn(
+        `refresh-fingerprint: AI narrative rejected (length=${narrative.length}, provider=${result.provider})`,
+      );
+      // Persist vectors only — same path as the sparse-tier branch above.
+      await sql`
+        INSERT INTO taste_fingerprints (
+          user_id, genre_vector, theme_vector, mechanic_vector,
+          length_preference, total_logs_at_generation, vectors_generated_at
+        ) VALUES (
+          ${userId},
+          ${sql.json(agg.genre)},
+          ${sql.json(agg.theme)},
+          ${sql.json(agg.mechanic)},
+          ${sql.json(agg.length_preference)},
+          ${agg.total_logs_at_generation},
+          NOW()
+        )
+        ON CONFLICT (user_id) DO UPDATE SET
+          genre_vector = EXCLUDED.genre_vector,
+          theme_vector = EXCLUDED.theme_vector,
+          mechanic_vector = EXCLUDED.mechanic_vector,
+          length_preference = EXCLUDED.length_preference,
+          total_logs_at_generation = EXCLUDED.total_logs_at_generation,
+          vectors_generated_at = NOW()
+      `;
+      return Response.json({
+        tier,
+        narrative: null,
+        skipped: "ai-output-rejected",
+        reason: reason ?? "manual",
+      });
+    }
+
     const modelVersion = `${result.provider}-${result.model}/narrative-${NARRATIVE_PROMPT_VERSION}`;
 
     // 5. Atomic write: vectors + narrative + snapshot + model version.
+    // Snapshot the SAME vectors we just wrote to genre/theme/mechanic_vector,
+    // frozen at narrative-generation time. Subsequent vector-only refreshes
+    // (sparse-tier path, drift-cron) update genre_vector etc but do NOT
+    // touch narrative_snapshot_vectors — the daily drift cron compares
+    // current vectors vs this snapshot to decide whether to re-narrate.
+    // Do not "dedupe" by reading from the just-inserted columns; this
+    // freeze IS the contract.
+    const narrativeSnapshot = sql.json({ genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic });
     await sql`
       INSERT INTO taste_fingerprints (
         user_id, genre_vector, theme_vector, mechanic_vector,
@@ -145,8 +200,8 @@ Deno.serve(async (req) => {
         ${sql.json(agg.theme)},
         ${sql.json(agg.mechanic)},
         ${sql.json(agg.length_preference)},
-        ${result.text},
-        ${sql.json({ genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic })},
+        ${narrative},
+        ${narrativeSnapshot},
         ${agg.total_logs_at_generation},
         ${modelVersion},
         NOW(),
@@ -167,7 +222,7 @@ Deno.serve(async (req) => {
 
     return Response.json({
       tier,
-      narrative: result.text,
+      narrative,
       modelVersion,
       reason: reason ?? "manual",
     });
