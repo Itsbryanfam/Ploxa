@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getHeaderUser } from "@/lib/profile/server-actions";
 import { ProfileSection } from "./_sections/profile-section";
+import { ConnectionsSection } from "./_sections/connections-section";
 
 export default async function SettingsPage() {
   const authUser = await getCachedUser();
@@ -21,11 +22,15 @@ export default async function SettingsPage() {
           >
             Profile
           </a>
+          <a href="#connections" className="px-3 py-2 rounded hover:bg-[var(--bg-card)]">
+            Connections
+          </a>
           {/* Future sections (Account, Privacy, Notifications) added when needed. */}
         </nav>
       </aside>
-      <div className="col-span-12 md:col-span-9">
+      <div className="col-span-12 md:col-span-9 space-y-10">
         <ProfileSection user={user} />
+        <ConnectionsSection />
       </div>
     </div>
   );
