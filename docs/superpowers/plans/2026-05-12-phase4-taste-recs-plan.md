@@ -481,7 +481,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 
 ## Task 2: Vector aggregation engine
 
-**Goal:** The `aggregate.ts` module that turns logs + reviews + game metadata into the three sparse vectors + length preference distribution, using the Q1 weighted-blend formula. Smoke-tested with a 12-case truth table.
+**Goal:** The `aggregate.ts` module that turns logs + reviews + game metadata into the three sparse vectors + length preference distribution, using the Q1 weighted-blend formula. Smoke-tested with a 19-case truth table.
 
 **Files:**
 - Create: `lib/taste/aggregate.ts`
@@ -489,10 +489,10 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 
 **Acceptance Criteria:**
 - [ ] `lib/taste/aggregate.ts` exports `aggregateFingerprint(input: AggregateInput): AggregateResult` where the result has `{ genre, theme, mechanic, lengthPreference, totalLogsAtGeneration }`.
-- [ ] The weight function follows Q1: backlog/wishlist = 0.2; engaged (`playing|completed|played|dropped`) = 0.6; rated = 1.0 (+ intensity bonus up to 1.3); review bonus = ×1.15.
+- [ ] The weight function follows Q1: backlog/wishlist = 0.2; engaged (`playing|completed|on_hold|dropped`) = 0.6; rated = 1.0 (+ intensity bonus up to 1.3); review bonus = ×1.15.
 - [ ] The sign function: rating < 4 → −1; rating > 6 → +1; rating 4–6 → 0 (neutral, no directional signal); no rating + `dropped` → −1; no rating + anything else positive → +1.
 - [ ] All three vectors are in [-1, 1]; sum of lengthPreference values is ≈ 1.0 (or 0 if no length data).
-- [ ] `pnpm tsx scripts/smoke-aggregate.ts` exits 0 with all 12 cases pass.
+- [ ] `pnpm tsx scripts/smoke-aggregate.ts` exits 0 with all 19 cases pass.
 - [ ] `pnpm typecheck && pnpm lint && pnpm build` clean.
 
 **Verify:** `pnpm tsx scripts/smoke-aggregate.ts && pnpm typecheck && pnpm lint && pnpm build`
@@ -503,9 +503,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 
 ```typescript
 import type { SparseVector, VectorBundle } from "@/lib/taste/vectors";
-
-/** Status enum mirroring lib/db/schema.ts:logStatusEnum. */
-type LogStatus = "backlog" | "wishlist" | "playing" | "completed" | "played" | "dropped";
+import type { LogStatus } from "@/lib/db/schema-types";
 
 export type AggregateInputRow = {
   /** Required */
@@ -538,7 +536,7 @@ export type AggregateResult = VectorBundle & {
  * Q1 — per-log weight.
  *
  * - Rating dominates: 1.0 baseline + intensity bonus (up to ×1.3 when |r-5|/5 = 1).
- * - Engaged (status ∈ {playing, completed, played, dropped}) without rating: 0.6.
+ * - Engaged (status ∈ {playing, completed, on_hold, dropped}) without rating: 0.6.
  * - Backlog / wishlist: 0.2 (implicit interest, e.g. bought in a bundle).
  * - Review-bearing logs get an extra ×1.15 because the user spent the most
  *   effort on them.
@@ -551,14 +549,15 @@ export function weight(row: AggregateInputRow): number {
   } else if (
     row.status === "playing" ||
     row.status === "completed" ||
-    row.status === "played" ||
+    row.status === "on_hold" ||
     row.status === "dropped"
   ) {
     w = 0.6;
   } else if (row.status === "backlog" || row.status === "wishlist") {
     w = 0.2;
   } else {
-    w = 0;
+    // Exhaustiveness check — every LogStatus must be handled above.
+    assertNever(row.status);
   }
   if (row.hasPublishedReview) w *= 1.15;
   return w;
@@ -655,6 +654,10 @@ export function aggregateFingerprint(input: AggregateInput): AggregateResult {
     totalLogsAtGeneration: input.rows.length,
   };
 }
+
+function assertNever(x: never): never {
+  throw new Error(`Unexpected status: ${String(x)}`);
+}
 ```
 
 - [ ] **Step 2: Create `scripts/smoke-aggregate.ts`**
@@ -669,7 +672,7 @@ import {
 
 function row(partial: Partial<AggregateInputRow>): AggregateInputRow {
   return {
-    status: "played",
+    status: "playing",
     rating: null,
     hasPublishedReview: false,
     genres: [],
@@ -704,6 +707,10 @@ const cases: Case[] = [
     fn: () => Math.abs(weight(row({ status: "backlog" })) - 0.2) < 1e-6,
   },
   {
+    name: "weight: status=on_hold, no rating → 0.6 (engaged tier)",
+    fn: () => Math.abs(weight(row({ status: "on_hold" })) - 0.6) < 1e-6,
+  },
+  {
     name: "weight: review bonus stacks (rating=8, hasReview=true)",
     fn: () => {
       const w = weight(row({ rating: 8, hasPublishedReview: true }));
@@ -730,6 +737,10 @@ const cases: Case[] = [
   {
     name: "sign: no rating, backlog → +1 (weak positive interest)",
     fn: () => sign(row({ status: "backlog" })) === 1,
+  },
+  {
+    name: "sign: no rating, on_hold → +1 (engaged, not dropped)",
+    fn: () => sign(row({ status: "on_hold" })) === 1,
   },
   {
     name: "aggregate: empty → empty vectors",
@@ -817,7 +828,7 @@ process.exit(failed === 0 ? 0 : 1);
 pnpm tsx scripts/smoke-aggregate.ts
 ```
 
-Expected: `17/17 passed`, exit 0.
+Expected: `19/19 passed`, exit 0.
 
 - [ ] **Step 4: Typecheck, lint, build**
 
@@ -836,7 +847,7 @@ git commit -m "feat(taste): vector aggregation engine — Q1 weighted blend
 - sign(): rating ≥7 → +1, ≤3 → -1, 4-6 → 0 (neutral); dropped → -1
 - aggregate(): per-genre raw = Σ(sign × weight × indicator); normalized to [-1,1]
 - lengthPreference: unsigned distribution over 5 buckets, sums to 1
-- 17-case smoke truth table covers all weight × sign × normalization combos
+- 19-case smoke truth table covers all weight × sign × normalization combos
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
@@ -1354,7 +1365,7 @@ export type LogStatus =
   | "wishlist"
   | "playing"
   | "completed"
-  | "played"
+  | "on_hold"
   | "dropped";
 
 export type AggregateRow = {
@@ -1385,17 +1396,22 @@ export function weight(row: AggregateRow): number {
   } else if (
     row.status === "playing" ||
     row.status === "completed" ||
-    row.status === "played" ||
+    row.status === "on_hold" ||
     row.status === "dropped"
   ) {
     w = 0.6;
   } else if (row.status === "backlog" || row.status === "wishlist") {
     w = 0.2;
   } else {
-    w = 0;
+    // Exhaustiveness check — every LogStatus must be handled above.
+    assertNever(row.status);
   }
   if (row.has_published_review) w *= 1.15;
   return w;
+}
+
+function assertNever(x: never): never {
+  throw new Error(`Unexpected status: ${String(x)}`);
 }
 
 export function sign(row: AggregateRow): -1 | 0 | 1 {

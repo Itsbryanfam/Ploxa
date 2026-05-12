@@ -219,7 +219,7 @@ function weight(log: Log, review: PublishedReview | null): number {
   if (log.rating != null) {
     const intensity = Math.abs(Number(log.rating) - 5.0) / 5.0;  // 0..1
     w = 1.0 * (1 + 0.3 * intensity);  // 1.0 .. 1.3
-  } else if (['playing', 'completed', 'played', 'dropped'].includes(log.status)) {
+  } else if (['playing', 'completed', 'on_hold', 'dropped'].includes(log.status)) {
     w = 0.6;
   } else if (log.status === 'backlog' || log.status === 'wishlist') {
     w = 0.2;
