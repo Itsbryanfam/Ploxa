@@ -63,6 +63,17 @@ Deno.serve(async (req) => {
   if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
     return new Response("candidateIds must be a non-empty array", { status: 400 });
   }
+  // Structural check on filters so a malformed inner shape returns a clean
+  // 400 instead of crashing into the outer catch and surfacing as a 500.
+  // Caller is service-role-gated (T12), but this still helps catch caller
+  // bugs early with a precise status code.
+  if (
+    !Array.isArray(filters.moods) ||
+    typeof filters.time !== "string" ||
+    !Array.isArray(filters.platforms)
+  ) {
+    return new Response("invalid filters shape", { status: 400 });
+  }
 
   const databaseUrl = Deno.env.get("DATABASE_URL")!;
   const sql = postgres(databaseUrl, { prepare: false });
