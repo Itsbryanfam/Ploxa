@@ -53,3 +53,6 @@ skills-lock.json
 
 # brainstorming session mockups (visual companion)
 /.superpowers/
+
+# Supabase CLI temp / cache
+/supabase/.temp/
