@@ -1,0 +1,145 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-11-phase3-library-imports-plan.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Foundation — deps, env, encryption, adapter types",
+      "status": "pending",
+      "description": "**Goal:** Install openid dep, add 3 env vars, ship AES-GCM helper with smoke script, define adapter interface.\n\n**Files:** package.json, .env.example, lib/env.ts, lib/imports/encryption.ts, lib/imports/adapters/types.ts, scripts/smoke-encryption.ts\n\n**Verify:** `pnpm tsx scripts/smoke-encryption.ts && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"package.json\",\".env.example\",\"lib/env.ts\",\"lib/imports/encryption.ts\",\"lib/imports/adapters/types.ts\",\"scripts/smoke-encryption.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-encryption.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"openid dep installed\",\"3 new env vars registered\",\"encryptSecret/decryptSecret round-trip works\",\"LibraryImporter interface exported\",\"smoke script exits 0\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Drizzle migration — additive columns on imports + logs",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Add imports.{conflicts_jsonb,unmatched_jsonb,surfaced} + logs.platforms text[]. Generate, strip auth.users gotcha if present, apply.\n\n**Files:** lib/db/schema.ts, lib/db/migrations/0003_*.sql\n\n**Verify:** `pnpm db:migrate && pnpm typecheck && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/db/schema.ts\",\"lib/db/migrations/0003_*.sql\"],\"verifyCommand\":\"pnpm db:migrate && pnpm typecheck && pnpm build\",\"acceptanceCriteria\":[\"3 columns added to imports\",\"platforms text[] on logs\",\"no auth.users CREATE in migration\",\"db:migrate applies cleanly\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Supabase pg_cron migration — schedule daily-sync",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Enable pg_cron + pg_net; schedule daily-sync at 04:00 UTC.\n\n**Files:** supabase/migrations/20260511_0001_phase3_cron.sql\n\n**Verify:** `SELECT * FROM cron.job WHERE jobname = 'daily-import-sync';` returns 1 active row\n\n```json:metadata\n{\"files\":[\"supabase/migrations/20260511_0001_phase3_cron.sql\"],\"verifyCommand\":\"SELECT jobname FROM cron.job WHERE jobname='daily-import-sync'\",\"acceptanceCriteria\":[\"pg_cron + pg_net extensions enabled\",\"cron.job row exists\",\"GUCs configured externally\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Pure logic — rawg-match.ts",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** Pure function: ImportedGame → games.id (or null). Order: normalized-title → alias → ILIKE prefix → +releaseYear.\n\n**Files:** lib/imports/rawg-match.ts, scripts/smoke-rawg-match.ts\n\n**Verify:** `pnpm tsx scripts/smoke-rawg-match.ts && pnpm typecheck`\n\n```json:metadata\n{\"files\":[\"lib/imports/rawg-match.ts\",\"scripts/smoke-rawg-match.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-rawg-match.ts && pnpm typecheck && pnpm build\",\"acceptanceCriteria\":[\"matchToRawg returns games.id or null\",\"normalizeTitle strips edition suffixes\",\"10/10 smoke cases pass\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Pure logic — merge.ts (high-risk; exhaustive smoke)",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** Pure conflict-merge function. User data never overwritten. Platforms union. hoursPlayed max-of with null-safety.\n\n**Files:** lib/imports/merge.ts, scripts/smoke-merge.ts\n\n**Verify:** `pnpm tsx scripts/smoke-merge.ts && pnpm typecheck && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/imports/merge.ts\",\"scripts/smoke-merge.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-merge.ts && pnpm typecheck && pnpm build\",\"acceptanceCriteria\":[\"never overwrites status/rating/notes\",\"platforms unioned with dedup\",\"hoursPlayed max-of, null+null=null\",\"12/12 smoke cases pass\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Steam adapter",
+      "status": "pending",
+      "blockedBy": [1, 4],
+      "description": "**Goal:** SteamAdapter implements LibraryImporter via Steam Web API. connect() stores SteamID + persona, fetchLibrary() pulls GetOwnedGames with delta via playtime_2weeks.\n\n**Files:** lib/imports/adapters/steam.ts, scripts/smoke-steam-adapter.ts\n\n**Verify:** `pnpm tsx scripts/smoke-steam-adapter.ts && pnpm typecheck && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/imports/adapters/steam.ts\",\"scripts/smoke-steam-adapter.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm build\",\"acceptanceCriteria\":[\"connect returns externalId+displayHandle\",\"fetchLibrary returns ImportedGame[]\",\"delta filters by playtime_2weeks\",\"private profile detection works\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Steam OpenID routes — start + callback",
+      "status": "pending",
+      "blockedBy": [1, 6, 10],
+      "description": "**Goal:** GET /api/auth/steam redirects to Steam OpenID. GET /api/auth/steam/callback verifies (return_to + check_authentication), upserts platform_connections, triggers import-platform Edge Fn, redirects to /library/import/<id>.\n\n**Files:** app/api/auth/steam/route.ts, app/api/auth/steam/callback/route.ts\n\n**Verify:** Manual end-to-end via OpenID round-trip\n\n```json:metadata\n{\"files\":[\"app/api/auth/steam/route.ts\",\"app/api/auth/steam/callback/route.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm build\",\"acceptanceCriteria\":[\"302 to steam OpenID URL\",\"return_to strict match\",\"check_authentication round-trip\",\"upserts platform_connections\",\"fire-and-forget Edge Fn POST\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Xbox adapter",
+      "status": "pending",
+      "blockedBy": [1, 4],
+      "description": "**Goal:** XboxAdapter implements LibraryImporter via OpenXBL. connect() validates key + returns XUID. fetchLibrary() pulls /achievements/player; delta via Upstash hash diff (25h TTL).\n\n**Files:** lib/imports/adapters/xbox.ts\n\n**Verify:** `pnpm typecheck && pnpm build` (live API smoke deferred to gate item 4)\n\n```json:metadata\n{\"files\":[\"lib/imports/adapters/xbox.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"connect validates key via /api/v2/account\",\"fetchLibrary returns titles with hoursPlayed=null\",\"delta uses Upstash hash diff\",\"typed errors: XboxKeyInvalidError, XboxRateLimitError\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Xbox connect route — /api/connect/xbox",
+      "status": "pending",
+      "blockedBy": [1, 8, 10],
+      "description": "**Goal:** POST /api/connect/xbox validates key via xboxAdapter, AES-GCM-encrypts, upserts platform_connections, triggers import, returns { importId, displayHandle }.\n\n**Files:** app/api/connect/xbox/route.ts\n\n**Verify:** `pnpm typecheck && pnpm build` + manual modal test in Task 20\n\n```json:metadata\n{\"files\":[\"app/api/connect/xbox/route.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"POST accepts {key:string}\",\"401 on invalid key\",\"AES-GCM encrypts before persist\",\"returns {importId, displayHandle}\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Server actions + import status polling endpoint",
+      "status": "pending",
+      "blockedBy": [1, 2, 6, 8],
+      "description": "**Goal:** lib/imports/server-actions.ts (triggerImport, syncNow, disconnectPlatform, listConnections, markImportsSurfaced) + app/api/imports/[importId]/status/route.ts (with stuck flag for queued>5min).\n\n**Files:** lib/imports/server-actions.ts, lib/imports/select.ts, app/api/imports/[importId]/status/route.ts\n\n**Verify:** `pnpm typecheck && pnpm build` + manual stuck-queue test\n\n```json:metadata\n{\"files\":[\"lib/imports/server-actions.ts\",\"lib/imports/select.ts\",\"app/api/imports/[importId]/status/route.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"5 server actions exported\",\"status endpoint with stuck:true after 5min\",\"all routes 401 unauthenticated\",\"404 on cross-user access\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Edge Function — import-platform worker",
+      "status": "pending",
+      "blockedBy": [1, 2, 4, 5, 6, 8],
+      "description": "**Goal:** Deno Edge Function. Receives {importId}. Loads import+connection, decrypts Xbox key, iterates fetchLibrary chunks, RAWG-match → merge → upsert logs. Idempotent.\n\n**Files:** supabase/functions/_shared/import-engine.ts, supabase/functions/import-platform/index.ts\n\n**Verify:** `supabase functions deploy import-platform && supabase functions invoke import-platform --body '{\"importId\":\"<uuid>\"}'`\n\n```json:metadata\n{\"files\":[\"supabase/functions/_shared/import-engine.ts\",\"supabase/functions/import-platform/index.ts\"],\"verifyCommand\":\"supabase functions deploy import-platform\",\"acceptanceCriteria\":[\"service-role auth check\",\"per-chunk progress writes\",\"merge logic vendored byte-identically\",\"AES-GCM decrypt via Web Crypto\",\"idempotent via unique constraint\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: Edge Function — daily-sync cron driver",
+      "status": "pending",
+      "blockedBy": [3, 11],
+      "description": "**Goal:** Deno Edge Function. Triggered by pg_cron at 04:00 UTC. Iterates active connections >23h-old; inserts imports row with surfaced=false; fire-and-forget to import-platform (concurrency cap 10).\n\n**Files:** supabase/functions/daily-sync/index.ts\n\n**Verify:** `supabase functions deploy daily-sync && supabase functions invoke daily-sync --body '{}'`\n\n```json:metadata\n{\"files\":[\"supabase/functions/daily-sync/index.ts\"],\"verifyCommand\":\"supabase functions deploy daily-sync\",\"acceptanceCriteria\":[\"23h-old filter\",\"surfaced=false on insert\",\"concurrency cap 10\",\"service-role auth\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Pixel-art SVG illustrations for Xbox modal",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** 3 hand-coded SVG components matching existing pixel-art idiom (shapeRendering=crispEdges, integer rects). Steps 1/2/3 of OpenXBL flow.\n\n**Files:** components/imports/illustrations/xbl-step-1.tsx, xbl-step-2.tsx, xbl-step-3.tsx\n\n**Verify:** `pnpm typecheck && pnpm build`\n\n```json:metadata\n{\"files\":[\"components/imports/illustrations/xbl-step-1.tsx\",\"components/imports/illustrations/xbl-step-2.tsx\",\"components/imports/illustrations/xbl-step-3.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"3 SVG components\",\"no external assets\",\"matches pixel-art palette\",\"<=100 lines each\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: <PlatformCard> component — 5 states",
+      "status": "pending",
+      "blockedBy": [10, 13, 15],
+      "description": "**Goal:** components/imports/platform-card.tsx with 5 states: not-connected, connecting, importing, connected, error. Inline Sync now + kebab for destructive. Manual card dashed.\n\n**Files:** components/imports/platform-card.tsx\n\n**Verify:** `pnpm typecheck && pnpm build` (visual smoke in Task 17)\n\n```json:metadata\n{\"files\":[\"components/imports/platform-card.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"5 states derived from (summary, latestImport)\",\"Sync now → syncNow action\",\"kebab → Re-import full + Disconnect (Dialog)\",\"error: red border + recovery copy + contextual button\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: <XboxConnectModal> — 3-step wizard",
+      "status": "pending",
+      "blockedBy": [9, 13],
+      "description": "**Goal:** components/imports/xbox-connect-modal.tsx. 3 steps with mascot + pixel-art illustration each. POSTs to /api/connect/xbox; on success router.push to /library/import/<id>.\n\n**Files:** components/imports/xbox-connect-modal.tsx\n\n**Verify:** `pnpm typecheck && pnpm build` + manual walkthrough\n\n```json:metadata\n{\"files\":[\"components/imports/xbox-connect-modal.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"radix Dialog\",\"3 steps with Back/Next/Connect\",\"inline error on 401\",\"router.push on success\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: <ImportToast> singleton + /api/imports/latest",
+      "status": "pending",
+      "blockedBy": [10, 11],
+      "description": "**Goal:** Singleton bottom-right toast. State machine: importing/success/error/delta. Mounted in app/(app)/layout.tsx. /api/imports/latest returns active + recentSuccess + delta arrays.\n\n**Files:** components/imports/import-toast.tsx, app/api/imports/latest/route.ts, app/(app)/layout.tsx (modify)\n\n**Verify:** Manual trigger import → see toast progress\n\n```json:metadata\n{\"files\":[\"components/imports/import-toast.tsx\",\"app/api/imports/latest/route.ts\",\"app/(app)/layout.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"4 visual states\",\"2s polling while active\",\"auto-dismiss 5s on success\",\"sticky on error\",\"multi-platform aggregate delta\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: <ConnectionsSection> + settings page wiring",
+      "status": "pending",
+      "blockedBy": [10, 14],
+      "description": "**Goal:** app/(app)/settings/_sections/connections-section.tsx renders 3 PlatformCards + Sync history drawer. Settings sidebar gains Connections entry.\n\n**Files:** app/(app)/settings/_sections/connections-section.tsx, app/(app)/settings/page.tsx (modify)\n\n**Verify:** Visit /settings#connections\n\n```json:metadata\n{\"files\":[\"app/(app)/settings/_sections/connections-section.tsx\",\"app/(app)/settings/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"sidebar has Connections anchor\",\"3 cards rendered in order\",\"manual count derived\",\"Sync history (last 10) expandable\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 18: ImportSummary + /library/import/[importId] route",
+      "status": "pending",
+      "blockedBy": [10, 11],
+      "description": "**Goal:** RSC shell + client polling. Renders 2-3 buckets (merged, new, unmatched if>0). Continue to library link after 5s. Failed/stuck → Retry now button.\n\n**Files:** components/imports/import-summary.tsx, app/(app)/library/import/[importId]/page.tsx, loading.tsx\n\n**Verify:** Trigger import → land on /library/import/<id> → see skeleton → poll → final state\n\n```json:metadata\n{\"files\":[\"components/imports/import-summary.tsx\",\"app/(app)/library/import/[importId]/page.tsx\",\"app/(app)/library/import/[importId]/loading.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"polling honors stuck flag\",\"2 or 3 buckets on completed\",\"Retry now wires syncNow on failed/stuck\",\"Continue to library after 5s\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 19: Entry-point integrations + cover-grid wiring",
+      "status": "pending",
+      "blockedBy": [17, 18],
+      "description": "**Goal:** /library empty state + /home onboarding nudge + real <GameCover> renderers in ImportSummary. Cookie-dismissable nudge.\n\n**Files:** app/(app)/library/page.tsx, app/(app)/home/page.tsx, components/imports/imports-nudge.tsx, components/imports/import-summary.tsx, lib/imports/summary-data.ts\n\n**Verify:** Visit /library (empty) → see Or connect Steam link. /home with 5+ logs → see nudge. Dismiss → cookie set → reload → gone.\n\n```json:metadata\n{\"files\":[\"app/(app)/library/page.tsx\",\"app/(app)/home/page.tsx\",\"components/imports/imports-nudge.tsx\",\"components/imports/import-summary.tsx\",\"lib/imports/summary-data.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"library empty state secondary CTA\",\"home nudge gated 5<=logs<=30 AND no active connections\",\"cookie-dismissable nudge\",\"real GameCover in summary buckets\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 20: Verification gate + phase-3-complete tag",
+      "status": "pending",
+      "blockedBy": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+      "description": "**Goal:** Execute 8 verification-gate items on staging, document at docs/superpowers/gates/<today>-phase3-verification.md, tag phase-3-complete.\n\n**Files:** docs/superpowers/gates/<today>-phase3-verification.md + any defect fixes\n\n**Verify:** All 8 gate items PASS; `git tag phase-3-complete` applied\n\n```json:metadata\n{\"files\":[\"docs/superpowers/gates/<today>-phase3-verification.md\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-encryption.ts && pnpm tsx scripts/smoke-rawg-match.ts && pnpm tsx scripts/smoke-merge.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"8 gate items pass\",\"gate document committed\",\"phase-3-complete tag applied\",\"MEMORY.md updated\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-11T00:00:00Z"
+}
