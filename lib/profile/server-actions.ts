@@ -75,6 +75,20 @@ export async function getProfileByUsername(username: string) {
   return profile ?? null;
 }
 
+export async function getProfileByUserId(userId: string) {
+  const profile = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.userId, userId),
+    columns: {
+      userId: true,
+      username: true,
+      displayName: true,
+      bio: true,
+      isPublic: true,
+    },
+  });
+  return profile ?? null;
+}
+
 export type CheckUsernameResult =
   | { ok: true }
   | { ok: false; reason: "invalid" | "reserved" | "taken" };
