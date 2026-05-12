@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { getUserLibrary, type ActivityEvent } from "@/lib/logs/server-actions";
 import { computeUserStatsFromLibrary, type LibraryItem } from "@/lib/logs/library-item";
 import { MascotGreeting } from "@/components/dashboard/mascot-greeting";
@@ -5,7 +7,10 @@ import { StatusStacks } from "@/components/library/status-stacks";
 import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Mascot } from "@/components/mascot/mascot";
 import { copy, type GreetingContext } from "@/lib/mascot/copy";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
+import { getFingerprint } from "@/lib/taste/server-actions";
 
 /**
  * Derive the recent-activity feed from an already-fetched library array,
@@ -29,7 +34,14 @@ function computeRecentActivityFromLibrary(items: LibraryItem[]): ActivityEvent[]
 }
 
 export async function CockpitDashboard() {
-  const library = await getUserLibrary({});
+  // Parallelize the three independent reads. `getCachedUser` is request-
+  // memoized so the auth context is shared across all three calls; the
+  // network cost is library + fingerprint.
+  const [me, library] = await Promise.all([getCachedUser(), getUserLibrary({})]);
+  // `getFingerprint` requires a userId; bail to "empty" if we somehow have
+  // no session here (the parent page route already redirects unauth users,
+  // so this is belt-and-braces).
+  const fp = me ? await getFingerprint(me.id) : null;
   const stats = computeUserStatsFromLibrary(library);
   const activity = computeRecentActivityFromLibrary(library);
 
@@ -70,10 +82,37 @@ export async function CockpitDashboard() {
     );
   }
 
+  // Show the rec card only when there's enough signal to recommend against.
+  // `empty` tier means no logs in the fingerprint pipeline; the early return
+  // above already covers library.length === 0, so this gate catches the in-
+  // between case where logs exist but the fingerprint row hasn't been
+  // populated yet.
+  const showRecsCard = fp != null && fp.tier !== "empty";
+
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 space-y-10">
       <MascotGreeting context={greetingCtx} />
       <StatsStrip stats={stats} />
+      {showRecsCard && (
+        <Link
+          href="/play-next"
+          className="group flex items-center gap-4 rounded-lg border border-[var(--border-soft)] bg-[var(--bg-card)] p-4 transition-colors hover:border-[var(--accent-soft)]"
+        >
+          <Mascot mood="pointing" size="md" silent />
+          <div className="flex-1">
+            <h3 className="font-mono text-sm text-[var(--text)]">What should I play?</h3>
+            <p className="mt-1 text-xs text-[var(--text-faint)]">
+              Pick a time and mood — I&apos;ll suggest five.
+            </p>
+          </div>
+          <span
+            aria-hidden
+            className="font-mono text-emerald-400 transition-transform group-hover:translate-x-1"
+          >
+            →
+          </span>
+        </Link>
+      )}
       <StatusStacks items={library} />
       {activity.length > 0 && (
         <section>

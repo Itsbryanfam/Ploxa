@@ -4,8 +4,10 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { desc, eq } from "drizzle-orm";
+
 import { db } from "@/lib/db";
-import { recommendations } from "@/lib/db/schema";
+import { games, logs, recommendations } from "@/lib/db/schema";
 import { cacheKey } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
@@ -91,11 +93,75 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
 
   if (fp.tier === "empty") return { ok: false, reason: "empty-tier" };
 
-  const all = await candidatePool(me.id, { limit: 50 });
+  // T10 sparse-tier fallback: a freshly-onboarded user with 3 logs may have
+  // a tier of "sparse" but vectors so thin that the dot-product candidate
+  // pool returns 0 — every game scores `s <= 0` and gets dropped. Detect
+  // that here by summing absolute vector mass and route through a popularity
+  // fallback (top-rated catalog, exclude logged) instead. The fallback also
+  // catches the rare case where the user is sparse-tier but happens to have
+  // logs that produce a non-thin vector — in that case we still want the
+  // honest "starter picks while your taste sharpens" framing.
+  const vectorMass =
+    Object.values(fp.vectors.genre).reduce((a, b) => a + Math.abs(b), 0) +
+    Object.values(fp.vectors.theme).reduce((a, b) => a + Math.abs(b), 0) +
+    Object.values(fp.vectors.mechanic).reduce((a, b) => a + Math.abs(b), 0);
+  let candidates = await candidatePool(me.id, { limit: 50 });
+  const useFallback =
+    fp.tier === "sparse" && (vectorMass < 2.0 || candidates.length === 0);
+
+  if (useFallback) {
+    // Pull logged-game IDs and top-200 by RAWG rating in parallel. We pull
+    // 200 (not 50) so the time/platform filter below has headroom before
+    // slicing to 50 candidates.
+    const [loggedRows, popular] = await Promise.all([
+      db.select({ gameId: logs.gameId }).from(logs).where(eq(logs.userId, me.id)),
+      db
+        .select({
+          id: games.id,
+          slug: games.slug,
+          title: games.title,
+          released: games.released,
+          coverUrl: games.coverUrl,
+          posterUrl: games.posterUrl,
+          genres: games.genres,
+          themes: games.themes,
+          mechanics: games.mechanics,
+          platforms: games.platforms,
+          playtimeAvgHours: games.playtimeAvgHours,
+          rawgRating: games.rawgRating,
+        })
+        .from(games)
+        .orderBy(desc(games.rawgRating))
+        .limit(200),
+    ]);
+    const loggedIds = new Set(loggedRows.map((r) => r.gameId));
+    candidates = popular
+      .filter((g) => !loggedIds.has(g.id))
+      .slice(0, 50)
+      .map(
+        (g): CandidateGame => ({
+          id: g.id,
+          slug: g.slug,
+          title: g.title,
+          released: g.released,
+          coverUrl: g.coverUrl,
+          posterUrl: g.posterUrl,
+          genres: g.genres,
+          themes: g.themes,
+          mechanics: g.mechanics,
+          platforms: g.platforms,
+          playtimeAvgHours:
+            g.playtimeAvgHours != null ? Number(g.playtimeAvgHours) : null,
+          // rawgRating is numeric → string from Drizzle. Older catalog rows
+          // can be null; default to 0 so they sort last but don't crash.
+          similarityScore: g.rawgRating != null ? Number(g.rawgRating) : 0,
+        }),
+      );
+  }
 
   const [minH, maxH] = timeWindow(filters.time);
   const platSet = new Set<string>(filters.platforms);
-  const filtered: CandidateGame[] = all.filter((g) => {
+  const filtered: CandidateGame[] = candidates.filter((g) => {
     if (g.playtimeAvgHours != null) {
       if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
     }
@@ -139,12 +205,17 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
     }
   })();
 
-  const sparsePrefix = fp.tier === "sparse" ? "Based on partial signal: " : "";
+  // Drop the "Based on partial signal" prefix when the popularity fallback
+  // is in play — the genre/taste framing would be a lie since we're sorting
+  // by RAWG rating, not the user's vectors.
+  const sparsePrefix =
+    fp.tier === "sparse" && !useFallback ? "Based on partial signal: " : "";
 
   const recs: RecCard[] = top.map((g) => {
     const overlap = (g.genres ?? []).filter((x) => topUserGenres.includes(x));
-    const genreNote =
-      overlap.length > 0
+    const genreNote = useFallback
+      ? "Highly rated and broadly liked — solid starter pick while your taste sharpens."
+      : overlap.length > 0
         ? `Heavy on ${overlap[0]}${overlap[1] ? ` and ${overlap[1]}` : ""}, ${
             overlap.length > 1 ? "two of your top genres" : "one of your top genres"
           }.`
@@ -188,8 +259,9 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
     tier: fp.tier,
     recs,
     algorithm: "similarity",
-    banner:
-      fp.tier === "sparse"
+    banner: useFallback
+      ? "Your taste is still sharpening — these are popular starter picks while we learn."
+      : fp.tier === "sparse"
         ? "Your taste is still sharpening — these picks use genre matching only."
         : undefined,
   };

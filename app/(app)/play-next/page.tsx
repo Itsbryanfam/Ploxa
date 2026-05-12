@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { listConnections } from "@/lib/imports/server-actions";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
 
@@ -20,16 +21,21 @@ export default async function PlayNextPage({
   const me = await getCachedUser();
   if (!me) redirect("/login?next=/play-next");
 
-  const fp = await getFingerprint(me.id);
-  const params = await searchParams;
+  const [fp, connections, params] = await Promise.all([
+    getFingerprint(me.id),
+    listConnections(),
+    searchParams,
+  ]);
 
-  // T10 swaps the hardcoded list for real platform_connections data.
-  // Keeping all three here so the demo flow works for unconnected users.
-  const userConnectedPlatforms: Array<"steam" | "xbox" | "psn"> = [
-    "steam",
-    "xbox",
-    "psn",
-  ];
+  // Surface only the platforms the user has actively connected. Manual users
+  // (no platform_connections rows) still need a choice, so we fall back to
+  // all three. ConnectionSummary.platform is already typed as
+  // "steam" | "xbox" | "psn" so no narrowing is needed here.
+  const connected = connections
+    .filter((c) => c.isActive)
+    .map((c) => c.platform);
+  const userConnectedPlatforms: Array<"steam" | "xbox" | "psn"> =
+    connected.length > 0 ? connected : ["steam", "xbox", "psn"];
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
