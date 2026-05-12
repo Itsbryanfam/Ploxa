@@ -124,7 +124,84 @@ export async function matchToRawg(
     if (byYear) return byYear.id;
   }
 
-  return null;
+  // RAWG-on-miss fallback: local games table didn't have it; query RAWG API
+  // and cache the result for next time. Pulls part of Phase 4's catalog-fill
+  // work forward so first-import users see actual logs land rather than every
+  // game going to unmatched_jsonb.
+  const rawgApiKey = Deno.env.get("RAWG_API_KEY");
+  if (!rawgApiKey || !imported.title) return null;
+  return await searchRawgAndUpsert(sql, imported, rawgApiKey);
+}
+
+/** RAWG API client (vendored inline; mirrors lib/rawg/client.ts).
+ *  Fetches the top search hit and upserts into the local `games` table.
+ *  Returns the new games.id or null if RAWG has no match. */
+async function searchRawgAndUpsert(
+  sql: ReturnType<typeof postgres>,
+  imported: ImportedGame,
+  rawgApiKey: string,
+): Promise<number | null> {
+  const q = new URLSearchParams({
+    key: rawgApiKey,
+    search: imported.title,
+    search_precise: "true",
+    page_size: "5",
+  });
+  if (imported.releaseYear) {
+    q.set(
+      "dates",
+      `${imported.releaseYear}-01-01,${imported.releaseYear}-12-31`,
+    );
+  }
+  let res: Response;
+  try {
+    res = await fetch(`https://api.rawg.io/api/games?${q.toString()}`);
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  const json = (await res.json()) as {
+    results?: Array<{
+      id: number;
+      slug: string;
+      name: string;
+      released: string | null;
+      background_image: string | null;
+      rating: number | null;
+      metacritic: number | null;
+      genres?: Array<{ name: string }>;
+    }>;
+  };
+  const candidates = json.results ?? [];
+  if (!candidates.length) return null;
+
+  // Prefer exact-year match when releaseYear known; otherwise take the top result.
+  let pick = candidates[0];
+  if (imported.releaseYear) {
+    const yearMatch = candidates.find(
+      (r) =>
+        r.released &&
+        new Date(r.released).getUTCFullYear() === imported.releaseYear,
+    );
+    if (yearMatch) pick = yearMatch;
+  }
+
+  const genres = (pick.genres ?? []).map((g) => g.name);
+  await sql`
+    INSERT INTO games (id, slug, title, released, cover_url, rawg_rating, metacritic_score, genres)
+    VALUES (
+      ${pick.id},
+      ${pick.slug},
+      ${pick.name},
+      ${pick.released ?? null},
+      ${pick.background_image ?? null},
+      ${pick.rating ?? null},
+      ${pick.metacritic ?? null},
+      ${genres}
+    )
+    ON CONFLICT (id) DO NOTHING
+  `;
+  return pick.id;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
