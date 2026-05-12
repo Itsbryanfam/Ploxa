@@ -4,7 +4,7 @@
     {
       "id": 1,
       "subject": "Task 1: Schema migration + tier function + cosine math",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Drizzle schema changes for Phase 4 columns + generated migration 0006 + pure-math modules (tier.ts, vectors.ts) everything downstream imports.\n\n**Files:** lib/db/schema.ts, lib/db/migrations/0006_phase4_taste.sql, lib/taste/tier.ts, lib/taste/vectors.ts, scripts/smoke-drift.ts\n\n**Verify:** `pnpm tsx scripts/smoke-drift.ts && pnpm drizzle-kit generate && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/db/schema.ts\",\"lib/db/migrations/0006_phase4_taste.sql\",\"lib/taste/tier.ts\",\"lib/taste/vectors.ts\",\"scripts/smoke-drift.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-drift.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"taste_fingerprints has narrative_snapshot_vectors, narrative_generated_at, narrative_model_version\",\"recommendations has cache_key + 2 partial indexes\",\"tierForUser boundaries correct\",\"cosineSim + drift math passes 17 smoke cases\",\"no auth.users CREATE in 0006 migration\"]}\n```"
     },
     {
@@ -141,5 +141,5 @@
       "description": "**Goal:** 39 automated checks across 9 groups (mirrors verify-phase-3 shape) + 4 manual items + ceremony (tag, memory file, MEMORY.md update).\n\n**Files:** scripts/verify-phase-4.ts, memory/phase_4_complete.md, memory/MEMORY.md (modify)\n\n**Verify:** `pnpm tsx scripts/verify-phase-4.ts` → 39/39 → manual M1-M4 → ceremony\n\n```json:metadata\n{\"files\":[\"scripts/verify-phase-4.ts\",\"memory/phase_4_complete.md\",\"memory/MEMORY.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-4.ts\",\"acceptanceCriteria\":[\"39/39 automated pass\",\"M1: narrative quality at 30 logs (concrete genres + confident voice + no hedging/emoji)\",\"M2: rec reasoning explicitly references filter context\",\"M3: share card previews in Discord\",\"M4: pose mapping correct across 3 synthetic clusters\",\"git tag phase-4-complete\",\"memory/phase_4_complete.md written\",\"MEMORY.md updated\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-12T00:00:00Z"
+  "lastUpdated": "2026-05-12T18:30:00Z"
 }
