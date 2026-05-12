@@ -1,9 +1,16 @@
 import { notFound } from "next/navigation";
 
-import { getCachedUser } from "@/lib/supabase/auth-cache";
-import { ChartGrid } from "@/components/taste/chart-grid";
+import { TierEmpty } from "@/components/taste/tier-empty";
+import { TierNarrative } from "@/components/taste/tier-narrative";
+import { TierSparse } from "@/components/taste/tier-sparse";
 import { getProfileByUsername } from "@/lib/profile/server-actions";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
+
+// Refresh button triggers `router.refresh()` after a successful refresh;
+// cached page output would mask the new narrative. Mark dynamic so RSC
+// always re-runs `getFingerprint` against the latest DB snapshot.
+export const dynamic = "force-dynamic";
 
 export default async function UserTastePage({
   params,
@@ -22,9 +29,10 @@ export default async function UserTastePage({
 
   const fp = await getFingerprint(profile.userId);
 
-  // T3 ships sharpening-tier render only. T6 adds empty/sparse/full
-  // variants. For owners at empty/sparse, fall through to the same
-  // chart-only view (which will show "No signal yet" placeholders).
+  // Empty-tier page is owner-only — non-owners 404 so we don't leak the
+  // "user has no logs" state to strangers browsing a public profile.
+  if (fp.tier === "empty" && !isOwner) notFound();
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
       <header className="mb-8">
@@ -37,7 +45,27 @@ export default async function UserTastePage({
         </p>
       </header>
 
-      <ChartGrid vectors={fp.vectors} lengthPreference={fp.lengthPreference} />
+      {fp.tier === "empty" && <TierEmpty />}
+
+      {fp.tier === "sparse" && (
+        <TierSparse
+          logCount={fp.logCount}
+          vectors={fp.vectors}
+          lengthPreference={fp.lengthPreference}
+        />
+      )}
+
+      {(fp.tier === "sharpening" || fp.tier === "full") && (
+        <TierNarrative
+          tier={fp.tier}
+          narrative={fp.narrative}
+          narrativeGeneratedAt={fp.narrativeGeneratedAt}
+          vectors={fp.vectors}
+          lengthPreference={fp.lengthPreference}
+          isOwner={isOwner}
+          isPublic={profile.isPublic}
+        />
+      )}
     </main>
   );
 }
