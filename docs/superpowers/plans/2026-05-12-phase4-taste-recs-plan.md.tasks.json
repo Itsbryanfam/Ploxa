@@ -24,7 +24,7 @@
     {
       "id": 4,
       "subject": "Task 4: Narrative prompt builder + refresh-fingerprint Edge Function",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** AI prompt for narrative + Edge Function that aggregates, calls AI router, persists narrative+snapshot atomically. Auth via shared requireServiceRole.\n\n**Files:** lib/taste/prompts.ts, supabase/functions/refresh-fingerprint/index.ts, supabase/functions/_shared/taste-engine.ts, supabase/functions/_shared/prompts.ts\n\n**Verify:** `supabase functions serve refresh-fingerprint` + curl smoke\n\n```json:metadata\n{\"files\":[\"lib/taste/prompts.ts\",\"supabase/functions/refresh-fingerprint/index.ts\",\"supabase/functions/_shared/taste-engine.ts\",\"supabase/functions/_shared/prompts.ts\"],\"verifyCommand\":\"supabase functions serve + curl test\",\"acceptanceCriteria\":[\"NARRATIVE_PROMPT_VERSION + buildNarrativePrompt exported\",\"prompt includes top-8 vectors + length pref + recent liked/disliked + tier + style guide\",\"Edge Function rejects unauthenticated 401\",\"sparse tier path writes vectors only (skips AI)\",\"sharpening/full path writes narrative + snapshot + model version atomically\"]}\n```"
     },
@@ -141,5 +141,5 @@
       "description": "**Goal:** 39 automated checks across 9 groups (mirrors verify-phase-3 shape) + 4 manual items + ceremony (tag, memory file, MEMORY.md update).\n\n**Files:** scripts/verify-phase-4.ts, memory/phase_4_complete.md, memory/MEMORY.md (modify)\n\n**Verify:** `pnpm tsx scripts/verify-phase-4.ts` → 39/39 → manual M1-M4 → ceremony\n\n```json:metadata\n{\"files\":[\"scripts/verify-phase-4.ts\",\"memory/phase_4_complete.md\",\"memory/MEMORY.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-4.ts\",\"acceptanceCriteria\":[\"39/39 automated pass\",\"M1: narrative quality at 30 logs (concrete genres + confident voice + no hedging/emoji)\",\"M2: rec reasoning explicitly references filter context\",\"M3: share card previews in Discord\",\"M4: pose mapping correct across 3 synthetic clusters\",\"git tag phase-4-complete\",\"memory/phase_4_complete.md written\",\"MEMORY.md updated\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-12T20:00:00Z"
+  "lastUpdated": "2026-05-12T20:30:00Z"
 }
