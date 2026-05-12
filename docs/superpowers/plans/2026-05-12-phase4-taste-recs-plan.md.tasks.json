@@ -17,7 +17,7 @@
     {
       "id": 3,
       "subject": "Task 3: Bare fingerprint page (sharpening tier) + getFingerprint server action",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** End-of-W1 demo. /me/taste renders real charts from real logs (sharpening tier only). T6 adds the other tier renders.\n\n**Files:** lib/taste/server-actions.ts, components/taste/score-bar.tsx, components/taste/chart-grid.tsx, app/(app)/u/[username]/taste/page.tsx, app/(app)/me/taste/page.tsx\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + load /me/taste in dev — real charts visible\n\n```json:metadata\n{\"files\":[\"lib/taste/server-actions.ts\",\"components/taste/score-bar.tsx\",\"components/taste/chart-grid.tsx\",\"app/(app)/u/[username]/taste/page.tsx\",\"app/(app)/me/taste/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"getFingerprint joins logs+reviews+games and aggregates inline\",\"ScoreBar renders 8 cells; negative-aware (greyed + - indicator)\",\"/me/taste redirects to /u/{ownUsername}/taste\",\"private profile 404s for non-owners\"]}\n```"
     },
@@ -141,5 +141,5 @@
       "description": "**Goal:** 39 automated checks across 9 groups (mirrors verify-phase-3 shape) + 4 manual items + ceremony (tag, memory file, MEMORY.md update).\n\n**Files:** scripts/verify-phase-4.ts, memory/phase_4_complete.md, memory/MEMORY.md (modify)\n\n**Verify:** `pnpm tsx scripts/verify-phase-4.ts` → 39/39 → manual M1-M4 → ceremony\n\n```json:metadata\n{\"files\":[\"scripts/verify-phase-4.ts\",\"memory/phase_4_complete.md\",\"memory/MEMORY.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-4.ts\",\"acceptanceCriteria\":[\"39/39 automated pass\",\"M1: narrative quality at 30 logs (concrete genres + confident voice + no hedging/emoji)\",\"M2: rec reasoning explicitly references filter context\",\"M3: share card previews in Discord\",\"M4: pose mapping correct across 3 synthetic clusters\",\"git tag phase-4-complete\",\"memory/phase_4_complete.md written\",\"MEMORY.md updated\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-12T19:30:00Z"
+  "lastUpdated": "2026-05-12T20:00:00Z"
 }
