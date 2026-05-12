@@ -87,7 +87,7 @@
     {
       "id": 13,
       "subject": "Task 13: Thinking mascot + algorithm badge + reason rendering",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** UX polish — mascot animates thinking during 5-10s rerank, algorithm badge ('AI pick' vs 'basic match') visible per card, reasoning uses line-clamp-3 with title attribute.\n\n**Files:** app/(app)/play-next/_client.tsx (modify), components/recs/rec-card.tsx (modify)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual\n\n```json:metadata\n{\"files\":[\"app/(app)/play-next/_client.tsx\",\"components/recs/rec-card.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"mascot 'thinking' pose during rerank wait; speech-bubble copy varies by time filter\",\"RecCard badge: 'AI pick' (emerald) for ai_rerank/hybrid; 'basic match' (zinc) for similarity\",\"reason line-clamp-3 with full text in title attribute\"]}\n```"
     },
