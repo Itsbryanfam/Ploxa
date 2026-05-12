@@ -50,3 +50,6 @@ skills-lock.json
 # scratch dirs (Next.js underscore-prefixed routes are not routed,
 # so this catches any **/_scratch/ used for visual gates / experiments)
 **/_scratch/
+
+# brainstorming session mockups (visual companion)
+/.superpowers/
