@@ -2,6 +2,18 @@ import "server-only";
 
 import type { ImportedGame, PlatformKey } from "./adapters/types";
 
+/**
+ * Canonical conflict-merge spec for Phase 3 imports. The 12-case smoke
+ * (scripts/smoke-merge.ts) is the safety net for the rules.
+ *
+ * NOTE: as of c4edf21 the production Edge Function path (Deno) implements
+ * the same rules SQL-side via `INSERT … ON CONFLICT DO UPDATE` for atomicity
+ * and parallel-safety. This Node module is kept as the executable spec and
+ * is consumed by the smoke suite + any Node-side server actions that need
+ * to compute a merge result without writing to the DB. If you change the
+ * rules here, mirror them in supabase/functions/_shared/import-engine.ts.
+ */
+
 export type ConflictRule = "platform_merge";
 
 export interface NewLogPayload {
