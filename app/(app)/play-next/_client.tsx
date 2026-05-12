@@ -233,7 +233,7 @@ export function PlayNextClient({
       />
       {pending && (
         <MascotPrompt mood="thinking">
-          <p className="text-sm">One moment — picking your five…</p>
+          <p className="text-sm">{pendingCopyFor(time)}</p>
         </MascotPrompt>
       )}
       {!pending && recsState && recsState.ok && (
@@ -313,4 +313,25 @@ function parseCsv(v: string | string[] | undefined): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.flatMap((s) => s.split(",")).filter(Boolean);
   return v.split(",").filter(Boolean);
+}
+
+/**
+ * Filter-aware copy for the mascot's "thinking" pose during the AI
+ * rerank wait (5–10s). One variant per TimeBudget so the prompt reads
+ * as if the mascot is actually scanning for the user's session length.
+ * Empty/unknown time falls back to the generic line.
+ */
+function pendingCopyFor(time: TimeBudget | ""): string {
+  switch (time) {
+    case "15min":
+      return "Scanning for a quick hit…";
+    case "1hr":
+      return "Picking your hour…";
+    case "3hr+":
+      return "Finding something for the long evening…";
+    case "multi-session":
+      return "Plotting a multi-session…";
+    default:
+      return "One moment — picking your five…";
+  }
 }
