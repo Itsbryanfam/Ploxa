@@ -1,10 +1,21 @@
 import { Mascot } from "@/components/mascot/mascot";
 import { cn } from "@/lib/utils";
 
+/**
+ * Decorative shelf with optional corner mascot.
+ *
+ * `showMascot` defaults to `false` because both current callsites
+ * conflict with it: the library shelf has a toolbar (filter chips,
+ * sort, view switcher) directly above it, which the absolutely-
+ * positioned mascot at `-top-12 right-2` overlaps; and the profile
+ * page already renders a larger header mascot, making the corner
+ * sprite a redundant duplicate. Opt back in per-callsite when a
+ * future surface uses a bare shelf with no competing chrome.
+ */
 export function ShelfFrame({
   children,
   className,
-  showMascot = true,
+  showMascot = false,
 }: {
   children: React.ReactNode;
   className?: string;
