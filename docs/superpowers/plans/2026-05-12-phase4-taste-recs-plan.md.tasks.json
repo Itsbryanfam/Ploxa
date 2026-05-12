@@ -52,7 +52,7 @@
     {
       "id": 8,
       "subject": "Task 8: Mood/time/platform allowlist + cache key + candidate pool",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Foundation for /play-next — zod schemas + stable cache-key hash + metadata-similarity prefilter.\n\n**Files:** lib/recs/moods.ts, lib/recs/cache.ts, lib/recs/candidate-pool.ts, scripts/smoke-recs-cache.ts\n\n**Verify:** `pnpm tsx scripts/smoke-recs-cache.ts && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/recs/moods.ts\",\"lib/recs/cache.ts\",\"lib/recs/candidate-pool.ts\",\"scripts/smoke-recs-cache.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-recs-cache.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"MOODS (5) + TIMES (4) const arrays + zod schemas\",\"mood multi-select capped at 2 per Q7\",\"cacheKey sha256(sorted-canonical) truncated 24 hex chars\",\"candidatePool dot-products vs fingerprint, excludes logged games, returns top-50\",\"6/6 cache smoke cases pass\"]}\n```"
     },
