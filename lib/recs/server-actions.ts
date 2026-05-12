@@ -251,8 +251,19 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
         }),
       });
       if (resp.ok) {
-        const j = (await resp.json()) as { ok: true } | { ok: false };
-        if ("ok" in j && j.ok) rerankOk = true;
+        // Untrusted JSON body — guard the "ok" property check against a
+        // non-object payload (e.g. `null`, or a string). Edge Function
+        // controls this response shape so the practical risk is near-zero,
+        // but the type assertion alone is not a runtime barrier.
+        const j: unknown = await resp.json();
+        if (
+          typeof j === "object" &&
+          j !== null &&
+          "ok" in j &&
+          (j as { ok: unknown }).ok === true
+        ) {
+          rerankOk = true;
+        }
       }
     } catch (err) {
       console.error("rerank-recs invoke failed:", err);
@@ -310,6 +321,12 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
         };
       })
       .filter((r): r is RecCard => r !== null);
+    // Symmetry with the cache-hit branch: if a catalog race deleted every
+    // game between the Edge Function's INSERT and this re-read, return a
+    // structured failure rather than an empty grid with no error context.
+    if (recs.length === 0) {
+      return { ok: false, reason: "no-candidates" };
+    }
     return { ok: true, tier: fpReady.tier, recs, algorithm: "ai" };
   }
 
