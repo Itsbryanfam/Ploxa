@@ -66,7 +66,7 @@
     {
       "id": 10,
       "subject": "Task 10: Cockpit wiring + connected platforms + sparse popularity fallback",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [9],
       "description": "**Goal:** Replace hardcoded platform list with real platform_connections data. Cockpit gains 'What should I play?' card. Sparse tier with thin vector mass falls back to RAWG popularity.\n\n**Files:** app/(app)/play-next/page.tsx (modify), app/(app)/_cockpit/cockpit-dashboard.tsx (modify), lib/recs/server-actions.ts (modify)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + sparse-tier dev test\n\n```json:metadata\n{\"files\":[\"app/(app)/play-next/page.tsx\",\"app/(app)/_cockpit/cockpit-dashboard.tsx\",\"lib/recs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"reads from platform_connections via listConnections\",\"cockpit card hidden for tier=empty\",\"sparse tier with vector mass < 2.0 → RAWG popularity fallback with honest reason copy\",\"3-log account sees populated rec grid (not empty)\"]}\n```"
     },
