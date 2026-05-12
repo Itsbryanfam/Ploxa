@@ -3,12 +3,14 @@ import { cn } from "@/lib/utils";
 /**
  * Pixel-art 8-cell horizontal score bar.
  *
- * value is in [-1, +1].
- * Positive: cells fill left-to-right based on |value| × 8.
- * Negative: bar renders greyed with a leading "−" indicator. Cells still
- * fill (visually we want to show "this person actively dislikes 5/8 of
- * this trait" rather than hiding it).
- * Near-zero: empty bar.
+ * value semantics depend on caller:
+ * - Signed [-1, +1]: taste-vector preference. Negative renders greyed with
+ *   a leading "−" indicator; cells still fill (visually we want to show
+ *   "this person actively dislikes 5/8 of this trait" rather than hiding it).
+ * - Unsigned [0, 1]: frequency / distribution (e.g. session-length histogram).
+ *   The negative branch is unreachable for these — `negative = value < 0` is
+ *   always false.
+ * Cells fill left-to-right based on |value| × 8. Near-zero: empty bar.
  */
 export function ScoreBar({ value, label }: { value: number; label: string }) {
   const negative = value < 0;

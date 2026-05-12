@@ -39,7 +39,7 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
     .select({
       status: logs.status,
       rating: logs.rating,
-      hasPublishedReview: sql<boolean>`${reviews.id} IS NOT NULL`,
+      hasPublishedReview: sql<boolean>`EXISTS (SELECT 1 FROM ${reviews} WHERE ${reviews.logId} = ${logs.id} AND ${reviews.publishedAt} IS NOT NULL)`,
       genres: games.genres,
       themes: games.themes,
       mechanics: games.mechanics,
@@ -47,10 +47,6 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
     })
     .from(logs)
     .innerJoin(games, eq(games.id, logs.gameId))
-    .leftJoin(
-      reviews,
-      sql`${reviews.logId} = ${logs.id} AND ${reviews.publishedAt} IS NOT NULL`,
-    )
     .where(eq(logs.userId, userId));
 
   const inputRows: AggregateInputRow[] = rows.map((r) => ({

@@ -1,4 +1,5 @@
 import { ScoreBar } from "./score-bar";
+import type { LengthBucket } from "@/lib/taste/aggregate";
 
 type SparseVector = Record<string, number>;
 type LengthPreference = Record<string, number>;
@@ -69,7 +70,7 @@ function Empty() {
 }
 
 function LengthDistribution({ data }: { data: LengthPreference }) {
-  const buckets: Array<["<5h" | "5-10h" | "10-30h" | "30-60h" | "60h+", string]> = [
+  const buckets: Array<[LengthBucket, string]> = [
     ["<5h", "<5 hrs"],
     ["5-10h", "5–10 hrs"],
     ["10-30h", "10–30 hrs"],
