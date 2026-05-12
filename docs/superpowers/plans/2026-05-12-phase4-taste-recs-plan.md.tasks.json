@@ -73,7 +73,7 @@
     {
       "id": 11,
       "subject": "Task 11: Rerank prompt builder + rerank-recs Edge Function",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4, 8],
       "description": "**Goal:** AI-powered rerank that takes 50-game candidate pool + filter context + fingerprint and returns top 5 with reasoning that references the filter.\n\n**Files:** lib/taste/prompts.ts (add buildRerankPrompt), supabase/functions/_shared/prompts.ts (mirror), supabase/functions/rerank-recs/index.ts\n\n**Verify:** `supabase functions serve rerank-recs` + curl with 50 candidates → 200 JSON\n\n```json:metadata\n{\"files\":[\"lib/taste/prompts.ts\",\"supabase/functions/_shared/prompts.ts\",\"supabase/functions/rerank-recs/index.ts\"],\"verifyCommand\":\"curl test against deployed function\",\"acceptanceCriteria\":[\"prompt includes narrative + top vectors + filter + candidates + dismissed (negative ctx) + currently-playing exclusions\",\"JSON-strict output schema (5 picks, score 0..1, one-sentence reasoning EXPLICITLY referencing filter)\",\"Edge Function validates gameId against candidate set + clamps scores + trims to 5\",\"atomic delete-and-insert per cache_key\"]}\n```"
     },
