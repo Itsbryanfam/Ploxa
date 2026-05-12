@@ -26,6 +26,9 @@ const serverSchema = z.object({
   CLOUDFLARE_API_TOKEN: optionalString,
   DEEPSEEK_API_KEY: optionalString,
   RESEND_API_KEY: optionalString,
+  STEAM_API_KEY: optionalString,
+  SUPABASE_FUNCTIONS_URL: optionalUrl,
+  IMPORT_ENCRYPTION_KEY: optionalString,
 });
 
 const clientSchema = z.object({
@@ -54,6 +57,9 @@ const serverEnv =
         CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
         DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
         RESEND_API_KEY: process.env.RESEND_API_KEY,
+        STEAM_API_KEY: process.env.STEAM_API_KEY,
+        SUPABASE_FUNCTIONS_URL: process.env.SUPABASE_FUNCTIONS_URL,
+        IMPORT_ENCRYPTION_KEY: process.env.IMPORT_ENCRYPTION_KEY,
       })
     : ({} as z.infer<typeof serverSchema>);
 
