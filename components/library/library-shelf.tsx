@@ -1,10 +1,12 @@
 "use client";
 
+import { Fragment, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { LibraryPoster } from "./library-poster";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ShelfPlank } from "@/components/pixel/shelf-frame";
 import { copy } from "@/lib/mascot/copy";
 import type { LogStatus } from "@/lib/db/schema-types";
 
@@ -13,7 +15,47 @@ interface Props {
   filter: LogStatus | "all";
 }
 
+/**
+ * Column count per viewport width. Tuned to roughly match the previous
+ * auto-fill `repeat(auto-fill, minmax(120px, 1fr))` behavior so posters
+ * stay near their old size at each Tailwind breakpoint. We chunk
+ * manually instead of relying on auto-fill so we can interleave
+ * shelf-plank dividers between rows — auto-fill provides no row
+ * boundaries the JSX layer can hook into.
+ */
+const COLS_AT_WIDTH: ReadonlyArray<{ minWidth: number; cols: number }> = [
+  { minWidth: 1920, cols: 12 },
+  { minWidth: 1536, cols: 10 },
+  { minWidth: 1280, cols: 9 },
+  { minWidth: 1024, cols: 7 },
+  { minWidth: 768, cols: 6 },
+  { minWidth: 640, cols: 5 },
+  { minWidth: 0, cols: 3 },
+];
+
+function pickCols(width: number): number {
+  return COLS_AT_WIDTH.find((b) => width >= b.minWidth)?.cols ?? 3;
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export function LibraryShelf({ items, filter }: Props) {
+  // SSR defaults to the desktop column count. The post-mount effect
+  // re-evaluates against the actual viewport and re-renders if needed;
+  // brief mobile reflow is acceptable and matches the rest of the app.
+  const [cols, setCols] = useState(9);
+
+  useEffect(() => {
+    const update = () => setCols(pickCols(window.innerWidth));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   if (items.length === 0) {
     const scenarioKey =
       filter === "all" ? "library.empty.all" : (`library.empty.${filter}` as const);
@@ -36,19 +78,30 @@ export function LibraryShelf({ items, filter }: Props) {
     );
   }
 
+  const rows = chunk(items, cols);
+
   return (
-    <motion.div
-      layout
-      className="grid gap-3"
-      style={{
-        gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-      }}
-    >
-      <AnimatePresence mode="popLayout">
-        {items.map((item, i) => (
-          <LibraryPoster key={item.logId} item={item} priority={i === 0} />
-        ))}
-      </AnimatePresence>
-    </motion.div>
+    <div className="flex flex-col gap-3">
+      {rows.map((rowItems, rowIdx) => (
+        <Fragment key={`row-${rowIdx}`}>
+          <motion.div
+            layout
+            className="grid gap-3"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+          >
+            <AnimatePresence mode="popLayout">
+              {rowItems.map((item, j) => (
+                <LibraryPoster
+                  key={item.logId}
+                  item={item}
+                  priority={rowIdx === 0 && j === 0}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
+          {rowIdx < rows.length - 1 && <ShelfPlank position="middle" />}
+        </Fragment>
+      ))}
+    </div>
   );
 }

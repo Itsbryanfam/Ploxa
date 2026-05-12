@@ -35,17 +35,29 @@ export function ShelfFrame({
   );
 }
 
-function ShelfPlank({ position }: { position: "top" | "bottom" }) {
-  const isTop = position === "top";
+/**
+ * The wooden plank used at the top, bottom, and between rows of a shelf.
+ *
+ * - `top`     — content sits below: shadow under the plank + inset bottom edge.
+ * - `bottom`  — content sits above: shadow above the plank + inset top edge.
+ * - `middle`  — content above AND below: shadows on both sides + both inset
+ *   edges, so the plank reads as a divider you could rest items on either way.
+ */
+const PLANK_SHADOWS: Record<"top" | "bottom" | "middle", string> = {
+  top: "inset 0 -2px 0 #3d1f08, 0 2px 0 #3d1f08",
+  bottom: "inset 0 2px 0 #3d1f08, 0 -2px 0 #3d1f08",
+  middle:
+    "inset 0 -2px 0 #3d1f08, inset 0 2px 0 #3d1f08, 0 2px 0 #3d1f08, 0 -2px 0 #3d1f08",
+};
+
+export function ShelfPlank({ position }: { position: "top" | "bottom" | "middle" }) {
   return (
     <div
       className="relative h-3 w-full overflow-hidden"
       style={{
         backgroundImage:
           "repeating-linear-gradient(90deg, #8b4513 0 4px, #6b3410 4px 8px, #8b4513 8px 12px, #5a2d0c 12px 16px)",
-        boxShadow: isTop
-          ? "inset 0 -2px 0 #3d1f08, 0 2px 0 #3d1f08"
-          : "inset 0 2px 0 #3d1f08, 0 -2px 0 #3d1f08",
+        boxShadow: PLANK_SHADOWS[position],
       }}
       aria-hidden
     />
