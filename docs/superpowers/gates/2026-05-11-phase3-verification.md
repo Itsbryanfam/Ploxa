@@ -282,6 +282,95 @@ Expected: `207` rows, not `414` (idempotent upsert, no duplicates)
 
 ---
 
+## Poster art lift (2026-05-11, post-verification polish)
+
+Surfaced during the user's first visual spot-check: every 2:3 portrait slot
+in the UI (library shelf, status stacks, review cards, import summary, palette
+search/preview) was being fed RAWG's `background_image` — a 16:9 landscape
+hero shot — and cropped via `object-cover` down to portrait. The result lost
+the title text in basically every case, making imported games hard to
+recognize at a glance.
+
+Folded back into Phase 3 rather than deferred. Plan: `docs/superpowers/plans/2026-05-11-poster-art-plan.md`.
+
+**Architecture**
+
+Two new additive columns on `games`: `poster_url`, `poster_source` (`steam` |
+`sgdb` | `rawg`). Resolution chain in `lib/games/poster-source.ts`:
+
+1. Steam Storefront search (`/api/storesearch`) → top appid whose normalized
+   title clears a 0.8 token-set similarity bar → HEAD-check Steam CDN
+   `library_600x900_2x.jpg`. Free, no key, no documented rate limit.
+2. SteamGridDB autocomplete → `/grids/game/<id>?dimensions=600x900&types=static`.
+   Only fires when `SGDB_API_KEY` is set (optional env var).
+3. Null. UI gracefully falls back to legacy landscape `coverUrl`.
+
+UI patches: every 2:3 slot now reads `posterUrl ?? coverUrl`. Hero strip in
+`game-detail.tsx` (`h-72` full-bleed) deliberately stays on `coverUrl` —
+landscape IS correct there.
+
+Async enrichment hook: `enrichPostersForImport()` server action runs once
+when the import-summary page mounts, so RAWG-on-miss insertions from a
+fresh import get art shortly after — no user-facing wait.
+
+**Backfill results (2026-05-11)**
+
+Ran `scripts/backfill-posters.ts` against the 5,053-game catalog with
+concurrency=8, no SGDB key configured:
+
+| Metric | Value |
+|---|---|
+| Processed | 5,053 |
+| Steam-resolved | **2,877 (57.0%)** |
+| SGDB-resolved | 0 (no key) |
+| Long-tail null | 2,176 (43.0%) |
+| Errors | 0 |
+| Wall time | 761s (~12.7 min) |
+
+Hit rate on the test user's actual imported library: **144/227 games
+(63.4%)** now have portrait box art. The remaining 36% are mostly
+obscure indie/older titles that don't ship `library_600x900` art on
+Steam CDN; SGDB would cover most of those.
+
+**Drive-by bug found**
+
+Surfaced via the new dev-server check at the end of the lift: every
+`/library` render with unsurfaced imports threw a 500 inside
+`markImportsSurfaced()`. The function used Drizzle's `sql` tagged
+template — `sql\`${imports.id} = ANY(${importIds})\`` — which binds
+the array as a stringified value, producing the postgres error
+*"Array value must start with `{`"*. Replaced with `inArray()` from
+drizzle-orm. Same fix pattern as several other places in the codebase
+that already use `inArray`.
+
+**Commits**
+
+| # | Commit | Subject |
+|---|---|---|
+| Plan + schema | `01f41d6` | feat(games): add posterUrl + posterSource columns |
+| Resolver + smoke | `f9482a7` | feat(games): portrait box-art resolver (Steam CDN + SGDB) |
+| UI + backfill + drive-by | `f16ec55` | feat(games): use portrait posterUrl across all 2:3 slots |
+
+**Verification**
+
+- `pnpm typecheck` ✅ exit 0
+- `pnpm lint` ✅ 0 errors (3 pre-existing warnings unchanged)
+- `pnpm build` ✅ all 24 routes
+- `scripts/smoke-poster-source.ts` ✅ 9/9 cases (Portal 2 / Hades /
+  Stardew Valley / DOOM Eternal / Witcher 3 GOTY / Mario Odyssey
+  → null / Bloodborne → null / gibberish → null)
+- DB confirmation: `SELECT poster_source, COUNT(*) FROM games GROUP BY poster_source` returns `steam=2877, null=2176`
+
+**Open follow-up** (optional, doesn't block phase-3-complete tag)
+
+- Add `SGDB_API_KEY` to `.env` and re-run `backfill-posters.ts` (or
+  pass `BACKFILL_LIMIT=N` for incremental). The script is idempotent —
+  only fills nulls.
+- The resolver caches no responses; if Storefront search becomes a
+  cost concern at scale, wrap `steamSearch` with Redis TTL.
+
+---
+
 ## Tag
 
 `phase-3-complete` — **PENDING** — apply after running the 8 DEFERRED gate items above:
