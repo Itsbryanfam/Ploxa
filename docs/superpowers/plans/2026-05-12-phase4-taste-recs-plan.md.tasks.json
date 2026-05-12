@@ -1,0 +1,145 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-12-phase4-taste-recs-plan.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Schema migration + tier function + cosine math",
+      "status": "pending",
+      "description": "**Goal:** Drizzle schema changes for Phase 4 columns + generated migration 0006 + pure-math modules (tier.ts, vectors.ts) everything downstream imports.\n\n**Files:** lib/db/schema.ts, lib/db/migrations/0006_phase4_taste.sql, lib/taste/tier.ts, lib/taste/vectors.ts, scripts/smoke-drift.ts\n\n**Verify:** `pnpm tsx scripts/smoke-drift.ts && pnpm drizzle-kit generate && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/db/schema.ts\",\"lib/db/migrations/0006_phase4_taste.sql\",\"lib/taste/tier.ts\",\"lib/taste/vectors.ts\",\"scripts/smoke-drift.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-drift.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"taste_fingerprints has narrative_snapshot_vectors, narrative_generated_at, narrative_model_version\",\"recommendations has cache_key + 2 partial indexes\",\"tierForUser boundaries correct\",\"cosineSim + drift math passes 17 smoke cases\",\"no auth.users CREATE in 0006 migration\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Vector aggregation engine",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** lib/taste/aggregate.ts implementing Q1 weighted-blend math (backlog 0.2 / engaged 0.6 / rated 1.0 + intensity bonus + review boost) with 17-case truth table smoke.\n\n**Files:** lib/taste/aggregate.ts, scripts/smoke-aggregate.ts\n\n**Verify:** `pnpm tsx scripts/smoke-aggregate.ts && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/taste/aggregate.ts\",\"scripts/smoke-aggregate.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-aggregate.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"weight() implements Q1 blend with intensity bonus\",\"sign() returns 0 for neutral rating 4-6\",\"vectors normalized to [-1, +1]\",\"lengthPreference sums to 1 when data present\",\"17/17 smoke cases pass\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Bare fingerprint page (sharpening tier) + getFingerprint server action",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** End-of-W1 demo. /me/taste renders real charts from real logs (sharpening tier only). T6 adds the other tier renders.\n\n**Files:** lib/taste/server-actions.ts, components/taste/score-bar.tsx, components/taste/chart-grid.tsx, app/(app)/u/[username]/taste/page.tsx, app/(app)/me/taste/page.tsx\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + load /me/taste in dev — real charts visible\n\n```json:metadata\n{\"files\":[\"lib/taste/server-actions.ts\",\"components/taste/score-bar.tsx\",\"components/taste/chart-grid.tsx\",\"app/(app)/u/[username]/taste/page.tsx\",\"app/(app)/me/taste/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"getFingerprint joins logs+reviews+games and aggregates inline\",\"ScoreBar renders 8 cells; negative-aware (greyed + - indicator)\",\"/me/taste redirects to /u/{ownUsername}/taste\",\"private profile 404s for non-owners\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Narrative prompt builder + refresh-fingerprint Edge Function",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** AI prompt for narrative + Edge Function that aggregates, calls AI router, persists narrative+snapshot atomically. Auth via shared requireServiceRole.\n\n**Files:** lib/taste/prompts.ts, supabase/functions/refresh-fingerprint/index.ts, supabase/functions/_shared/taste-engine.ts, supabase/functions/_shared/prompts.ts\n\n**Verify:** `supabase functions serve refresh-fingerprint` + curl smoke\n\n```json:metadata\n{\"files\":[\"lib/taste/prompts.ts\",\"supabase/functions/refresh-fingerprint/index.ts\",\"supabase/functions/_shared/taste-engine.ts\",\"supabase/functions/_shared/prompts.ts\"],\"verifyCommand\":\"supabase functions serve + curl test\",\"acceptanceCriteria\":[\"NARRATIVE_PROMPT_VERSION + buildNarrativePrompt exported\",\"prompt includes top-8 vectors + length pref + recent liked/disliked + tier + style guide\",\"Edge Function rejects unauthenticated 401\",\"sparse tier path writes vectors only (skips AI)\",\"sharpening/full path writes narrative + snapshot + model version atomically\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: refreshFingerprint server action + rate limit",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Server action callable from client island. Auth + 3/24h rate-limit + tier-gating + invocation of Edge Function + cache invalidation.\n\n**Files:** lib/taste/server-actions.ts (add refreshFingerprint)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/taste/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"refreshFingerprint() auth-gated\",\"rate-limit 3/24h via enforceRateLimit with key taste:refresh:${userId}\",\"tier=empty fast-fails\",\"on success: deletes non-dismissed rec rows\",\"returns structured failure reasons (unauthorized/rate-limited/ai-failure)\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: All four tier renders + refresh button UI",
+      "status": "pending",
+      "blockedBy": [3, 5],
+      "description": "**Goal:** End-of-W2 demo. Tier-aware page renders correct content for empty/sparse/sharpening/full. Refresh button functional. Mascot pose per tier.\n\n**Files:** components/taste/tier-empty.tsx, components/taste/tier-sparse.tsx, components/taste/tier-narrative.tsx, components/taste/refresh-button.tsx, app/(app)/u/[username]/taste/page.tsx (modify), components/mascot/mascot.tsx (verify or create)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual tier walkthrough\n\n```json:metadata\n{\"files\":[\"components/taste/tier-empty.tsx\",\"components/taste/tier-sparse.tsx\",\"components/taste/tier-narrative.tsx\",\"components/taste/refresh-button.tsx\",\"app/(app)/u/[username]/taste/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"empty tier: excited mascot + log-a-game CTA; owner-only (non-owner 404)\",\"sparse tier: helpful mascot + N-more-logs bubble + greyed charts + disabled buttons\",\"sharpening: narrating mascot + narrative bubble + sharpening banner + refresh/share enabled\",\"full: sharpening banner removed\",\"RefreshButton: spinner + toasts on rate-limit/ai-failure\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Milestone trigger — triggerOnLogWrite + wire into log/review actions",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Log writes invalidate rec cache; milestone crossings auto-fire refresh-fingerprint via after(). Same pattern as Phase 3's triggerImport.\n\n**Files:** lib/taste/triggers.ts, lib/logs/server-actions.ts (modify), lib/reviews/server-actions.ts (modify)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + log #10 → narrative auto-generates\n\n```json:metadata\n{\"files\":[\"lib/taste/triggers.ts\",\"lib/logs/server-actions.ts\",\"lib/reviews/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"triggerOnLogWrite always deletes non-dismissed recs\",\"milestones {10,25,50,100,250} fire refresh-fingerprint via after()\",\"errors swallowed/logged so caller transaction is unaffected\",\"wired into log create/update/delete + review publish paths\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Mood/time/platform allowlist + cache key + candidate pool",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Foundation for /play-next — zod schemas + stable cache-key hash + metadata-similarity prefilter.\n\n**Files:** lib/recs/moods.ts, lib/recs/cache.ts, lib/recs/candidate-pool.ts, scripts/smoke-recs-cache.ts\n\n**Verify:** `pnpm tsx scripts/smoke-recs-cache.ts && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/recs/moods.ts\",\"lib/recs/cache.ts\",\"lib/recs/candidate-pool.ts\",\"scripts/smoke-recs-cache.ts\"],\"verifyCommand\":\"pnpm tsx scripts/smoke-recs-cache.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"MOODS (5) + TIMES (4) const arrays + zod schemas\",\"mood multi-select capped at 2 per Q7\",\"cacheKey sha256(sorted-canonical) truncated 24 hex chars\",\"candidatePool dot-products vs fingerprint, excludes logged games, returns top-50\",\"6/6 cache smoke cases pass\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: getRecs metadata-only + /play-next 3-step flow",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** /play-next page exists with 3-step filter flow (time → mood → platform → 5 results) powered by metadata-only getRecs with templated reasoning. AI rerank deliberately deferred to T11.\n\n**Files:** lib/recs/server-actions.ts (initial getRecs), app/(app)/play-next/page.tsx, app/(app)/play-next/_client.tsx, components/recs/filter-chips.tsx, components/recs/mascot-prompt.tsx, components/recs/rec-card.tsx (stub)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + walk /play-next end-to-end\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"app/(app)/play-next/page.tsx\",\"app/(app)/play-next/_client.tsx\",\"components/recs/filter-chips.tsx\",\"components/recs/mascot-prompt.tsx\",\"components/recs/rec-card.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"getRecs returns 5 recs with templated reasoning + algorithm='similarity'\",\"reasoning references both time-budget + matched genres\",\"URL state via search params; deep-linkable\",\"empty-tier returns no-signal banner directive\",\"3-step flow renders sequentially with editable filter pills\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Cockpit wiring + connected platforms + sparse popularity fallback",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** Replace hardcoded platform list with real platform_connections data. Cockpit gains 'What should I play?' card. Sparse tier with thin vector mass falls back to RAWG popularity.\n\n**Files:** app/(app)/play-next/page.tsx (modify), app/(app)/_cockpit/cockpit-dashboard.tsx (modify), lib/recs/server-actions.ts (modify)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + sparse-tier dev test\n\n```json:metadata\n{\"files\":[\"app/(app)/play-next/page.tsx\",\"app/(app)/_cockpit/cockpit-dashboard.tsx\",\"lib/recs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"reads from platform_connections via listConnections\",\"cockpit card hidden for tier=empty\",\"sparse tier with vector mass < 2.0 → RAWG popularity fallback with honest reason copy\",\"3-log account sees populated rec grid (not empty)\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Rerank prompt builder + rerank-recs Edge Function",
+      "status": "pending",
+      "blockedBy": [4, 8],
+      "description": "**Goal:** AI-powered rerank that takes 50-game candidate pool + filter context + fingerprint and returns top 5 with reasoning that references the filter.\n\n**Files:** lib/taste/prompts.ts (add buildRerankPrompt), supabase/functions/_shared/prompts.ts (mirror), supabase/functions/rerank-recs/index.ts\n\n**Verify:** `supabase functions serve rerank-recs` + curl with 50 candidates → 200 JSON\n\n```json:metadata\n{\"files\":[\"lib/taste/prompts.ts\",\"supabase/functions/_shared/prompts.ts\",\"supabase/functions/rerank-recs/index.ts\"],\"verifyCommand\":\"curl test against deployed function\",\"acceptanceCriteria\":[\"prompt includes narrative + top vectors + filter + candidates + dismissed (negative ctx) + currently-playing exclusions\",\"JSON-strict output schema (5 picks, score 0..1, one-sentence reasoning EXPLICITLY referencing filter)\",\"Edge Function validates gameId against candidate set + clamps scores + trims to 5\",\"atomic delete-and-insert per cache_key\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: getRecs complete — cache + rerank + AI failure fallback",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** getRecs uses rerank Edge Function for sharpening/full tiers. Cache hits short-circuit. AI failure falls back to metadata path with banner.\n\n**Files:** lib/recs/server-actions.ts (refactor getRecs)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + cache-hit dev smoke\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"cache hit: same filter combo within freshness window returns persisted rows (algorithm=hybrid)\",\"sparse tier skips AI; uses metadataOnlyRecs helper\",\"sharpening/full invokes rerank-recs\",\"AI failure: metadataOnlyRecs + 'AI ranking unavailable' banner\",\"second call with same filter is instant (cache hit)\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Thinking mascot + algorithm badge + reason rendering",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** UX polish — mascot animates thinking during 5-10s rerank, algorithm badge ('AI pick' vs 'basic match') visible per card, reasoning uses line-clamp-3 with title attribute.\n\n**Files:** app/(app)/play-next/_client.tsx (modify), components/recs/rec-card.tsx (modify)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual\n\n```json:metadata\n{\"files\":[\"app/(app)/play-next/_client.tsx\",\"components/recs/rec-card.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"mascot 'thinking' pose during rerank wait; speech-bubble copy varies by time filter\",\"RecCard badge: 'AI pick' (emerald) for ai_rerank/hybrid; 'basic match' (zinc) for similarity\",\"reason line-clamp-3 with full text in title attribute\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: Feedback server actions — dismiss/save/play/refill",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** Four server actions powering the 3-button feedback UI. Owner-only. saveRecForLater + playRec create logs via existing ensureLog (which fires triggerOnLogWrite).\n\n**Files:** lib/recs/server-actions.ts (add 4 actions), lib/logs/server-actions.ts (add ensureLog if absent)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"lib/logs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"dismissRec: owner-only; dismissed=true; no cache invalidation\",\"saveRecForLater: creates log(backlog) via ON CONFLICT DO NOTHING + dismisses rec\",\"playRec(recId, platform?): smart routing — connected→log+toast, multi→picker, none→redirect\",\"refillRecs: wipes cache for current key + calls getRecs (fresh rerank with cumulative dismissed history)\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: Wire 3 buttons + refill CTA into RecCard with optimistic dismiss",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** End-of-W5 demo. RecCard buttons fire server actions; dismissed cards slide out; 'Show me more like these →' CTA appears after first dismissal. Toast feedback throughout.\n\n**Files:** components/recs/rec-card.tsx (full rewrite), app/(app)/play-next/_client.tsx (refill wiring + threaded gamePlatforms), lib/recs/server-actions.ts (thread games.platforms into RecResult)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual button walkthrough\n\n```json:metadata\n{\"files\":[\"components/recs/rec-card.tsx\",\"app/(app)/play-next/_client.tsx\",\"lib/recs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"Play this button: 0 overlap → redirect; 1 → direct; 2+ → platform-picker dropdown\",\"Save for later: log(backlog) created, toast, optimistic slide-out\",\"Not for me: dismissed=true, slide-out via framer-motion exit\",\"Show me more like these → CTA visible after first dismissal; calls refillRecs\",\"toasts on every action\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: dominant-pose + playstyle + Vercel OG trading-card endpoint",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Vercel OG renders 1200×630 pixel-art trading card. Mascot pose maps to dominant taste cluster; stats panel + narrative excerpt. Edge runtime; public-only.\n\n**Files:** lib/og/dominant-pose.ts, lib/taste/playstyle.ts, lib/og/taste-card.tsx, app/api/og/taste/[username]/route.ts\n\n**Verify:** Visit /api/og/taste/{username}?v=2026 in browser — image renders\n\n```json:metadata\n{\"files\":[\"lib/og/dominant-pose.ts\",\"lib/taste/playstyle.ts\",\"lib/og/taste-card.tsx\",\"app/api/og/taste/[username]/route.ts\"],\"verifyCommand\":\"manual: browse /api/og/taste/{username}\",\"acceptanceCriteria\":[\"5 keyword pose mappings (tactician/lantern/cozy/ready/wary) + narrating default\",\"14 mechanic → playstyle mappings\",\"OG JSX renders 1200×630 with mascot + stats + narrative\",\"404 on private profile\",\"Cache-Control: public, s-maxage=604800, stale-while-revalidate=86400\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: Share modal — Tweet / Copy link / Download",
+      "status": "pending",
+      "blockedBy": [16, 6],
+      "description": "**Goal:** ShareButton placeholder from T6 becomes a real modal previewing the trading card with three share affordances. Defensive privacy gating.\n\n**Files:** components/taste/share-modal.tsx, components/taste/tier-narrative.tsx (replace stub)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual Tweet/Copy/Download test\n\n```json:metadata\n{\"files\":[\"components/taste/share-modal.tsx\",\"components/taste/tier-narrative.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"dialog with live OG preview (cache-busted by narrativeGeneratedAt)\",\"Tweet: opens twitter.com/intent/tweet in new window\",\"Copy link: clipboard write + toast\",\"Download: fetch + blob download as {username}-taste.png\",\"disabled button + tooltip for private profiles\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 18: Daily drift cron — taste-drift-cron + pg_cron schedule",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Daily 03:00 UTC cron scans users whose last narrative > 7 days, recomputes vectors, fires refresh-fingerprint when drift > 0.25.\n\n**Files:** supabase/functions/taste-drift-cron/index.ts, supabase/migrations/0007_phase4_drift_cron.sql\n\n**Verify:** Curl with service-role key + aged test row → {scanned, drifted, scheduled} JSON\n\n```json:metadata\n{\"files\":[\"supabase/functions/taste-drift-cron/index.ts\",\"supabase/migrations/0007_phase4_drift_cron.sql\"],\"verifyCommand\":\"curl + manual age-narrative test\",\"acceptanceCriteria\":[\"auth via requireServiceRole\",\"recomputes vectors per candidate user; cosine-distance vs narrative_snapshot_vectors\",\"EdgeRuntime.waitUntil to keep isolate alive for trigger fetches\",\"concurrency cap 10 (matches Phase 3 daily-sync)\",\"pg_cron schedule 0 3 * * * via idempotent migration\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 19: Cockpit 'Your taste' card + profile dropdown link + milestone toast",
+      "status": "pending",
+      "blockedBy": [6, 10],
+      "description": "**Goal:** Discovery surfaces — /home cockpit gets 'Your taste' card, profile dropdown gets 'View your taste' link, first-fingerprint milestone fires a celebration toast once per user.\n\n**Files:** app/(app)/_cockpit/cockpit-dashboard.tsx (modify), components/layout/profile-dropdown.tsx (modify), components/taste/milestone-toast.tsx, app/(app)/u/[username]/taste/page.tsx (modify)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + cross 10 logs → toast fires once\n\n```json:metadata\n{\"files\":[\"app/(app)/_cockpit/cockpit-dashboard.tsx\",\"components/layout/profile-dropdown.tsx\",\"components/taste/milestone-toast.tsx\",\"app/(app)/u/[username]/taste/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"'Your taste' cockpit card: tier badge + narrative excerpt + 3 mini ScoreBars + View link\",\"empty-tier cockpit: 'Log your first game' CTA\",\"profile dropdown: 'View your taste' link\",\"MilestoneToast: fires once when narrative < 5min old; localStorage flag persists\",\"celebrating mascot pose inline (no emoji)\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 20: verify-phase-4.ts + 4 manual items + gate closure ceremony",
+      "status": "pending",
+      "blockedBy": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+      "description": "**Goal:** 39 automated checks across 9 groups (mirrors verify-phase-3 shape) + 4 manual items + ceremony (tag, memory file, MEMORY.md update).\n\n**Files:** scripts/verify-phase-4.ts, memory/phase_4_complete.md, memory/MEMORY.md (modify)\n\n**Verify:** `pnpm tsx scripts/verify-phase-4.ts` → 39/39 → manual M1-M4 → ceremony\n\n```json:metadata\n{\"files\":[\"scripts/verify-phase-4.ts\",\"memory/phase_4_complete.md\",\"memory/MEMORY.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-4.ts\",\"acceptanceCriteria\":[\"39/39 automated pass\",\"M1: narrative quality at 30 logs (concrete genres + confident voice + no hedging/emoji)\",\"M2: rec reasoning explicitly references filter context\",\"M3: share card previews in Discord\",\"M4: pose mapping correct across 3 synthetic clusters\",\"git tag phase-4-complete\",\"memory/phase_4_complete.md written\",\"MEMORY.md updated\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-12T00:00:00Z"
+}
