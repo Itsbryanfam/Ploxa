@@ -145,7 +145,10 @@ export const logs = pgTable(
     startedAt: timestamp("started_at", { withTimezone: false, mode: "date" }),
     finishedAt: timestamp("finished_at", { withTimezone: false, mode: "date" }),
     hoursPlayed: numeric("hours_played", { precision: 6, scale: 1 }),
+    // Legacy single-platform column. New reads use platforms[]; falls back to this when null.
+    // Phase 3 dual-writes both; Phase 5+ backfills platforms[] and drops this column.
     platformPlayedOn: text("platform_played_on"),
+    // Canonical multi-platform array. New code reads: `platforms ?? (platformPlayedOn ? [platformPlayedOn] : [])`.
     platforms: text("platforms").array(),
     isReplay: boolean("is_replay").notNull().default(false),
     isPrivate: boolean("is_private").notNull().default(false),
