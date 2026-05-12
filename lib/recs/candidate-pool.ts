@@ -33,11 +33,22 @@ export type CandidateGame = {
  * empty candidates: every dot-product is 0, and the `s <= 0` gate skips
  * them. T10 wires the popularity fallback for the sparse tier so brand-new
  * users still get something to look at.
+ *
+ * Vector typing: the jsonb columns are typed as `unknown` by Drizzle; we
+ * assert `Record<string, number>` because the refresh-fingerprint Edge
+ * function is the sole writer and enforces numeric values via the
+ * aggregate.ts pipeline. No runtime validation here — that would burn
+ * CPU on every recs call for a near-impossible failure mode.
  */
 export async function candidatePool(
   userId: string,
   opts: { limit?: number } = {},
 ): Promise<CandidateGame[]> {
+  // Defense-in-depth: every caller derives userId from getCachedUser(),
+  // but a stray empty string would still cost a full catalog scan
+  // that returns []. Short-circuit before any DB work.
+  if (!userId) return [];
+
   const limit = opts.limit ?? 50;
 
   const [fpRow] = await db

@@ -61,6 +61,22 @@ const cases: Case[] = [
       return k1 !== k2;
     },
   },
+  {
+    name: "cacheKey: duplicate moods deduped (true set semantics)",
+    fn: () => {
+      const k1 = cacheKey({ userId: "u1", moods: ["chill"], time: "1hr", platforms: ["steam"] });
+      const k2 = cacheKey({ userId: "u1", moods: ["chill", "chill"], time: "1hr", platforms: ["steam"] });
+      return k1 === k2;
+    },
+  },
+  {
+    name: "cacheKey: duplicate platforms deduped",
+    fn: () => {
+      const k1 = cacheKey({ userId: "u1", moods: ["chill"], time: "1hr", platforms: ["steam"] });
+      const k2 = cacheKey({ userId: "u1", moods: ["chill"], time: "1hr", platforms: ["steam", "steam"] });
+      return k1 === k2;
+    },
+  },
 ];
 
 let failed = 0;
