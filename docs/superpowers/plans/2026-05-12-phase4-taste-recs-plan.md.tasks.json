@@ -80,7 +80,7 @@
     {
       "id": 12,
       "subject": "Task 12: getRecs complete — cache + rerank + AI failure fallback",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [11],
       "description": "**Goal:** getRecs uses rerank Edge Function for sharpening/full tiers. Cache hits short-circuit. AI failure falls back to metadata path with banner.\n\n**Files:** lib/recs/server-actions.ts (refactor getRecs)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + cache-hit dev smoke\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"cache hit: same filter combo within freshness window returns persisted rows (algorithm=hybrid)\",\"sparse tier skips AI; uses metadataOnlyRecs helper\",\"sharpening/full invokes rerank-recs\",\"AI failure: metadataOnlyRecs + 'AI ranking unavailable' banner\",\"second call with same filter is instant (cache hit)\"]}\n```"
     },
