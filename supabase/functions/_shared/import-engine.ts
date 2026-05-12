@@ -324,11 +324,16 @@ export async function runImport(opts: {
         }
       }
       imported += chunk.length;
+      // NOTE: pass the JS arrays directly — postgres.js auto-serializes them
+      // for jsonb columns. The previous code used `${JSON.stringify(arr)}::jsonb`
+      // which double-encoded: postgres.js stringified the already-stringified
+      // text and stored a jsonb STRING instead of a jsonb ARRAY.
+      // Verified 2026-05-12 via jsonb_typeof() on a completed import row.
       await sql`
         UPDATE imports
         SET imported_count = ${imported},
-            conflicts_jsonb = ${JSON.stringify(conflicts)}::jsonb,
-            unmatched_jsonb = ${JSON.stringify(unmatched)}::jsonb
+            conflicts_jsonb = ${conflicts as unknown as object},
+            unmatched_jsonb = ${unmatched as unknown as object}
         WHERE id = ${importRow.id}
       `;
     }
