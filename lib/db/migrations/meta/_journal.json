@@ -43,6 +43,13 @@
       "when": 1778571588654,
       "tag": "0005_green_kree",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778609100158,
+      "tag": "0006_phase4_taste",
+      "breakpoints": true
     }
   ]
 }
