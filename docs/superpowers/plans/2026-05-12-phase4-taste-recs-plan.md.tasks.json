@@ -38,7 +38,7 @@
     {
       "id": 6,
       "subject": "Task 6: All four tier renders + refresh button UI",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 5],
       "description": "**Goal:** End-of-W2 demo. Tier-aware page renders correct content for empty/sparse/sharpening/full. Refresh button functional. Mascot pose per tier.\n\n**Files:** components/taste/tier-empty.tsx, components/taste/tier-sparse.tsx, components/taste/tier-narrative.tsx, components/taste/refresh-button.tsx, app/(app)/u/[username]/taste/page.tsx (modify), components/mascot/mascot.tsx (verify or create)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual tier walkthrough\n\n```json:metadata\n{\"files\":[\"components/taste/tier-empty.tsx\",\"components/taste/tier-sparse.tsx\",\"components/taste/tier-narrative.tsx\",\"components/taste/refresh-button.tsx\",\"app/(app)/u/[username]/taste/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"empty tier: excited mascot + log-a-game CTA; owner-only (non-owner 404)\",\"sparse tier: helpful mascot + N-more-logs bubble + greyed charts + disabled buttons\",\"sharpening: narrating mascot + narrative bubble + sharpening banner + refresh/share enabled\",\"full: sharpening banner removed\",\"RefreshButton: spinner + toasts on rate-limit/ai-failure\"]}\n```"
     },
