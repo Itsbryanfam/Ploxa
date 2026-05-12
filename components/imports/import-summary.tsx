@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 
 import { syncNow } from "@/lib/imports/server-actions";
+import type { GameCoverMeta } from "@/lib/imports/summary-data";
 
 interface StatusResponse {
   id: string;
@@ -19,9 +21,13 @@ interface StatusResponse {
 interface Props {
   importId: string;
   platform: "steam" | "xbox";
+  /** Cover metadata for merged (conflict) games, pre-fetched by the page RSC. */
+  mergedCovers?: GameCoverMeta[];
+  /** Cover metadata for newly imported games, pre-fetched by the page RSC. */
+  newCovers?: GameCoverMeta[];
 }
 
-export function ImportSummary({ importId, platform }: Props) {
+export function ImportSummary({ importId, platform, mergedCovers = [], newCovers = [] }: Props) {
   const [showContinue, setShowContinue] = useState(false);
   const { data } = useQuery<StatusResponse>({
     queryKey: ["imports", "status", importId],
@@ -83,17 +89,57 @@ export function ImportSummary({ importId, platform }: Props) {
       </header>
 
       {data.conflicts.length > 0 && (
-        <section className="border border-[var(--border)] rounded-md p-3">
-          <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)] mb-2">Merged with existing logs</h3>
-          {/* Renderer for merged game covers — Task 19 wires this to actual <GameCover> components */}
+        <section className="border border-[var(--border)] rounded-md p-3 space-y-2">
+          <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)]">Merged with existing logs</h3>
+          {mergedCovers.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {mergedCovers.map((g) => (
+                <Link key={g.id} href={`/games/${g.slug}`} title={g.title}>
+                  {g.coverUrl ? (
+                    <Image
+                      src={g.coverUrl}
+                      alt={g.title}
+                      width={48}
+                      height={72}
+                      className="rounded object-cover aspect-[2/3] bg-[var(--bg-elev)]"
+                    />
+                  ) : (
+                    <div className="w-12 h-[72px] rounded bg-[var(--bg-elev)] flex items-center justify-center text-[10px] text-[var(--text-faint)] p-1 text-center">
+                      {g.title}
+                    </div>
+                  )}
+                </Link>
+              ))}
+            </div>
+          )}
           <p className="text-xs text-[var(--text-muted)]">Your status, rating, and notes were kept. Now also marked as on {platform}.</p>
         </section>
       )}
 
       {newCount > 0 && (
-        <section className="border border-[var(--border)] rounded-md p-3">
-          <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)] mb-2">{newCount} new — added as backlog</h3>
-          {/* Renderer for new game covers grid */}
+        <section className="border border-[var(--border)] rounded-md p-3 space-y-2">
+          <h3 className="text-xs uppercase tracking-wide text-[var(--text-muted)]">{newCount} new — added as backlog</h3>
+          {newCovers.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {newCovers.map((g) => (
+                <Link key={g.id} href={`/games/${g.slug}`} title={g.title}>
+                  {g.coverUrl ? (
+                    <Image
+                      src={g.coverUrl}
+                      alt={g.title}
+                      width={48}
+                      height={72}
+                      className="rounded object-cover aspect-[2/3] bg-[var(--bg-elev)]"
+                    />
+                  ) : (
+                    <div className="w-12 h-[72px] rounded bg-[var(--bg-elev)] flex items-center justify-center text-[10px] text-[var(--text-faint)] p-1 text-center">
+                      {g.title}
+                    </div>
+                  )}
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

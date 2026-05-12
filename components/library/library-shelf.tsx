@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import Link from "next/link";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { LibraryPoster } from "./library-poster";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -21,6 +22,16 @@ export function LibraryShelf({ items, filter }: Props) {
         mood={filter === "all" ? "pointing" : "confused"}
         title={copy(scenarioKey)}
         body={filter === "all" ? "Press ⌘K to log your first game." : undefined}
+        action={
+          filter === "all" ? (
+            <Link
+              href="/settings#connections"
+              className="text-xs text-[var(--text-muted)] underline"
+            >
+              Or connect Steam →
+            </Link>
+          ) : undefined
+        }
       />
     );
   }
