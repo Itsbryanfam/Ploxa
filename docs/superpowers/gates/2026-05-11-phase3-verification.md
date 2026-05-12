@@ -47,6 +47,48 @@ Smoke detail:
 
 All 4 schema columns from migration 0003 confirmed via `information_schema.columns`.
 
+### Live debugging + performance lifts (2026-05-12)
+
+During the user's first live test pass, three bugs and two architectural gaps were found and fixed. All committed to main; documented here for the gate record.
+
+**Bug fixes**
+
+| # | Bug | Symptom | Resolution | Commit |
+|---|---|---|---|---|
+| 1 | `SUPABASE_FUNCTIONS_URL` missing from local `.env` | Steam OpenID callback 500 after successful round-trip | Added to `.env` | (local) |
+| 2 | OpenXBL response wrapped under `.content`; adapter never unwrapped | Xbox modal showed "key wasn't accepted" 401 despite valid key | Read `response.content?.profileUsers` / `raw.content?.titles` with fallback | `20d830f` |
+| 3 | `imports.{conflicts,unmatched}_jsonb` stored as JSON-stringified strings | `jsonb_typeof = 'string'` instead of `'array'`; summary screen couldn't render buckets | Pass JS arrays bare; let postgres.js auto-serialize for jsonb columns | `6b09952` |
+
+**Architectural lifts (folded forward from Phase 4)**
+
+| # | Issue | Resolution | Commit |
+|---|---|---|---|
+| A | Local `games` table starts empty → 100% of first-import matches miss → everything goes to `unmatched_jsonb` | **RAWG-on-miss fallback** in `matchToRawg`: call RAWG search → upsert into games → return new id | `b4bc3b2` |
+| B | Edge Function WORKER_RESOURCE_LIMIT (~150s wall clock) cuts off large first-imports | **Resume support**: `runImport` reads `imported_count` from DB and skips already-processed games on re-invocation; conflicts/unmatched arrays hydrated from existing jsonb | `dbd7639` |
+| C | Serial loop in `runImport`: 50 games × ~600ms each = 30s per chunk = 150s for 234 games (exactly at the limit) | **Parallel within chunks** (concurrency cap 10) + **atomic UPSERT** replaces 2-step SELECT-then-INSERT-or-UPDATE with one `ON CONFLICT DO UPDATE` carrying merge rules SQL-side. Eliminates DB round-trip per game and a latent parallel-race. | `c4edf21` |
+| D | Even with the above, niche games (~5-20% of any user's library) still need a RAWG fetch during import | **One-off catalog seed**: `scripts/seed-rawg-catalog.ts` pre-populates top 5,000 most-added-on-RAWG games into `games`. ~125 RAWG calls (~0.6% of free monthly budget), ~10MB storage. Idempotent. | `8255edc` |
+
+**Live benchmark (itsbryanfam, 234-game Steam library)**
+
+| Pass | Engine time | Status | Logs landed |
+|---|---|---|---|
+| Pre-lift (serial loop) — Pass 1 of N | 150.6s | failed (WORKER_RESOURCE_LIMIT) | 110 |
+| Pre-lift — Pass 2 of N | timeout | running (cursor at 150) | 157 |
+| Pre-lift — Pass 3 of N (with resume) | 112s | completed | 225 |
+| **Post-lift (parallel + UPSERT) — single pass** | **32.9s** | **completed** | 225 |
+
+Library size headroom on Free tier: ~1500-2000 games per pass. Realistic gamers covered by single-pass behavior.
+
+**Catalog state after seed**
+
+| Metric | Before session | After seed |
+|---|---|---|
+| `games` rows | 3 | **5,053** |
+| With cover_url | 3 | 5,049 (99.9%) |
+| With rawg_rating | 3 | 5,053 (100%) |
+
+Spot-check (typical Steam-library mainstream titles): Celeste, Cyberpunk 2077, Dota 2, Elden Ring, Hades, Half-Life 2, Hollow Knight, Left 4 Dead 2, Outer Wilds, Portal 2, Stardew Valley — **all present with full metadata**.
+
 ### Edge Function end-to-end (added after secrets-set pass on 2026-05-11)
 
 After the user provided a Supabase PAT, three Edge Function secrets were set via `supabase secrets set`:
