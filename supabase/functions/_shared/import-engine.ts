@@ -209,10 +209,14 @@ export async function fetchLibrary(
     if (res.status === 401) throw new Error("XBOX_KEY_INVALID");
     if (res.status === 429) throw new Error("XBOX_RATE_LIMIT");
     if (!res.ok) throw new Error(`XBOX_API_${res.status}`);
+    // OpenXBL wraps responses under `content` — keep fallback to non-wrapped
+    // for forward-compat. Live shape verified 2026-05-11.
     const json = (await res.json()) as {
+      content?: { titles?: Array<{ titleId: string; name: string }> };
       titles?: Array<{ titleId: string; name: string }>;
     };
-    return (json.titles ?? []).map((t) => ({
+    const titles = json.content?.titles ?? json.titles ?? [];
+    return titles.map((t) => ({
       externalId: String(t.titleId),
       title: t.name,
       hoursPlayed: null,

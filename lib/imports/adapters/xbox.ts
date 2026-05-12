@@ -35,10 +35,14 @@ function hashResponse(payload: unknown): string {
 class XboxAdapter implements LibraryImporter {
   async connect(input: ConnectInput): Promise<ConnectResult> {
     if (input.kind !== "xbox") throw new Error("XboxAdapter expects kind='xbox'");
-    const account = (await xblFetch("/account", input.openxblKey)) as {
+    // OpenXBL wraps responses under `content`. Verified against the live API
+    // 2026-05-11: /api/v2/account returns { content: { profileUsers: [...] } }.
+    const response = (await xblFetch("/account", input.openxblKey)) as {
+      content?: { profileUsers?: Array<{ id: string; settings: Array<{ id: string; value: string }> }> };
       profileUsers?: Array<{ id: string; settings: Array<{ id: string; value: string }> }>;
     };
-    const user = account.profileUsers?.[0];
+    const profileUsers = response.content?.profileUsers ?? response.profileUsers;
+    const user = profileUsers?.[0];
     if (!user) throw new XboxKeyInvalidError("OpenXBL returned no account");
     const gamertag = user.settings.find((s) => s.id === "Gamertag")?.value ?? null;
     return { externalId: user.id, accessTokenPlaintext: input.openxblKey, displayHandle: gamertag };
@@ -51,15 +55,16 @@ class XboxAdapter implements LibraryImporter {
     if (!connection.accessTokenPlaintext) throw new XboxKeyInvalidError("No OpenXBL key on connection");
     const key = connection.accessTokenPlaintext;
 
-    // Endpoint choice: OpenXBL exposes player-title history at /achievements/player/{xuid}.
-    // The executor verifies the live response shape (OpenXBL has changed endpoints
-    // in the past) and adjusts the parser. If a 401 returns here, the key was
-    // revoked since connect — propagate as XboxKeyInvalidError.
+    // OpenXBL wraps responses under `content`. Verified against the live API
+    // 2026-05-11: /api/v2/achievements/player/{xuid} returns
+    // { content: { xuid, titles: [...] } }. We keep the fallback to non-wrapped
+    // for forward-compat in case OpenXBL un-wraps in a future version.
     const raw = (await xblFetch(`/achievements/player/${connection.externalId}`, key)) as {
+      content?: { titles?: XblTitle[] };
       titles?: XblTitle[];
     };
 
-    const titles = raw.titles ?? [];
+    const titles = raw.content?.titles ?? raw.titles ?? [];
     const games: ImportedGame[] = titles.map((t) => ({
       externalId: String(t.titleId),
       title: t.name,
