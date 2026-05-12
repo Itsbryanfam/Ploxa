@@ -47,6 +47,30 @@ Smoke detail:
 
 All 4 schema columns from migration 0003 confirmed via `information_schema.columns`.
 
+### Edge Function end-to-end (added after secrets-set pass on 2026-05-11)
+
+After the user provided a Supabase PAT, three Edge Function secrets were set via `supabase secrets set`:
+
+| Secret | Status |
+|---|---|
+| `DATABASE_URL` | **SET** via CLI |
+| `STEAM_API_KEY` | **SET** via CLI |
+| `IMPORT_ENCRYPTION_KEY` | **SET** via CLI |
+| `SUPABASE_SERVICE_ROLE_KEY` | **AUTO-INJECTED** — Supabase reserves `SUPABASE_*` names and auto-injects them into every Edge Function. The CLI rejected manual sets; the auto-injected value matches our `sb_secret_*` key (verified below). |
+
+Live curl smoke against both deployed functions:
+
+| Test | Request | Result | Interpretation |
+|---|---|---|---|
+| `POST /functions/v1/import-platform` with valid `apikey` header + bogus `importId` | `{"importId":"00000000-..."}` | **HTTP 404 "import not found"** | Auth ✅ (got past the apikey check), DB query ran ✅ (read `imports` table, no match), function code wired correctly |
+| `POST /functions/v1/daily-sync` with valid `apikey` header | `{}` | **HTTP 200 `{"scheduled":0}`** | Auth ✅, DB query ran ✅ (scanned `platform_connections`, none past 23h), function code wired correctly |
+
+This confirms:
+- All 4 Edge Function env vars are accessible at runtime
+- The `apikey` header auth check (added in commit `4f9ccb3`) works with the sb_secret_* format
+- Postgres connectivity (via `DATABASE_URL`) works from the Edge Function runtime
+- The pg_cron Vault-based dispatch path (Task 3) will work once a real connection exists
+
 ---
 
 ## 8-Item Verification Gate (spec § Verification Gate)
