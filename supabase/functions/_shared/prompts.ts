@@ -122,3 +122,102 @@ export function buildNarrativePrompt(input: NarrativePromptInput): {
 
   return { system, user };
 }
+
+/**
+ * Input shape for the AI rerank prompt (T11). Mirror of lib/taste/prompts.ts.
+ * `narrative` may be null for sparse-tier users who never got a narrative.
+ */
+export type RerankPromptInput = {
+  narrative: string | null;
+  vectors: VectorBundle;
+  filters: {
+    moods: string[];
+    time: string;
+    platforms: string[];
+  };
+  candidates: Array<{
+    id: number;
+    title: string;
+    genres: string[];
+    themes: string[];
+    mechanics: string[];
+    playtimeAvgHours: number | null;
+    description: string | null;
+  }>;
+  dismissedGames: Array<{ title: string; genres: string[] }>;
+  currentlyPlaying: Array<{ title: string }>;
+};
+
+/**
+ * Edge mirror of buildRerankPrompt — see lib/taste/prompts.ts for the
+ * authoritative doc comment. Any prompt-text change here must be applied
+ * to the lib/ file and vice versa; bump RERANK_PROMPT_VERSION on edits.
+ */
+export function buildRerankPrompt(input: RerankPromptInput): {
+  system: string;
+  user: string;
+} {
+  const moodList = input.filters.moods.join(" + ");
+  const system = [
+    "You are recommending the next game for a player from a candidate list.",
+    "Pick exactly 5 from the candidates. Score each in [0, 1].",
+    `Write ONE sentence of reasoning per game (max 25 words) that EXPLICITLY references the player's filter context (mood: ${moodList}; time: ${input.filters.time}).`,
+    "Reasoning style: concrete and observed (e.g. 'Quick puzzle loops with no fail state — fits your half-hour window.'). Forbidden: emoji, hedging, the phrases 'you love' / 'you enjoy', quotation marks around titles.",
+    "Output ONLY valid JSON matching this exact schema:",
+    `{ "recs": [{ "gameId": <int>, "score": <0..1>, "reason": "<one sentence>" }, ... 5 items] }`,
+    "No prose before or after the JSON. No code fences. Just the object.",
+  ].join("\n");
+
+  const candidateList = input.candidates
+    .map((c) => {
+      const meta = [
+        c.genres.slice(0, 3).join("/"),
+        c.themes.slice(0, 2).join("/"),
+        c.mechanics.slice(0, 2).join("/"),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const lenStr = c.playtimeAvgHours != null ? `~${c.playtimeAvgHours.toFixed(0)}h` : "?h";
+      const desc = c.description ? " — " + c.description.slice(0, 80) : "";
+      return `  [${c.id}] ${c.title} (${meta}, ${lenStr})${desc}`;
+    })
+    .join("\n");
+
+  const userBlocks: string[] = [
+    `Filter: mood=${moodList}; time=${input.filters.time}; platforms=${input.filters.platforms.join(",")}`,
+    "",
+  ];
+
+  if (input.narrative) {
+    userBlocks.push("Their taste read:", input.narrative, "");
+  }
+
+  const topGenres = Object.entries(input.vectors.genre)
+    .filter(([, v]) => Math.abs(v) >= 0.05)
+    .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+    .slice(0, 5)
+    .map(([k, v]) => `${k}:${v.toFixed(2)}`)
+    .join(", ");
+  if (topGenres) userBlocks.push(`Top genre signal: ${topGenres}`, "");
+
+  userBlocks.push(`Candidate games (id, metadata, playtime):\n${candidateList}`, "");
+
+  if (input.dismissedGames.length > 0) {
+    const dismissed = input.dismissedGames
+      .map((g) => `${g.title} (${g.genres.slice(0, 2).join(",")})`)
+      .join("; ");
+    userBlocks.push(
+      `The player has REJECTED these (avoid recommending unless a strong match outweighs the signal): ${dismissed}`,
+      "",
+    );
+  }
+
+  if (input.currentlyPlaying.length > 0) {
+    const playing = input.currentlyPlaying.map((g) => g.title).join("; ");
+    userBlocks.push(`Currently playing (do not recommend these): ${playing}`, "");
+  }
+
+  userBlocks.push("Return the JSON object now.");
+
+  return { system, user: userBlocks.join("\n") };
+}
