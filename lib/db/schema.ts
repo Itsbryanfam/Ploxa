@@ -223,8 +223,7 @@ export const reviewQuestions = pgTable("review_questions", {
 });
 
 // ─────────────────────────────────────────────────────────────
-// AI taste fingerprint + recommendations — Forward-looking (Phase 4)
-// Tables exist in DB; no app reads yet. Will fill in Phase 4 (weeks 15-20).
+// AI taste fingerprint + recommendations — Phase 4
 // ─────────────────────────────────────────────────────────────
 export const tasteFingerprints = pgTable("taste_fingerprints", {
   userId: uuid("user_id")
@@ -236,25 +235,52 @@ export const tasteFingerprints = pgTable("taste_fingerprints", {
   lengthPreference: jsonb("length_preference").notNull().default(sql`'{}'::jsonb`),
   difficultyPreference: jsonb("difficulty_preference").notNull().default(sql`'{}'::jsonb`),
   narrativeSummary: text("narrative_summary"),
+  // Snapshot of vectors at the moment narrativeSummary was generated.
+  // Used by the daily drift cron to decide whether to re-narrate.
+  // Shape: { genre: Record<string, number>, theme: ..., mechanic: ... }
+  narrativeSnapshotVectors: jsonb("narrative_snapshot_vectors"),
   totalLogsAtGeneration: integer("total_logs_at_generation").notNull().default(0),
-  modelVersion: varchar("model_version", { length: 64 }),
-  generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+  // narrative_model_version = which AI generated narrativeSummary (e.g.
+  // "cerebras-qwen3-480b/narrative-v1"). Vector math is deterministic so
+  // it has no model version.
+  narrativeModelVersion: varchar("narrative_model_version", { length: 64 }),
+  vectorsGeneratedAt: timestamp("vectors_generated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  narrativeGeneratedAt: timestamp("narrative_generated_at", { withTimezone: true }),
 });
 
-export const recommendations = pgTable("recommendations", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  gameId: integer("game_id")
-    .notNull()
-    .references(() => games.id, { onDelete: "cascade" }),
-  score: numeric("score", { precision: 5, scale: 4 }).notNull(),
-  reason: text("reason"),
-  algorithm: recAlgorithmEnum("algorithm").notNull(),
-  generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
-  dismissed: boolean("dismissed").notNull().default(false),
-});
+export const recommendations = pgTable(
+  "recommendations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    score: numeric("score", { precision: 5, scale: 4 }).notNull(),
+    reason: text("reason"),
+    algorithm: recAlgorithmEnum("algorithm").notNull(),
+    // Cache key = hash(userId + sortedMoods + time + sortedPlatforms).
+    // Null for one-shot/legacy rows. Per-key cardinality is bounded — see
+    // lib/recs/cache.ts.
+    cacheKey: text("cache_key"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    dismissed: boolean("dismissed").notNull().default(false),
+  },
+  (table) => ({
+    // Cache-hit lookup: same (user, cacheKey, freshness ordering) for live recs.
+    userCacheKeyIdx: index("recommendations_user_cache_key_idx")
+      .on(table.userId, table.cacheKey, desc(table.generatedAt))
+      .where(sql`${table.dismissed} = false`),
+    // Negative-context lookup: most-recent dismissed by user (for rerank prompt).
+    userDismissedIdx: index("recommendations_user_dismissed_idx")
+      .on(table.userId, desc(table.generatedAt))
+      .where(sql`${table.dismissed} = true`),
+  }),
+);
 
 // ─────────────────────────────────────────────────────────────
 // Social — Forward-looking (Phase 5)
