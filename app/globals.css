@@ -282,22 +282,6 @@ body {
   to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
 
-/* Thinking dots — staggered bounce, three children share one keyframe. */
-.mascot-thinking-dots .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: var(--accent);
-  opacity: 0.4;
-  animation: mascot-thinking-dot 0.9s ease-in-out infinite;
-}
-.mascot-thinking-dots .dot:nth-child(2) { animation-delay: 0.15s; }
-.mascot-thinking-dots .dot:nth-child(3) { animation-delay: 0.30s; }
-@keyframes mascot-thinking-dot {
-  0%, 100% { transform: translateY(0);    opacity: 0.4; }
-  50%      { transform: translateY(-4px); opacity: 1; }
-}
-
 /* Honor the reduced-motion media query — palette + mascot both. */
 @media (prefers-reduced-motion: reduce) {
   .palette-backdrop,
@@ -305,6 +289,5 @@ body {
   .palette-card,
   .palette-card.is-closing { animation-duration: 0.01s; }
   .mascot-root .mascot-sprite { animation: none; }
-  .mascot-thinking-dots .dot  { animation: none; opacity: 0.7; }
   .mascot-bubble              { animation: none; }
 }
