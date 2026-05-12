@@ -22,6 +22,13 @@
       "when": 1778482461107,
       "tag": "0002_fancy_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778552916320,
+      "tag": "0003_absurd_ozymandias",
+      "breakpoints": true
     }
   ]
 }
