@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { LibraryPoster } from "./library-poster";
@@ -84,8 +84,19 @@ export function LibraryShelf({ items, filter }: Props) {
     <div className="flex flex-col gap-3">
       {rows.map((rowItems, rowIdx) => (
         <Fragment key={`row-${rowIdx}`}>
-          <motion.div
-            layout
+          {/*
+            Plain <div>, not <motion.div layout>. With the chunking we added
+            for shelf-plank dividers, a per-row layout-animated wrapper means
+            every visible row tries to play its own layout animation
+            simultaneously whenever `cols` changes (e.g. the post-mount
+            useEffect bumps cols from the SSR default to the actual viewport,
+            or the user switches back into shelf view) — which reads as
+            jittery, "wacky" cascades during view transitions. Each
+            LibraryPoster still has its own motion.div/layout for individual
+            position animation during filter/sort, and AnimatePresence below
+            still handles per-item exit on filter changes.
+          */}
+          <div
             className="grid gap-3"
             style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
           >
@@ -98,7 +109,7 @@ export function LibraryShelf({ items, filter }: Props) {
                 />
               ))}
             </AnimatePresence>
-          </motion.div>
+          </div>
           {rowIdx < rows.length - 1 && <ShelfPlank position="middle" />}
         </Fragment>
       ))}
