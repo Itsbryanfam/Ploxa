@@ -1,10 +1,11 @@
 "use server";
 
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { cachedSearch, cachedGameDetail, cachedScreenshots } from "@/lib/rawg/cache";
 import type { RawgGameDetail, RawgSearchItem } from "@/lib/rawg/types";
+import { resolvePoster } from "@/lib/games/poster-source";
 
 export interface SearchResult {
   rawgId: number;
@@ -12,6 +13,7 @@ export interface SearchResult {
   title: string;
   year: number | null;
   coverUrl: string | null;
+  posterUrl: string | null;
   platforms: string[];
 }
 
@@ -22,7 +24,24 @@ export async function searchGames(query: string): Promise<SearchResult[]> {
   if (!parsed.success) return [];
 
   const response = await cachedSearch(parsed.data.query);
-  return response.results.map(toSearchResult);
+  const results = response.results.map(toSearchResult);
+
+  // Enrich with posterUrl from our local catalog where present. RAWG search
+  // results don't carry portrait art; we backfilled the 5,053 most-added
+  // games and resolve fresh on miss, so most palette searches will hit
+  // posters here. One batched IN-list query.
+  const ids = results.map((r) => r.rawgId);
+  if (ids.length > 0) {
+    const cached = await db
+      .select({ id: schema.games.id, posterUrl: schema.games.posterUrl })
+      .from(schema.games)
+      .where(inArray(schema.games.id, ids));
+    const map = new Map(cached.map((c) => [c.id, c.posterUrl]));
+    for (const r of results) {
+      r.posterUrl = map.get(r.rawgId) ?? null;
+    }
+  }
+  return results;
 }
 
 function toSearchResult(item: RawgSearchItem): SearchResult {
@@ -34,6 +53,7 @@ function toSearchResult(item: RawgSearchItem): SearchResult {
     title: item.name,
     year,
     coverUrl: item.background_image ?? null,
+    posterUrl: null, // filled in by searchGames() via the catalog join
     platforms,
   };
 }
@@ -121,4 +141,63 @@ async function upsertGameFromRawg(rawg: RawgGameDetail) {
     });
 
   return (await db.query.games.findFirst({ where: eq(schema.games.id, rawg.id) }))!;
+}
+
+/**
+ * Backfill posterUrl for games without portrait art. Called fire-and-forget
+ * from the post-import summary page so any games inserted via RAWG-on-miss
+ * during the import get portrait box art shortly after, without the user
+ * waiting on it during the import itself.
+ *
+ * Bounded to keep server-action latency reasonable. The full 5,053-game
+ * catalog is covered by scripts/backfill-posters.ts (one-time); this
+ * handles the long tail added by user imports.
+ */
+const MAX_ENRICH_PER_CALL = 200;
+const ENRICH_CONCURRENCY = 8;
+
+export async function enrichPostersForImport(): Promise<{ enriched: number; skipped: number }> {
+  // Newest cachedAt first — fresh RAWG-on-miss insertions float to the top.
+  const rows = (await db
+    .select({ id: schema.games.id, title: schema.games.title })
+    .from(schema.games)
+    .where(isNull(schema.games.posterUrl))
+    .orderBy(sql`${schema.games.cachedAt} DESC`)
+    .limit(MAX_ENRICH_PER_CALL)) as Array<{ id: number; title: string }>;
+
+  if (rows.length === 0) return { enriched: 0, skipped: 0 };
+
+  let enriched = 0;
+  let skipped = 0;
+
+  for (let i = 0; i < rows.length; i += ENRICH_CONCURRENCY) {
+    const wave = rows.slice(i, i + ENRICH_CONCURRENCY);
+    const results = await Promise.all(
+      wave.map(async (row) => {
+        try {
+          const r = await resolvePoster({ title: row.title });
+          return { row, result: r };
+        } catch {
+          return { row, result: null };
+        }
+      }),
+    );
+    for (const r of results) {
+      if (r.result == null) {
+        skipped++;
+        continue;
+      }
+      try {
+        await db
+          .update(schema.games)
+          .set({ posterUrl: r.result.url, posterSource: r.result.source })
+          .where(eq(schema.games.id, r.row.id));
+        enriched++;
+      } catch {
+        skipped++;
+      }
+    }
+  }
+
+  return { enriched, skipped };
 }

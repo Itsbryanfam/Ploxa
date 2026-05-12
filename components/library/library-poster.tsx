@@ -29,9 +29,11 @@ export const LibraryPoster = memo(function LibraryPoster({
       className="lib-item-cv group relative aspect-[2/3] w-full overflow-hidden rounded-md bg-[var(--bg-elev)] border border-[var(--border-soft)] hover:border-[var(--accent-soft)] transition-colors"
     >
       <Link href={`/games/${item.game.slug}`} className="block w-full h-full">
-        {item.game.coverUrl ? (
+        {/* Portrait (2:3) box art preferred — falls back to RAWG landscape hero
+            on long-tail titles where Steam CDN + SGDB both missed. */}
+        {(item.game.posterUrl ?? item.game.coverUrl) ? (
           <Image
-            src={item.game.coverUrl}
+            src={(item.game.posterUrl ?? item.game.coverUrl)!}
             alt={item.game.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 140px"

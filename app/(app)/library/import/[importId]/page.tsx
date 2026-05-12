@@ -42,7 +42,13 @@ export default async function ImportSummaryPage({ params }: PageProps) {
   const platform = row.platform;
 
   const newLogRows = await db
-    .select({ id: games.id, slug: games.slug, title: games.title, coverUrl: games.coverUrl })
+    .select({
+      id: games.id,
+      slug: games.slug,
+      title: games.title,
+      coverUrl: games.coverUrl,
+      posterUrl: games.posterUrl,
+    })
     .from(logs)
     .innerJoin(games, eq(logs.gameId, games.id))
     .where(

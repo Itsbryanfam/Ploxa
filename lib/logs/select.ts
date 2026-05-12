@@ -28,6 +28,7 @@ export const LOG_GAME_SELECT = {
     slug: schema.games.slug,
     title: schema.games.title,
     coverUrl: schema.games.coverUrl,
+    posterUrl: schema.games.posterUrl,
     released: schema.games.released,
     genres: schema.games.genres,
     platforms: schema.games.platforms,

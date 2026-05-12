@@ -4,7 +4,7 @@ import { HeartRating } from "@/components/ui/heart-rating";
 
 interface Props {
   review: { body: string; rating: number | null; publishedAt: Date };
-  game: { slug: string; title: string; coverUrl: string | null };
+  game: { slug: string; title: string; coverUrl: string | null; posterUrl: string | null };
   username: string;
 }
 
@@ -15,9 +15,9 @@ export function ReviewListCard({ review, game, username }: Props) {
       href={`/u/${username}/reviews/${game.slug}`}
       className="grid grid-cols-[80px_1fr] gap-4 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4 hover:border-[var(--accent)] transition"
     >
-      {game.coverUrl ? (
+      {(game.posterUrl ?? game.coverUrl) ? (
         <Image
-          src={game.coverUrl}
+          src={(game.posterUrl ?? game.coverUrl)!}
           alt={game.title}
           width={80}
           height={120}

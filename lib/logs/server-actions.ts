@@ -155,6 +155,7 @@ export async function getUserLogForGame(
   gameId: number,
   game: {
     id: number; slug: string; title: string; coverUrl: string | null;
+    posterUrl: string | null;
     released: Date | null; genres: string[] | null; platforms: string[] | null;
   },
 ): Promise<LibraryItem | null> {
@@ -192,6 +193,7 @@ export async function getGameDetailUserState(
   gameId: number,
   game: {
     id: number; slug: string; title: string; coverUrl: string | null;
+    posterUrl: string | null;
     released: Date | null; genres: string[] | null; platforms: string[] | null;
   },
 ): Promise<GameDetailUserState> {

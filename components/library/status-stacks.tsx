@@ -73,9 +73,9 @@ function ShelfItem({ item, priority = false }: { item: LibraryItem; priority?: b
       style={{ scrollSnapAlign: "start" }}
     >
       <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-[var(--bg-elev)] border border-[var(--border-soft)] group-hover:border-[var(--accent-soft)] transition-colors">
-        {item.game.coverUrl && (
+        {(item.game.posterUrl ?? item.game.coverUrl) && (
           <Image
-            src={item.game.coverUrl}
+            src={(item.game.posterUrl ?? item.game.coverUrl)!}
             alt={item.game.title}
             fill
             sizes="140px"

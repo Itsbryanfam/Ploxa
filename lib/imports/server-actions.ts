@@ -1,5 +1,5 @@
 "use server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { getCachedUser } from "@/lib/supabase/auth-cache";
@@ -154,8 +154,12 @@ export async function listConnections(): Promise<ConnectionSummary[]> {
 export async function markImportsSurfaced(importIds: string[]): Promise<void> {
   if (importIds.length === 0) return;
   const user = await requireUser();
+  // Drizzle's `sql` tagged template binds an array as a single string param,
+  // producing `= ANY($n)` against a stringified value — postgres then rejects
+  // it as a malformed array literal (`Array value must start with "{"`).
+  // `inArray` does the right thing, emitting `IN (...)` with each element bound.
   await db
     .update(imports)
     .set({ surfaced: true })
-    .where(and(eq(imports.userId, user.id), sql`${imports.id} = ANY(${importIds})`));
+    .where(and(eq(imports.userId, user.id), inArray(imports.id, importIds)));
 }

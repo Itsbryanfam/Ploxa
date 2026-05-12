@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 
 import { syncNow } from "@/lib/imports/server-actions";
+import { enrichPostersForImport } from "@/lib/games/server-actions";
 import type { GameCoverMeta } from "@/lib/imports/summary-data";
 
 interface StatusResponse {
@@ -48,6 +49,22 @@ export function ImportSummary({ importId, platform, mergedCovers = [], newCovers
       const t = setTimeout(() => setShowContinue(true), 5000);
       return () => clearTimeout(t);
     }
+  }, [data?.status]);
+
+  // Fire-and-forget portrait-art enrichment once the import is done. Any
+  // games inserted via RAWG-on-miss during this import will be missing
+  // posterUrl; this kicks off the Steam/SGDB resolver so the next render
+  // of /library shows proper box art. We deliberately don't surface a
+  // loading state — the user already sees their library, art just appears.
+  const enrichmentFiredRef = useRef(false);
+  useEffect(() => {
+    if (data?.status !== "completed") return;
+    if (enrichmentFiredRef.current) return;
+    enrichmentFiredRef.current = true;
+    enrichPostersForImport().catch(() => {
+      // Best-effort. Failures here don't affect the import; user sees
+      // landscape RAWG art for the long tail until the next backfill.
+    });
   }, [data?.status]);
 
   if (!data) return <div className="text-sm text-[var(--text-muted)]">Loading import…</div>;
@@ -95,9 +112,9 @@ export function ImportSummary({ importId, platform, mergedCovers = [], newCovers
             <div className="flex flex-wrap gap-2">
               {mergedCovers.map((g) => (
                 <Link key={g.id} href={`/games/${g.slug}`} title={g.title}>
-                  {g.coverUrl ? (
+                  {(g.posterUrl ?? g.coverUrl) ? (
                     <Image
-                      src={g.coverUrl}
+                      src={(g.posterUrl ?? g.coverUrl)!}
                       alt={g.title}
                       width={48}
                       height={72}
@@ -123,9 +140,9 @@ export function ImportSummary({ importId, platform, mergedCovers = [], newCovers
             <div className="flex flex-wrap gap-2">
               {newCovers.map((g) => (
                 <Link key={g.id} href={`/games/${g.slug}`} title={g.title}>
-                  {g.coverUrl ? (
+                  {(g.posterUrl ?? g.coverUrl) ? (
                     <Image
-                      src={g.coverUrl}
+                      src={(g.posterUrl ?? g.coverUrl)!}
                       alt={g.title}
                       width={48}
                       height={72}

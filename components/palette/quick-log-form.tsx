@@ -79,10 +79,10 @@ export function QuickLogForm() {
     <div className="px-5 py-4 space-y-5">
       {/* Selected game preview */}
       <div className="flex items-center gap-3">
-        {selectedGame.coverUrl ? (
+        {(selectedGame.posterUrl ?? selectedGame.coverUrl) ? (
           <div className="relative w-12 h-16 rounded overflow-hidden bg-[var(--bg-elev)]">
             <Image
-              src={selectedGame.coverUrl}
+              src={(selectedGame.posterUrl ?? selectedGame.coverUrl)!}
               alt={selectedGame.title}
               fill
               sizes="48px"

@@ -41,9 +41,9 @@ export function LibraryList({ items, filter }: Props) {
               className="flex items-center gap-4 p-3 hover:bg-[var(--bg-card-hover)] transition-colors"
             >
               <div className="relative w-12 h-16 rounded overflow-hidden bg-[var(--bg-elev)] flex-shrink-0">
-                {item.game.coverUrl && (
+                {(item.game.posterUrl ?? item.game.coverUrl) && (
                   <Image
-                    src={item.game.coverUrl}
+                    src={(item.game.posterUrl ?? item.game.coverUrl)!}
                     alt={item.game.title}
                     fill
                     sizes="48px"

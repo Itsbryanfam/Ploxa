@@ -64,7 +64,7 @@ export default async function CanonicalReviewPage({ params }: Props) {
 
   const game = await db.query.games.findFirst({
     where: eq(schema.games.slug, slug),
-    columns: { id: true, slug: true, title: true, coverUrl: true },
+    columns: { id: true, slug: true, title: true, coverUrl: true, posterUrl: true },
   });
   if (!game) notFound();
 

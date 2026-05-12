@@ -51,7 +51,7 @@ export function GameSearchResults({ query }: { query: string }) {
       } else if (e.key === "Enter") {
         e.preventDefault();
         const r = results[activeIndex];
-        if (r) selectGame({ rawgId: r.rawgId, title: r.title, coverUrl: r.coverUrl });
+        if (r) selectGame({ rawgId: r.rawgId, title: r.title, coverUrl: r.coverUrl, posterUrl: r.posterUrl });
       }
     }
     window.addEventListener("keydown", handler);
@@ -91,14 +91,14 @@ export function GameSearchResults({ query }: { query: string }) {
         <li key={r.rawgId}>
           <button
             type="button"
-            onClick={() => selectGame({ rawgId: r.rawgId, title: r.title, coverUrl: r.coverUrl })}
+            onClick={() => selectGame({ rawgId: r.rawgId, title: r.title, coverUrl: r.coverUrl, posterUrl: r.posterUrl })}
             onMouseEnter={() => setActiveIndex(i)}
             className={cn(
               "flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors",
               i === activeIndex && "bg-[var(--bg-card-hover)]",
             )}
           >
-            <CoverThumb url={r.coverUrl} alt={r.title} />
+            <CoverThumb url={r.posterUrl ?? r.coverUrl} alt={r.title} />
             <div className="flex-1 min-w-0">
               <p className="font-medium text-[var(--text)] truncate">{r.title}</p>
               <p className="text-xs text-[var(--text-faint)] flex items-center gap-2">

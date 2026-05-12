@@ -29,6 +29,7 @@ export default async function ReviewsListPage({ params }: Props) {
       gameSlug: schema.games.slug,
       gameTitle: schema.games.title,
       gameCoverUrl: schema.games.coverUrl,
+      gamePosterUrl: schema.games.posterUrl,
     })
     .from(schema.reviews)
     .innerJoin(schema.games, eq(schema.games.id, schema.reviews.gameId))
@@ -58,7 +59,7 @@ export default async function ReviewsListPage({ params }: Props) {
                 rating: r.rating != null ? Number(r.rating) : null,
                 publishedAt: r.publishedAt!,
               }}
-              game={{ slug: r.gameSlug, title: r.gameTitle, coverUrl: r.gameCoverUrl }}
+              game={{ slug: r.gameSlug, title: r.gameTitle, coverUrl: r.gameCoverUrl, posterUrl: r.gamePosterUrl }}
               username={profile.username}
             />
           ))}

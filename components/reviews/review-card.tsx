@@ -7,7 +7,7 @@ import { DeleteReviewLink } from "./delete-review-link";
 
 interface Props {
   review: { id: string; body: string; rating: number | null; publishedAt: Date };
-  game: { slug: string; title: string; coverUrl: string | null };
+  game: { slug: string; title: string; coverUrl: string | null; posterUrl: string | null };
   author: { username: string };
   isOwner: boolean;
   loggedOut: boolean;
@@ -29,9 +29,9 @@ export function ReviewCard({
   return (
     <article className="mx-auto max-w-3xl px-6 py-8 space-y-8">
       <header className="grid grid-cols-1 gap-6 md:grid-cols-[280px_1fr]">
-        {game.coverUrl ? (
+        {(game.posterUrl ?? game.coverUrl) ? (
           <Image
-            src={game.coverUrl}
+            src={(game.posterUrl ?? game.coverUrl)!}
             alt={game.title}
             width={280}
             height={420}

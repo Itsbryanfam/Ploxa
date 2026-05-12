@@ -5,7 +5,7 @@ type PaletteView = "search" | "quick-log";
 interface PaletteState {
   isOpen: boolean;
   view: PaletteView;
-  selectedGame: { rawgId: number; title: string; coverUrl: string | null } | null;
+  selectedGame: { rawgId: number; title: string; coverUrl: string | null; posterUrl: string | null } | null;
   open: () => void;
   close: () => void;
   toggle: () => void;

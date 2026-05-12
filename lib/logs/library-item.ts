@@ -28,7 +28,10 @@ export interface LibraryItem {
     id: number;
     slug: string;
     title: string;
+    /** Landscape RAWG hero art. Fallback only — callers should prefer posterUrl. */
     coverUrl: string | null;
+    /** Portrait (2:3) box art from Steam CDN / SGDB. Null on the long-tail. */
+    posterUrl: string | null;
     released: Date | null;
     genres: string[];
     platforms: string[];
@@ -65,6 +68,7 @@ export function mapRowToLibraryItem(
     slug: string;
     title: string;
     coverUrl: string | null;
+    posterUrl: string | null;
     released: Date | null;
     genres: string[] | null;
     platforms: string[] | null;
@@ -88,6 +92,7 @@ export function mapRowToLibraryItem(
       slug: game.slug,
       title: game.title,
       coverUrl: game.coverUrl,
+      posterUrl: game.posterUrl,
       released: game.released,
       genres: game.genres ?? [],
       platforms: game.platforms ?? [],
