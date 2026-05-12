@@ -100,7 +100,16 @@ export const games = pgTable("games", {
   slug: varchar("slug", { length: 200 }).notNull().unique(),
   title: text("title").notNull(),
   released: timestamp("released", { withTimezone: false, mode: "date" }),
+  // Landscape hero art from RAWG (~16:9). Drives game-detail.tsx hero strip
+  // and remains the fallback for portrait slots when posterUrl is null.
   coverUrl: text("cover_url"),
+  // Portrait (2:3) box art. Sourced via lib/games/poster-source.ts —
+  // Steam Storefront search → Steam CDN library_600x900_2x → SGDB (if key).
+  // Populated by scripts/backfill-posters.ts (one-time) and
+  // enrichPostersForImport (per-import). Always nullable; UI must fall
+  // back to coverUrl.
+  posterUrl: text("poster_url"),
+  posterSource: text("poster_source", { enum: ["steam", "sgdb", "rawg"] }),
   screenshotUrls: text("screenshot_urls").array(),
   description: text("description"),
   genres: text("genres").array(),
