@@ -5,6 +5,7 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 
 import { AppHeader } from "@/components/layout/app-header";
 import { CommandPaletteMount } from "@/components/palette/command-palette-mount";
+import { ImportToast } from "@/components/imports/import-toast";
 import { HeaderSearchInput } from "@/components/palette/header-search-input";
 import { PaletteKeyboardShortcut } from "@/components/palette/keyboard-shortcut";
 import { getHeaderUser } from "@/lib/profile/server-actions";
@@ -37,6 +38,7 @@ export default async function AppLayout({
       <main className="flex-1">{children}</main>
       <CommandPaletteMount />
       {modal}
+      <ImportToast />
     </div>
   );
 }
