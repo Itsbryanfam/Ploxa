@@ -7,6 +7,7 @@ import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getGameDetail } from "@/lib/games/server-actions";
 import { LOG_STATUSES, type LogStatus } from "@/lib/db/schema-types";
+import { triggerOnLogWrite } from "@/lib/taste/triggers";
 import { mapRowToLibraryItem, type LibraryItem } from "./library-item";
 import { LOG_GAME_SELECT } from "./select";
 
@@ -84,6 +85,7 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   }
 
   revalidatePath("/", "layout");
+  await triggerOnLogWrite(user.id);
   return { ok: true, logId: inserted.id, gameSlug: game.slug };
 }
 
@@ -263,6 +265,7 @@ export async function updateLogStatus(input: unknown): Promise<{ ok: boolean; er
 
   if (result.length === 0) return { ok: false, error: "Log not found" };
   revalidatePath("/", "layout");
+  await triggerOnLogWrite(user.id);
   return { ok: true };
 }
 
@@ -283,6 +286,7 @@ export async function deleteLog(logId: string): Promise<{ ok: boolean; error?: s
 
   if (result.length === 0) return { ok: false, error: "Log not found" };
   revalidatePath("/", "layout");
+  await triggerOnLogWrite(user.id);
   return { ok: true };
 }
 
@@ -341,5 +345,6 @@ export async function updateLogFull(input: unknown): Promise<{ ok: boolean; erro
 
   if (result.length === 0) return { ok: false, error: "Log not found" };
   revalidatePath("/", "layout");
+  await triggerOnLogWrite(user.id);
   return { ok: true };
 }

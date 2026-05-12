@@ -11,6 +11,7 @@ import {
   incrementUserDailyReviews,
 } from "@/lib/ai/rate-limit";
 import { RateLimitExceededError, AIProvidersExhaustedError } from "@/lib/ai/errors";
+import { triggerOnLogWrite } from "@/lib/taste/triggers";
 import { revalidatePath } from "next/cache";
 import {
   createSession,
@@ -515,6 +516,7 @@ export async function publishReview(input: unknown): Promise<PublishResult> {
   revalidatePath(`/u/${profile.username}/reviews/${game.slug}`);
   revalidatePath(`/games/${game.slug}`);
 
+  await triggerOnLogWrite(user.id);
   return { ok: true, username: profile.username, gameSlug: game.slug };
 }
 
