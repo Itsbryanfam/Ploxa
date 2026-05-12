@@ -313,24 +313,23 @@ Async enrichment hook: `enrichPostersForImport()` server action runs once
 when the import-summary page mounts, so RAWG-on-miss insertions from a
 fresh import get art shortly after — no user-facing wait.
 
-**Backfill results (2026-05-11)**
+**Backfill results (2026-05-11, both passes)**
 
-Ran `scripts/backfill-posters.ts` against the 5,053-game catalog with
-concurrency=8, no SGDB key configured:
+Ran `scripts/backfill-posters.ts` against the 5,053-game catalog in two
+passes — first Steam-only, then SGDB enabled for the long tail.
 
-| Metric | Value |
-|---|---|
-| Processed | 5,053 |
-| Steam-resolved | **2,877 (57.0%)** |
-| SGDB-resolved | 0 (no key) |
-| Long-tail null | 2,176 (43.0%) |
-| Errors | 0 |
-| Wall time | 761s (~12.7 min) |
+| Source | Catalog rows | % | Wall time |
+|---|---|---|---|
+| Steam CDN (pass 1, concurrency=8) | 2,878 | 57.0% | 761s |
+| SteamGridDB (pass 2, concurrency=4) | 1,885 | 37.3% | 574s |
+| **Combined** | **4,763** | **94.3%** | 1,335s total |
+| Long-tail null | 290 | 5.7% | — |
+| Errors across both passes | 0 | — | — |
 
-Hit rate on the test user's actual imported library: **144/227 games
-(63.4%)** now have portrait box art. The remaining 36% are mostly
-obscure indie/older titles that don't ship `library_600x900` art on
-Steam CDN; SGDB would cover most of those.
+Hit rate on the test user's actual imported library: **212/227 games
+(93.4%)** now have portrait box art (up from 144/227 = 63.4% after the
+Steam-only pass). The remaining 15 are obscure/regional/indie titles
+SGDB doesn't carry; they fall back to RAWG landscape via `posterUrl ?? coverUrl`.
 
 **Drive-by bug found**
 
@@ -363,9 +362,9 @@ that already use `inArray`.
 
 **Open follow-up** (optional, doesn't block phase-3-complete tag)
 
-- Add `SGDB_API_KEY` to `.env` and re-run `backfill-posters.ts` (or
-  pass `BACKFILL_LIMIT=N` for incremental). The script is idempotent —
-  only fills nulls.
+- ~~Add `SGDB_API_KEY` to `.env` and re-run `backfill-posters.ts`~~ —
+  ✅ done same day; 1,885 additional posters resolved, catalog now at
+  94.3% portrait coverage.
 - The resolver caches no responses; if Storefront search becomes a
   cost concern at scale, wrap `steamSearch` with Redis TTL.
 
