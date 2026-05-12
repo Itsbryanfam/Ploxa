@@ -59,7 +59,7 @@
     {
       "id": 9,
       "subject": "Task 9: getRecs metadata-only + /play-next 3-step flow",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** /play-next page exists with 3-step filter flow (time → mood → platform → 5 results) powered by metadata-only getRecs with templated reasoning. AI rerank deliberately deferred to T11.\n\n**Files:** lib/recs/server-actions.ts (initial getRecs), app/(app)/play-next/page.tsx, app/(app)/play-next/_client.tsx, components/recs/filter-chips.tsx, components/recs/mascot-prompt.tsx, components/recs/rec-card.tsx (stub)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + walk /play-next end-to-end\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"app/(app)/play-next/page.tsx\",\"app/(app)/play-next/_client.tsx\",\"components/recs/filter-chips.tsx\",\"components/recs/mascot-prompt.tsx\",\"components/recs/rec-card.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"getRecs returns 5 recs with templated reasoning + algorithm='similarity'\",\"reasoning references both time-budget + matched genres\",\"URL state via search params; deep-linkable\",\"empty-tier returns no-signal banner directive\",\"3-step flow renders sequentially with editable filter pills\"]}\n```"
     },
