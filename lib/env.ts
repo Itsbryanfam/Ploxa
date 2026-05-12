@@ -29,6 +29,10 @@ const serverSchema = z.object({
   STEAM_API_KEY: optionalString,
   SUPABASE_FUNCTIONS_URL: optionalUrl,
   IMPORT_ENCRYPTION_KEY: optionalString,
+  // Optional. When set, lib/games/poster-source.ts uses SteamGridDB as the
+  // long-tail fallback after Steam CDN. Free key:
+  // https://www.steamgriddb.com/profile/preferences/api
+  SGDB_API_KEY: optionalString,
 });
 
 const clientSchema = z.object({
@@ -60,6 +64,7 @@ const serverEnv =
         STEAM_API_KEY: process.env.STEAM_API_KEY,
         SUPABASE_FUNCTIONS_URL: process.env.SUPABASE_FUNCTIONS_URL,
         IMPORT_ENCRYPTION_KEY: process.env.IMPORT_ENCRYPTION_KEY,
+        SGDB_API_KEY: process.env.SGDB_API_KEY,
       })
     : ({} as z.infer<typeof serverSchema>);
 
