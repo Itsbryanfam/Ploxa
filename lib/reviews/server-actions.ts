@@ -615,6 +615,10 @@ export async function deleteReview(input: unknown): Promise<UpdateResult> {
     if (game) revalidatePath(`/u/${profile.username}/reviews/${game.slug}`);
   }
   if (game) revalidatePath(`/games/${game.slug}`);
+  // Deleting a *published* review removes the hasPublishedReview ×1.15
+  // weight bonus → vector signal shifts. Draft deletes are a cheap
+  // no-op here (DELETE-recs hits the partial index for an empty bucket).
+  await triggerOnLogWrite(user.id);
   return { ok: true };
 }
 

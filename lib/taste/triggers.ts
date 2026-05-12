@@ -8,17 +8,38 @@ import { logs, recommendations } from "@/lib/db/schema";
 const MILESTONES = [10, 25, 50, 100, 250] as const;
 
 /**
- * Called from log/review server actions after a successful write.
+ * Called from server actions that change a user's taste signal:
+ * - lib/logs/server-actions.ts: createLog, updateLogStatus, updateLogFull,
+ *   deleteLog (every log mutation shifts vector aggregation)
+ * - lib/reviews/server-actions.ts: publishReview, deleteReview
+ *   (publishing flips the hasPublishedReview ×1.15 weight bonus on;
+ *   deleting a published review flips it back off. Draft deletes are
+ *   harmless no-ops here — the DELETE-recs query is sub-millisecond
+ *   when the cache is empty)
  *
+ * Behavior:
  * - Always: invalidates the rec cache (deletes non-dismissed recs).
- *   Vector signal has changed → cached AI recs are stale.
+ *   Vector signal has changed → cached AI recs are stale. This DELETE
+ *   is awaited (blocks the response) so the user's next render is
+ *   consistent. Only the milestone fetch is deferred via after().
  * - Sometimes: fires refresh-fingerprint Edge Function if the user's
  *   total log count is now exactly one of MILESTONES.
  *
  * Errors are never thrown — the caller's transaction must not be
  * affected by trigger failures. We log and continue.
+ *
+ * The name `triggerOnLogWrite` is kept for cross-doc consistency with
+ * the plan, but conceptually it's "trigger on taste-signal change".
  */
 export async function triggerOnLogWrite(userId: string): Promise<void> {
+  // Defense-in-depth: every caller derives userId from getCachedUser(),
+  // but a stray empty string would silently no-op the DELETE and miss
+  // milestone fires. Fail loud here so the regression is greppable.
+  if (!userId) {
+    console.error("triggerOnLogWrite called with empty userId — caller bug");
+    return;
+  }
+
   try {
     // 1. Invalidate rec cache (always, regardless of milestone).
     await db
