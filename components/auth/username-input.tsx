@@ -48,9 +48,24 @@ export function UsernameInput({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestSeq = useRef(0);
 
+  // Pin onChange in a ref so the notification effect only fires when the
+  // value or status actually changes — not every time the parent
+  // re-renders with a fresh inline closure. Without this, an inline
+  // `onChange={(v, ok) => setX({ v, ok })}` in the parent loops forever:
+  //   child notifies parent → parent setState → parent rerenders with a
+  //   new onChange identity → child's effect sees the dep change → fires
+  //   again → "Maximum update depth exceeded."
+  // The update-ref effect has no deps so it runs after every render,
+  // declared first so it commits before the notification effect — the
+  // ref always holds the latest closure by the time we call it.
+  const onChangeRef = useRef(onChange);
   useEffect(() => {
-    onChange(value, status.kind === "available");
-  }, [value, status, onChange]);
+    onChangeRef.current = onChange;
+  });
+
+  useEffect(() => {
+    onChangeRef.current(value, status.kind === "available");
+  }, [value, status]);
 
   // Cancel any pending debounce on unmount so the stale callback doesn't try
   // to setState into a torn-down component (the seq guard already prevents
