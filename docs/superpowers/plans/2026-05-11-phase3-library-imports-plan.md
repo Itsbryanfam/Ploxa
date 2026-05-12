@@ -2345,10 +2345,15 @@ import postgres from "npm:postgres@3.4.9";
 import { runImport, type ImportRow, type ConnectionRow } from "../_shared/import-engine.ts";
 
 Deno.serve(async (req) => {
-  // Auth: service-role key only
-  const auth = req.headers.get("Authorization");
+  // Auth: service-role key via `apikey` header (NOT `Authorization: Bearer`).
+  // Supabase's newer `sb_secret_*` keys are not JWTs — Edge Functions must be
+  // deployed with `--no-verify-jwt` and validate via string-equality on the
+  // `apikey` header. See:
+  //   https://supabase.com/docs/guides/api/api-keys
+  //   https://supabase.com/docs/guides/functions/auth
+  const apikey = req.headers.get("apikey");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!auth || !serviceRoleKey || auth !== `Bearer ${serviceRoleKey}`) {
+  if (!apikey || !serviceRoleKey || apikey !== serviceRoleKey) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -2468,9 +2473,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import postgres from "npm:postgres@3.4.9";
 
 Deno.serve(async (req) => {
-  const auth = req.headers.get("Authorization");
+  // Auth via `apikey` header (sb_secret_* keys aren't JWTs; deploy with --no-verify-jwt).
+  const apikey = req.headers.get("apikey");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!auth || !serviceRoleKey || auth !== `Bearer ${serviceRoleKey}`) {
+  if (!apikey || !serviceRoleKey || apikey !== serviceRoleKey) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -2496,11 +2502,11 @@ Deno.serve(async (req) => {
           VALUES (${c.user_id}, ${c.platform}::platform_kind, 'queued', false)
           RETURNING id
         `;
-        // Fire-and-forget
+        // Fire-and-forget — apikey header per sb_secret_* convention
         fetch(`${functionsUrl}/import-platform`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${serviceRoleKey}`,
+            apikey: serviceRoleKey,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ importId: row.id }),

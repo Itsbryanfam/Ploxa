@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
   fetch(`${requireEnv("SUPABASE_FUNCTIONS_URL")}/import-platform`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${requireEnv("SUPABASE_SERVICE_ROLE_KEY")}`,
+      apikey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ importId: importRow.id }),

@@ -24,7 +24,13 @@ CREATE EXTENSION IF NOT EXISTS pg_net;
 --    Note: ALTER DATABASE SET app.* is blocked on managed Supabase (not superuser).
 --    Supabase Vault (vault.decrypted_secrets) is the supported alternative.
 
--- 3. Schedule the daily-sync edge function call (reads secrets from Vault at runtime)
+-- 3. Schedule the daily-sync edge function call (reads secrets from Vault at runtime).
+--    NOTE: We use the `apikey` header (not `Authorization: Bearer`) because Supabase's
+--    newer `sb_secret_*` API keys are NOT JWTs — Edge Functions must be deployed with
+--    `--no-verify-jwt` and validate the inbound `apikey` header via string-equality
+--    against the SUPABASE_SERVICE_ROLE_KEY env. See:
+--    https://supabase.com/docs/guides/api/api-keys
+--    https://supabase.com/docs/guides/functions/auth
 SELECT cron.schedule(
   'daily-import-sync',
   '0 4 * * *',                       -- 04:00 UTC daily
@@ -32,8 +38,8 @@ SELECT cron.schedule(
     SELECT net.http_post(
       url     := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'supabase_functions_url' LIMIT 1) || '/daily-sync',
       headers := jsonb_build_object(
-        'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'supabase_service_role_key' LIMIT 1),
-        'Content-Type',  'application/json'
+        'apikey',       (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'supabase_service_role_key' LIMIT 1),
+        'Content-Type', 'application/json'
       ),
       body    := '{}'::jsonb
     ) AS request_id;
