@@ -81,6 +81,13 @@ export async function buildDigest(userId: string): Promise<DigestPayload | null>
       ? profile.lastDigestSentAt
       : cadenceStart;
 
+  // yourWeek query: filters on logs.lastEventAt > since at the SQL level,
+  // then narrows in-memory to completed/playing statuses. The two-layer
+  // defense matters because T1's universal backfill set lastEventAt for
+  // ALL rows including backlog+wishlist (T13 owns the null-out); the
+  // in-memory status filter strips those even if they leak through the
+  // SQL window.
+
   // Parallel: notifications + viewer's own log activity. Independent reads.
   const [notes, yourLogRows] = await Promise.all([
     db
@@ -90,6 +97,7 @@ export async function buildDigest(userId: string): Promise<DigestPayload | null>
         actorId: notifications.actorId,
         createdAt: notifications.createdAt,
         actorUsername: profiles.username,
+        actorDisplayName: profiles.displayName,
       })
       .from(notifications)
       .leftJoin(profiles, eq(profiles.userId, notifications.actorId))
@@ -121,7 +129,7 @@ export async function buildDigest(userId: string): Promise<DigestPayload | null>
   for (const n of notes) {
     if (!n.actorUsername || !n.targetId) continue; // skip orphaned actor or null targetId
     if (n.type === "new_follower") {
-      newFollowers.push({ username: n.actorUsername, displayName: null });
+      newFollowers.push({ username: n.actorUsername, displayName: n.actorDisplayName });
     } else if (n.type === "review_liked") {
       reactions.push({
         actor: n.actorUsername,
@@ -137,6 +145,8 @@ export async function buildDigest(userId: string): Promise<DigestPayload | null>
         targetId: n.targetId,
       });
     } else if (n.type === "review_commented") {
+      // excerpt left empty in T20; T21 (digest template) can either render
+      // without it or join comments.body here if richer copy is needed.
       commentsList.push({
         actor: n.actorUsername,
         kind: "review_commented",
