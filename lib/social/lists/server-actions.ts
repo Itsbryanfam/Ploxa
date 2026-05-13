@@ -92,7 +92,10 @@ export async function updateList(
     set.slug = await uniqueSlugForUser(user.id, baseSlug);
   }
 
-  await db.update(lists).set(set).where(eq(lists.id, listId));
+  await db
+    .update(lists)
+    .set(set)
+    .where(and(eq(lists.id, listId), eq(lists.userId, user.id)));
 
   return {
     ok: true,
@@ -105,6 +108,8 @@ export async function updateList(
 // ─────────────────────────────────────────────────────────────
 
 export async function publishList(listId: string): Promise<{ ok: boolean }> {
+  if (!z.string().uuid().safeParse(listId).success) return { ok: false };
+
   const user = await getCachedUser();
   if (!user) return { ok: false };
 
@@ -141,6 +146,8 @@ export async function publishList(listId: string): Promise<{ ok: boolean }> {
 // ─────────────────────────────────────────────────────────────
 
 export async function deleteList(listId: string): Promise<{ ok: boolean }> {
+  if (!z.string().uuid().safeParse(listId).success) return { ok: false };
+
   const user = await getCachedUser();
   if (!user) return { ok: false };
   // FK cascade from migration 0008 drops list_items.
@@ -231,23 +238,25 @@ export async function removeItemFromList(
   });
   if (!existing) return { ok: true }; // already gone — idempotent
 
-  await db.delete(listItems).where(
-    and(
-      eq(listItems.listId, parsed.data.listId),
-      eq(listItems.gameId, parsed.data.gameId),
-    ),
-  );
-
-  // Renumber: decrement position by 1 for all items above the removed slot.
-  await db
-    .update(listItems)
-    .set({ position: sql`${listItems.position} - 1` })
-    .where(
+  await db.transaction(async (tx) => {
+    await tx.delete(listItems).where(
       and(
         eq(listItems.listId, parsed.data.listId),
-        gt(listItems.position, existing.position),
+        eq(listItems.gameId, parsed.data.gameId),
       ),
     );
+
+    // Renumber: decrement position by 1 for all items above the removed slot.
+    await tx
+      .update(listItems)
+      .set({ position: sql`${listItems.position} - 1` })
+      .where(
+        and(
+          eq(listItems.listId, parsed.data.listId),
+          gt(listItems.position, existing.position),
+        ),
+      );
+  });
 
   return { ok: true };
 }
