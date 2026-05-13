@@ -97,6 +97,21 @@ export async function updateList(
     .set(set)
     .where(and(eq(lists.id, listId), eq(lists.userId, user.id)));
 
+  // Cache invalidation: only published lists are SSR-served from the
+  // canonical share URL. Unpublished lists are owner-only, no cache
+  // to bust.
+  if (existing.publishedAt !== null) {
+    const profile = await db.query.profiles.findFirst({
+      where: eq(profiles.userId, user.id),
+      columns: { username: true },
+    });
+    if (profile) {
+      const finalSlug = typeof set.slug === "string" ? set.slug : existing.slug;
+      revalidatePath(`/u/${profile.username}/lists`);
+      revalidatePath(`/u/${profile.username}/lists/${finalSlug}`);
+    }
+  }
+
   return {
     ok: true,
     slug: typeof set.slug === "string" ? set.slug : existing.slug,

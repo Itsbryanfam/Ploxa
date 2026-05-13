@@ -40,6 +40,7 @@ export function AddToListModal({
   const [newTitle, setNewTitle] = useState("");
   const [lists, setLists] = useState<UserList[]>(userLists);
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleAddToList(listId: string) {
@@ -55,25 +56,35 @@ export function AddToListModal({
   function handleCreateAndAdd() {
     const title = newTitle.trim();
     if (!title) return;
+    setError(null);
     startTransition(async () => {
       const createResult = await createList({ title, isPublic: true });
-      if (!createResult.ok) return;
+      if (!createResult.ok) {
+        setError("Couldn't create the list. Try again.");
+        return;
+      }
+
+      // Add to local state immediately — the list exists in the DB.
+      const newList: UserList = {
+        id: createResult.listId,
+        title,
+        slug: createResult.slug,
+        publishedAt: null,
+      };
+      setLists((prev) => [newList, ...prev]);
+      setNewTitle("");
+      setShowCreate(false);
+
       const addResult = await addItemToList({
         listId: createResult.listId,
         gameId,
       });
-      if (addResult.ok) {
-        const newList: UserList = {
-          id: createResult.listId,
-          title,
-          slug: createResult.slug,
-          publishedAt: null,
-        };
-        setLists((prev) => [newList, ...prev]);
-        setAdded((prev) => new Set(prev).add(createResult.listId));
-        setNewTitle("");
-        setShowCreate(false);
+      if (!addResult.ok) {
+        setError("List created, but couldn't add the game. Open the list to add it manually.");
+        return;
       }
+
+      setAdded((prev) => new Set(prev).add(createResult.listId));
     });
   }
 
@@ -133,26 +144,31 @@ export function AddToListModal({
 
         {/* Create new list */}
         {showCreate ? (
-          <div className="flex gap-2 pt-2 border-t border-[var(--border)]">
-            <input
-              type="text"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateAndAdd();
-              }}
-              placeholder="New list name"
-              autoFocus
-              className="flex-1 text-sm bg-transparent border-b border-[var(--border)] py-1 focus:outline-none focus:border-[var(--accent)]"
-            />
-            <button
-              type="button"
-              disabled={isPending || !newTitle.trim()}
-              onClick={handleCreateAndAdd}
-              className="px-3 py-1 text-xs rounded bg-[var(--accent)] text-white disabled:opacity-50"
-            >
-              Create
-            </button>
+          <div className="pt-2 border-t border-[var(--border)]">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateAndAdd();
+                }}
+                placeholder="New list name"
+                autoFocus
+                className="flex-1 text-sm bg-transparent border-b border-[var(--border)] py-1 focus:outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                disabled={isPending || !newTitle.trim()}
+                onClick={handleCreateAndAdd}
+                className="px-3 py-1 text-xs rounded bg-[var(--accent)] text-white disabled:opacity-50"
+              >
+                Create
+              </button>
+            </div>
+            {error && (
+              <p className="text-sm text-red-500 mt-2">{error}</p>
+            )}
           </div>
         ) : (
           <button

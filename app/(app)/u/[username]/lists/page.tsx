@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { and, desc, eq, isNotNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
@@ -74,11 +74,7 @@ export default async function UserListsPage({ params }: Props) {
         count: sql<number>`count(*)::int`,
       })
       .from(schema.listItems)
-      .where(
-        listIds.length === 1
-          ? eq(schema.listItems.listId, listIds[0])
-          : or(...listIds.map((id) => eq(schema.listItems.listId, id))),
-      )
+      .where(inArray(schema.listItems.listId, listIds))
       .groupBy(schema.listItems.listId);
     countRows = countResult;
 
@@ -92,9 +88,7 @@ export default async function UserListsPage({ params }: Props) {
       .innerJoin(schema.games, eq(schema.games.id, schema.listItems.gameId))
       .where(
         and(
-          listIds.length === 1
-            ? eq(schema.listItems.listId, listIds[0])
-            : or(...listIds.map((id) => eq(schema.listItems.listId, id))),
+          inArray(schema.listItems.listId, listIds),
           eq(schema.listItems.position, 1),
         ),
       );

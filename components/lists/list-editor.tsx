@@ -2,10 +2,19 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { GripVertical, X } from "lucide-react";
-import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -99,6 +108,13 @@ export function ListEditor(props: {
   const [description, setDescription] = useState(props.list.description ?? "");
   const [, startTransition] = useTransition();
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
   function onDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -107,10 +123,14 @@ export function ListEditor(props: {
       const newIndex = prev.findIndex((i) => i.gameId === over.id);
       const next = arrayMove(prev, oldIndex, newIndex);
       startTransition(async () => {
-        await reorderListItems({
+        const result = await reorderListItems({
           listId: props.list.id,
           orderedGameIds: next.map((i) => i.gameId),
         });
+        if (!result.ok) {
+          // Server rejected — re-sync from authoritative state.
+          router.refresh();
+        }
       });
       return next;
     });
@@ -119,7 +139,11 @@ export function ListEditor(props: {
   function onRemove(gameId: number) {
     setItems((prev) => prev.filter((i) => i.gameId !== gameId));
     startTransition(async () => {
-      await removeItemFromList({ listId: props.list.id, gameId });
+      const result = await removeItemFromList({ listId: props.list.id, gameId });
+      if (!result.ok) {
+        // Server rejected — re-sync from authoritative state.
+        router.refresh();
+      }
     });
   }
 
@@ -160,7 +184,7 @@ export function ListEditor(props: {
         </p>
       )}
 
-      <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
           items={items.map((i) => i.gameId)}
           strategy={verticalListSortingStrategy}
