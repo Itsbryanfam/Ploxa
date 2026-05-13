@@ -289,7 +289,10 @@
     {
       "id": 25,
       "subject": "Task 25: Discovery query helpers — popular games, trending reviews, similar users",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-13",
+      "completedSha": "81d5add",
+      "completionNotes": "Ships at 17936a0 (impl) + 81d5add (code-quality follow-ups). Controller pre-corrected 1 plan bug: db.execute() returns rows directly, NOT {rows:...} — prescribed `as unknown as Array<...>` cast pattern matching lib/social/feed/queries.ts:125 + T22 precedent. All 4 db.execute callsites across 3 files use the cast cleanly. Implementer flagged one acceptable deviation: removed the eslint-disable-next-line no-await-in-loop comment because the rule isn't enabled (the disable itself would warn); replaced with plain inline comment. Spec compliance review clean (all 12 numbered requirements PASS). Code-quality review found 0 Critical + 3 Important + 4 Minor — all 3 Important fixes applied: (a) getSimilarUsers similarity clamped to Math.max(0, 1 - drift()) — drift can return up to 2 when cosine similarity hits -1 on any vector axis, so raw 1-drift can go negative; floor at 0 for UI sanity, JSDoc range claim corrected; (b) getPopularGames JSDoc corrected to accurately describe how unstable_cache appends runtime args to the key (was misleadingly claiming keyParts carries `limit`); trending-reviews had no equivalent claim so no change there; (c) TODO comment added inside similar-users SQL noting that ORDER BY vectors_generated_at DESC biases toward recently-active users at the 500-row cap — revisit at ~10k user mark. typecheck+lint+build clean throughout.",
       "blockedBy": [
         2,
         4
