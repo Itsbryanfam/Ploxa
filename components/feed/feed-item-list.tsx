@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 import { relativeTime } from "@/lib/utils";
 import type { FeedRow } from "@/lib/social/feed/queries";
 
@@ -14,7 +12,15 @@ export function FeedItemList(props: {
   return (
     <article className="flex gap-3 p-4 rounded-lg border border-[var(--border)]">
       {props.actor.avatarUrl ? (
-        <Image src={props.actor.avatarUrl} alt="" width={40} height={40} className="rounded-full shrink-0" unoptimized />
+        // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URL not in remotePatterns; small fixed size.
+        <img
+          src={props.actor.avatarUrl}
+          alt=""
+          width={40}
+          height={40}
+          className="rounded-full shrink-0 object-cover"
+          style={{ width: 40, height: 40 }}
+        />
       ) : (
         <div className="w-10 h-10 rounded-full bg-[var(--bg-card)] shrink-0" />
       )}
