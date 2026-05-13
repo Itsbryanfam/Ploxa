@@ -51,9 +51,6 @@ vi.mock("@/lib/db", () => {
     from: vi.fn(),
     innerJoin: vi.fn(),
     where: vi.fn(),
-    // Also expose limit at the top level for the one-off mockResolvedValue
-    // calls in individual tests that do: db.limit.mockResolvedValue([...]).
-    limit: vi.fn().mockResolvedValue([]),
   };
   // Wire up chain: each returns the next step.
   chainable.select.mockReturnValue(chainable);
@@ -131,9 +128,6 @@ vi.mock("@/lib/logs/library-item", () => ({
 }));
 
 vi.mock("@/lib/logs/select", () => ({ LOG_GAME_SELECT: {} }));
-vi.mock("@/lib/taste/tier", () => ({
-  tierForUser: vi.fn((n: number) => (n >= 10 ? "sharpening" : "sparse")),
-}));
 
 const { getProfileSummary } = await import(
   "@/lib/social/_shared/profile-summary"
@@ -203,5 +197,22 @@ describe("getProfileSummary — early returns", () => {
     const result = await getProfileSummary("private-owner", "owner-id");
     expect(result).not.toBeNull();
     expect(result?.isOwner).toBe(true);
+  });
+
+  it("reflects isFollowing=true when viewer follows the target", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { db } = (await import("@/lib/db")) as any;
+    db.query.profiles.findFirst.mockResolvedValueOnce({
+      userId: "target-id",
+      username: "alice",
+      isPublic: true,
+    });
+    db.query.follows.findFirst.mockResolvedValueOnce({
+      followerId: "viewer-id",
+      followedId: "target-id",
+    });
+    const result = await getProfileSummary("alice", "viewer-id");
+    expect(result).not.toBeNull();
+    expect(result?.isFollowing).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
 import { LOG_GAME_SELECT } from "@/lib/logs/select";
@@ -86,7 +86,11 @@ export async function getProfileSummary(
     rawFollowingCount,
     rawIsFollowing,
   ] = await Promise.all([
-    // Library — own profile sees everything, public sees non-private.
+    // Library — own profile sees everything, public sees non-private. NOTE: no
+    // .limit() here on purpose: computeUserStatsFromLibrary needs the full set
+    // to compute totals/averages. libraryTruncated slices to 12 below, but the
+    // full array stays in scope only inside this function. If stats ever moves
+    // to SQL aggregates, this fetch should gain a LIMIT.
     db
       .select(LOG_GAME_SELECT)
       .from(logs)
@@ -153,13 +157,13 @@ export async function getProfileSummary(
 
     // Follower count.
     db
-      .select({ value: count() })
+      .select({ value: sql<number>`count(*)::int` })
       .from(follows)
       .where(eq(follows.followedId, profile.userId)),
 
     // Following count.
     db
-      .select({ value: count() })
+      .select({ value: sql<number>`count(*)::int` })
       .from(follows)
       .where(eq(follows.followerId, profile.userId)),
 
@@ -193,7 +197,11 @@ export async function getProfileSummary(
     libraryTruncated: allLibrary.slice(0, 12),
     isOwner,
     isFollowing: Boolean(rawIsFollowing),
-    isBlocked: false, // would have early-returned null if blocked + non-owner
+    // isBlocked is always false on a returned result: blocked non-owners hit
+    // the early null return above; owners are never blocked from themselves;
+    // logged-out viewers skip the block check entirely (the visibility.ts
+    // logged-out exception). Don't treat this as a "no edge exists" signal.
+    isBlocked: false,
     followerCount: rawFollowerCount[0]?.value ?? 0,
     followingCount: rawFollowingCount[0]?.value ?? 0,
   };
