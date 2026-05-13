@@ -54,4 +54,17 @@ describe("parseMentions", () => {
     const exact = "a".repeat(20);
     expect(parseMentions(`@${exact}`)).toEqual([exact]);
   });
+
+  it("does not match email-local-part domains", () => {
+    expect(parseMentions("reach me at user@gmail.com")).toEqual([]);
+    expect(parseMentions("@alice is at alice@example.net")).toEqual(["alice"]);
+    expect(parseMentions("fake@bob real @charlie")).toEqual(["charlie"]);
+  });
+
+  it("does not match mention immediately after backslash that isn't an escape", () => {
+    // Path-like edge case: \\@user should still match (it's an escape).
+    // But @user inside a URL fragment like //path/@user — the leading `/`
+    // is not a word char or @, so it SHOULD match. Pin that:
+    expect(parseMentions("see /path/@alice for more")).toEqual(["alice"]);
+  });
 });

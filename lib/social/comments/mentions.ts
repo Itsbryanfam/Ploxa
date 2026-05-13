@@ -10,7 +10,7 @@ import { db, schema } from "@/lib/db";
  *
  * Returns deduplicated usernames in first-seen order.
  */
-const MENTION_RE = /(?<!\\)@([a-z0-9_]{3,20})(?![a-z0-9_])/gi;
+const MENTION_RE = /(?<![\w@\\])@([a-z0-9_]{3,20})(?![a-z0-9_])/gi;
 const CODE_FENCE_RE = /```[\s\S]*?```/g;
 
 export function parseMentions(body: string): string[] {

@@ -148,9 +148,14 @@ export async function editComment(input: unknown): Promise<CommentResult> {
   return { ok: true, commentId, isFlagged: flagCheck.isFlagged };
 }
 
-export async function softDeleteComment(
-  input: { commentId: string },
-): Promise<{ ok: boolean }> {
+const softDeleteSchema = z.object({
+  commentId: z.string().uuid(),
+});
+
+export async function softDeleteComment(input: unknown): Promise<{ ok: boolean }> {
+  const parsed = softDeleteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false };
+
   const user = await getCachedUser();
   if (!user) return { ok: false };
 
@@ -158,7 +163,7 @@ export async function softDeleteComment(
   await db
     .update(comments)
     .set({ body: "[deleted]", editedAt: new Date() })
-    .where(and(eq(comments.id, input.commentId), eq(comments.userId, user.id)));
+    .where(and(eq(comments.id, parsed.data.commentId), eq(comments.userId, user.id)));
 
   return { ok: true };
 }
