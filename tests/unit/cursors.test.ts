@@ -45,6 +45,13 @@ describe("encodeCursor / decodeCursor round-trip", () => {
     ).toString("base64url");
     expect(decodeCursor(bad)).toBeNull();
   });
+
+  it("returns null for invalid date in at field", () => {
+    const bad = Buffer.from(
+      JSON.stringify({ at: "not-a-date", k: "log", a: "x" }),
+    ).toString("base64url");
+    expect(decodeCursor(bad)).toBeNull();
+  });
 });
 
 describe("compareFeedRows — canonical sort", () => {

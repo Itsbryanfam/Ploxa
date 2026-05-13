@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Feed cursor: (eventAt, kind, actorId) triplet base64-encoded.
  *
@@ -32,8 +34,10 @@ export function decodeCursor(s: string | null | undefined): FeedCursor | null {
     const parsed = JSON.parse(raw) as { at: string; k: FeedCursor["kind"]; a: string };
     if (!parsed.at || !parsed.k || !parsed.a) return null;
     if (!(parsed.k in KIND_ORDER)) return null;
+    const eventAt = new Date(parsed.at);
+    if (Number.isNaN(eventAt.getTime())) return null;
     return {
-      eventAt: new Date(parsed.at),
+      eventAt,
       kind: parsed.k,
       actorId: parsed.a,
     };

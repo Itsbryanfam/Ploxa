@@ -47,7 +47,10 @@ export async function buildFeedQuery(args: {
     ? sql`AND (event_at, kind, actor_id) < (${cursor.eventAt.toISOString()}::timestamptz, ${cursor.kind}::text, ${cursor.actorId}::uuid)`
     : sql``;
 
-  // Postgres ARRAY[...] literal of followee UUIDs.
+  // sql.raw is intentional here: postgres-js doesn't bind a uuid[] array
+  // across multiple UNION branches cleanly, and Postgres rejects any
+  // non-UUID value at the ::uuid cast, making injection impossible.
+  // followeeIds come from Supabase Auth JWTs (format-enforced to UUID v4).
   const followeeArray = sql.raw(
     `ARRAY[${followeeIds.map((id) => `'${id}'::uuid`).join(",")}]`,
   );
