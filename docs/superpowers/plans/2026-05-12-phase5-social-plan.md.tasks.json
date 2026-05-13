@@ -265,7 +265,10 @@
     {
       "id": 23,
       "subject": "Task 23: Lists CRUD + slug + publish + reorder server actions",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-13",
+      "completedSha": "5e22f3e",
+      "completionNotes": "Ships at 159febd (impl) + 5e22f3e (code-quality follow-ups). Controller pre-corrected 1 plan bug: revalidatePath used `/u/{user.id}/lists` (UUID) instead of `/u/{username}/lists` (route shape); fixed by fetching profile.username first and revalidating BOTH the index AND the canonical /lists/{slug} detail. Implementer added `vi.mock('@/lib/db', …)` to slug.test.ts to bypass env load chain — matches mentions.test.ts/visibility.test.ts precedent. Spec compliance review clean (all 18 numbered requirements + 12 acceptance criteria PASS). Code-quality review found 0 Critical + 3 Important + 5 Minor: actionable Important items applied: (a) UUID validation on publishList + deleteList (inline z.string().uuid().safeParse — matches the other 5 actions without changing signatures); (b) removeItemFromList DELETE + renumber wrapped in db.transaction so partial failure can't leave non-contiguous positions; (c) updateList final UPDATE adds eq(userId) to WHERE for defense-in-depth against future refactors of the findFirst pre-check. Minor items deferred (createList unique-violation try/catch on race documented + accepted; position-race in addItemToList cosmetic only; slug Unicode-stripping intentional + tested). 8/8 slug tests pass (218 total); typecheck/lint/build clean throughout.",
       "blockedBy": [
         2
       ],
