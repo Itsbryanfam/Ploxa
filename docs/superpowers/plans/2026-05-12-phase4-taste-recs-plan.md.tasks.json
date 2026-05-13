@@ -129,7 +129,7 @@
     {
       "id": 19,
       "subject": "Task 19: Cockpit 'Your taste' card + profile dropdown link + milestone toast",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6, 10],
       "description": "**Goal:** Discovery surfaces — /home cockpit gets 'Your taste' card, profile dropdown gets 'View your taste' link, first-fingerprint milestone fires a celebration toast once per user.\n\n**Files:** app/(app)/_cockpit/cockpit-dashboard.tsx (modify), components/layout/profile-dropdown.tsx (modify), components/taste/milestone-toast.tsx, app/(app)/u/[username]/taste/page.tsx (modify)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + cross 10 logs → toast fires once\n\n```json:metadata\n{\"files\":[\"app/(app)/_cockpit/cockpit-dashboard.tsx\",\"components/layout/profile-dropdown.tsx\",\"components/taste/milestone-toast.tsx\",\"app/(app)/u/[username]/taste/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"'Your taste' cockpit card: tier badge + narrative excerpt + 3 mini ScoreBars + View link\",\"empty-tier cockpit: 'Log your first game' CTA\",\"profile dropdown: 'View your taste' link\",\"MilestoneToast: fires once when narrative < 5min old; localStorage flag persists\",\"celebrating mascot pose inline (no emoji)\"]}\n```"
     },
