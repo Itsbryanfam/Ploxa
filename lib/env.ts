@@ -35,6 +35,7 @@ const serverSchema = z.object({
   SGDB_API_KEY: optionalString,
   UNSUBSCRIBE_SECRET: optionalString,
   RESEND_DIGEST_FROM_ADDRESS: optionalString,
+  CRON_SECRET: optionalString,
 });
 
 const clientSchema = z.object({
@@ -69,6 +70,7 @@ const serverEnv =
         SGDB_API_KEY: process.env.SGDB_API_KEY,
         UNSUBSCRIBE_SECRET: process.env.UNSUBSCRIBE_SECRET,
         RESEND_DIGEST_FROM_ADDRESS: process.env.RESEND_DIGEST_FROM_ADDRESS,
+        CRON_SECRET: process.env.CRON_SECRET,
       })
     : ({} as z.infer<typeof serverSchema>);
 
