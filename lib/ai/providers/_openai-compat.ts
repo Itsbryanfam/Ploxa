@@ -18,7 +18,7 @@ interface OpenAICompatConfig {
  */
 export async function streamOpenAICompat(
   config: OpenAICompatConfig,
-  { prompt, systemPrompt, maxTokens = 800, temperature = 0.7 }: StreamArgs,
+  { prompt, systemPrompt, maxTokens = 800, temperature = 0.7, abortSignal }: StreamArgs,
 ): Promise<StreamResult> {
   const client = createOpenAICompatible({
     name: config.sdkName,
@@ -31,6 +31,7 @@ export async function streamOpenAICompat(
     prompt,
     maxOutputTokens: maxTokens,
     temperature,
+    abortSignal,
   });
   suppressUnhandledRejections(result);
   return {

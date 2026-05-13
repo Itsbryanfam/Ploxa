@@ -171,6 +171,8 @@ Deno.serve(async (req) => {
         // 600 tokens is enough for 5 picks at ~120 tokens each (JSON
         // overhead + one-sentence reason).
         maxTokens: 600,
+        // Telemetry parity with the Next-side router.
+        telemetry: { sql, userId },
       });
     } catch (err) {
       console.error(

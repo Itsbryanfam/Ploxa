@@ -5,10 +5,10 @@ import { cloudflare } from "./providers/cloudflare";
 import { deepseek } from "./providers/deepseek";
 import type { Provider } from "./providers/types";
 import {
-  checkProviderDaily,
-  checkProviderMinute,
-  incrementProviderDaily,
-  incrementProviderMinute,
+  releaseProviderDaily,
+  releaseProviderMinute,
+  reserveProviderDaily,
+  reserveProviderMinute,
 } from "./rate-limit";
 import { recordCall } from "./telemetry";
 import { AIProvidersExhaustedError } from "./errors";
@@ -17,6 +17,10 @@ import type { aiFeatureEnum } from "@/lib/db/schema";
 type AIFeature = (typeof aiFeatureEnum.enumValues)[number];
 
 const PROVIDERS: readonly Provider[] = [cerebras, groq, cloudflare, deepseek];
+
+// Hard timeout per provider attempt. Streaming features expect responses
+// to begin within seconds; provider stalls beyond this should fall through.
+const PROVIDER_TIMEOUT_MS = 30_000;
 
 export interface GenerateArgs {
   prompt: string;
@@ -48,11 +52,17 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
       attempts.push({ provider: provider.name, error: "not configured" });
       continue;
     }
-    if (!(await checkProviderDaily(provider.name))) {
+    // Atomic reserve: counter is incremented up-front, not after success.
+    // If the cap is hit by a concurrent burst, reservation fails and we
+    // move on. Daily is checked first so a daily-cap miss doesn't burn
+    // a minute slot. Failure path releases whichever reservations we
+    // claimed before bailing.
+    if (!(await reserveProviderDaily(provider.name))) {
       attempts.push({ provider: provider.name, error: "daily cap" });
       continue;
     }
-    if (!(await checkProviderMinute(provider.name))) {
+    if (!(await reserveProviderMinute(provider.name))) {
+      await releaseProviderDaily(provider.name);
       attempts.push({ provider: provider.name, error: "minute cap" });
       continue;
     }
@@ -64,6 +74,9 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
         systemPrompt: args.systemPrompt,
         maxTokens: args.maxTokens,
         temperature: args.temperature,
+        // Hard timeout. AbortSignal.timeout() is supported in Node 18+ and
+        // Vercel AI SDK forwards abortSignal to the underlying fetch.
+        abortSignal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       });
 
       // Peek the first chunk eagerly. The Vercel AI SDK's streamText()
@@ -84,11 +97,10 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
       const committedStream = combineStream(first.value, iter);
 
       // Wrap the stream so we can write telemetry on completion without
-      // forcing the caller to await usage themselves.
+      // forcing the caller to await usage themselves. Reservations were
+      // claimed up-front, so no post-stream increment is needed here.
       const wrapped = wrapStream(committedStream, async () => {
         try {
-          await incrementProviderDaily(provider.name);
-          await incrementProviderMinute(provider.name);
           // Usage promise may reject if the provider errors mid-stream. We
           // still want a telemetry row for the call so the cost dashboard
           // sees it happened — fall back to zero tokens in that case.
@@ -116,6 +128,11 @@ export async function generate(args: GenerateArgs): Promise<GenerateResult> {
       return { textStream: wrapped, providerUsed: provider.name };
     } catch (err) {
       attempts.push({ provider: provider.name, error: err });
+      // Release reservations: a failed call shouldn't count against the
+      // cap (it didn't actually produce tokens). Release order doesn't
+      // matter — they're independent counters.
+      await releaseProviderDaily(provider.name).catch(() => undefined);
+      await releaseProviderMinute(provider.name).catch(() => undefined);
       // Fire-and-forget failure telemetry with explicit rejection logger
       // (recordCall itself is best-effort but `.catch()` here is resilient
       // to future changes that might let it reject).

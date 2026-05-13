@@ -13,7 +13,7 @@ export const groq: Provider = {
   name: "groq",
   model: MODEL,
   isConfigured: () => Boolean(process.env.GROQ_API_KEY),
-  async streamText({ prompt, systemPrompt, maxTokens = 800, temperature = 0.7 }) {
+  async streamText({ prompt, systemPrompt, maxTokens = 800, temperature = 0.7, abortSignal }) {
     const client = createGroq({ apiKey: process.env.GROQ_API_KEY! });
     const result = streamText({
       model: client(MODEL),
@@ -21,6 +21,7 @@ export const groq: Provider = {
       prompt,
       maxOutputTokens: maxTokens,
       temperature,
+      abortSignal,
     });
     suppressUnhandledRejections(result);
     return {

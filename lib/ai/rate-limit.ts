@@ -39,39 +39,52 @@ function ymdhm(date = new Date()): string {
 }
 
 /**
- * Check whether the provider has headroom for a daily call. Returns true if
- * the call should proceed, false to skip to the next provider. Does NOT
- * increment — caller does that on success via incrementProviderDaily.
+ * Atomically reserve one daily slot. Returns true on success, false if cap
+ * reached. Replaces the older check→later-increment pattern, which had a
+ * window where concurrent bursts could each see "headroom" and overshoot
+ * the cap. INCR-then-conditional-DECR is the standard Redis reservation
+ * pattern; same shape as incrementUserDailyReviews below.
  */
-export async function checkProviderDaily(provider: ProviderName): Promise<boolean> {
+export async function reserveProviderDaily(provider: ProviderName): Promise<boolean> {
   const cap = PROVIDER_DAILY_CAP[provider];
   if (cap === null) return true;
-  const key = `ai:tier:${provider}:${ymd()}`;
-  const count = (await redis.get<number>(key)) ?? 0;
-  return count < cap;
-}
-
-export async function incrementProviderDaily(provider: ProviderName): Promise<void> {
   const key = `ai:tier:${provider}:${ymd()}`;
   const newCount = await redis.incr(key);
   if (newCount === 1) {
     await redis.expire(key, FORTY_EIGHT_HOURS_SECONDS);
   }
+  if (newCount > cap) {
+    // Roll back the overflow so the counter reflects actual reservations.
+    await redis.decr(key);
+    return false;
+  }
+  return true;
 }
 
-export async function checkProviderMinute(provider: ProviderName): Promise<boolean> {
+/** Release a previously-reserved daily slot (call on provider failure). */
+export async function releaseProviderDaily(provider: ProviderName): Promise<void> {
+  if (PROVIDER_DAILY_CAP[provider] === null) return;
+  const key = `ai:tier:${provider}:${ymd()}`;
+  await redis.decr(key);
+}
+
+export async function reserveProviderMinute(provider: ProviderName): Promise<boolean> {
   const cap = PROVIDER_MINUTE_CAP[provider];
-  const key = `ai:tier:${provider}:rpm:${ymdhm()}`;
-  const count = (await redis.get<number>(key)) ?? 0;
-  return count < cap;
-}
-
-export async function incrementProviderMinute(provider: ProviderName): Promise<void> {
   const key = `ai:tier:${provider}:rpm:${ymdhm()}`;
   const newCount = await redis.incr(key);
   if (newCount === 1) {
     await redis.expire(key, TWO_MINUTES_SECONDS);
   }
+  if (newCount > cap) {
+    await redis.decr(key);
+    return false;
+  }
+  return true;
+}
+
+export async function releaseProviderMinute(provider: ProviderName): Promise<void> {
+  const key = `ai:tier:${provider}:rpm:${ymdhm()}`;
+  await redis.decr(key);
 }
 
 export async function getUserDailyReviewCount(userId: string): Promise<number> {

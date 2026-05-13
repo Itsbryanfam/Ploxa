@@ -5,6 +5,12 @@ export interface StreamArgs {
   systemPrompt?: string;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * Optional abort signal forwarded to the underlying fetch. The router
+   * passes AbortSignal.timeout(...) here so provider stalls fall through
+   * cleanly to the next provider instead of hanging the request.
+   */
+  abortSignal?: AbortSignal;
 }
 
 export interface StreamResult {

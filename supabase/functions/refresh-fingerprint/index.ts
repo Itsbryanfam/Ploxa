@@ -133,6 +133,9 @@ Deno.serve(async (req) => {
       system,
       user,
       maxTokens: 200,
+      // Telemetry parity with the Next-side router — writes to ai_calls
+      // so this Edge function's cost shows up on the same dashboard.
+      telemetry: { sql, userId },
     });
 
     // Length sanity check — guard against AI failure modes that produce
