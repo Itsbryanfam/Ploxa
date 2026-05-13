@@ -24,6 +24,20 @@ const { likes, listLikes, reviews, lists } = schema;
  *    revealing "you can't like your own review" as a discrete error. Caller
  *    UI optimistically toggles either way; the row simply doesn't exist
  *    server-side, so the next page refresh self-corrects.
+ *
+ * Cache invalidation:
+ *  - Unlike comments/follows/blocks, reactions do NOT call revalidatePath.
+ *    Like counts are denormalized client-side via T17's optimistic toggle;
+ *    the SSR fallback updates on the natural feed/profile revalidation
+ *    cadence rather than burning a cache miss per click. Revisit if the
+ *    canonical review page ever renders authoritative counts without an
+ *    optimistic client wrapper.
+ *
+ * TOCTOU window:
+ *  - The findFirst → isBlockedBetween → INSERT chain is not transactional;
+ *    a block edge appearing in the ~50ms window leaves a like visible until
+ *    the post-hoc filter in feed/queries.ts strips it on the next read.
+ *    feed/queries.ts is the source of truth for read-side visibility.
  */
 
 export async function likeReview(reviewId: string): Promise<{ ok: boolean }> {
@@ -60,6 +74,8 @@ export async function likeReview(reviewId: string): Promise<{ ok: boolean }> {
 export async function unlikeReview(reviewId: string): Promise<{ ok: boolean }> {
   const user = await getCachedUser();
   if (!user) return { ok: false };
+  // Idempotent: 0 rows is success — re-unlike or unliking a deleted review
+  // both reach the same final state.
   await db
     .delete(likes)
     .where(and(eq(likes.userId, user.id), eq(likes.reviewId, reviewId)));
@@ -102,6 +118,7 @@ export async function likeList(listId: string): Promise<{ ok: boolean }> {
 export async function unlikeList(listId: string): Promise<{ ok: boolean }> {
   const user = await getCachedUser();
   if (!user) return { ok: false };
+  // Idempotent: 0 rows is success.
   await db
     .delete(listLikes)
     .where(and(eq(listLikes.userId, user.id), eq(listLikes.listId, listId)));
