@@ -1,6 +1,8 @@
 import { desc, sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -198,11 +200,12 @@ export const reviews = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    // (userId, gameId) — used by every existing-review lookup in
+    // (userId, gameId) — unique enforces one-review-per-(user, game) at the
+    // DB level (migration 0007). Used by every existing-review lookup in
     // lib/reviews/server-actions.ts (draftStart, regenerateSection, save,
-    // publish, getReviewBySlug). Without it those run as seq-scans once the
-    // table grows past a few thousand rows.
-    userGameIdx: index("reviews_user_game_idx").on(table.userId, table.gameId),
+    // publish, getReviewBySlug); Postgres uses the unique for equality
+    // lookups so we don't need a separate non-unique index.
+    userGameIdx: uniqueIndex("reviews_user_game_uniq").on(table.userId, table.gameId),
     // (userId, publishedAt DESC) WHERE publishedAt IS NOT NULL — drives the
     // public per-user review list at /u/[username]/reviews. Partial because
     // unpublished drafts dominate the row count.
@@ -212,15 +215,26 @@ export const reviews = pgTable(
   }),
 );
 
-export const reviewQuestions = pgTable("review_questions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  reviewId: uuid("review_id")
-    .notNull()
-    .references(() => reviews.id, { onDelete: "cascade" }),
-  position: integer("position").notNull(),
-  question: text("question").notNull(),
-  answer: text("answer"),
-});
+export const reviewQuestions = pgTable(
+  "review_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reviewId: uuid("review_id")
+      .notNull()
+      .references(() => reviews.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    question: text("question").notNull(),
+    answer: text("answer"),
+  },
+  (table) => ({
+    // (reviewId, position) is unique so the four-paragraph render order is
+    // deterministic. Without it, dup positions render in arbitrary order.
+    reviewPositionIdx: uniqueIndex("review_questions_review_position_uniq").on(
+      table.reviewId,
+      table.position,
+    ),
+  }),
+);
 
 // ─────────────────────────────────────────────────────────────
 // AI taste fingerprint + recommendations — Phase 4
@@ -279,6 +293,12 @@ export const recommendations = pgTable(
     userDismissedIdx: index("recommendations_user_dismissed_idx")
       .on(table.userId, desc(table.generatedAt))
       .where(sql`${table.dismissed} = true`),
+    // One live row per (user, cacheKey, gameId). Concurrent cache misses
+    // previously produced duplicate rec rows for the same game; this
+    // collapses them and lets ON CONFLICT do the right thing.
+    userCacheGameUniq: uniqueIndex("recommendations_user_cache_game_uniq")
+      .on(table.userId, table.cacheKey, table.gameId)
+      .where(sql`${table.dismissed} = false`),
   }),
 );
 
@@ -300,6 +320,9 @@ export const follows = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.followerId, table.followedId] }),
+    // Block self-follows at the DB level so the activity-feed generator
+    // (Phase 5) can't produce actor=target rows even via a bug.
+    noSelf: check("follows_no_self", sql`${table.followerId} <> ${table.followedId}`),
   }),
 );
 
@@ -332,7 +355,14 @@ export const comments = pgTable("comments", {
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
-  parentId: uuid("parent_id"),
+  // Self-referencing FK (migration 0007). The same-review invariant
+  // (child.review_id = parent.review_id) is enforced by a BEFORE INSERT/UPDATE
+  // trigger that lives in migration 0007 — Postgres CHECK can't reference
+  // another row, so a trigger is the right level. Drizzle doesn't emit
+  // triggers, so keep the trigger SQL and the schema in lock-step.
+  parentId: uuid("parent_id").references((): AnyPgColumn => comments.id, {
+    onDelete: "cascade",
+  }),
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   editedAt: timestamp("edited_at", { withTimezone: true }),
@@ -367,17 +397,29 @@ export const listItems = pgTable(
   }),
 );
 
-export const notifications = pgTable("notifications", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  type: notificationTypeEnum("type").notNull(),
-  targetId: uuid("target_id"),
-  actorId: uuid("actor_id").references(() => authUsers.id, { onDelete: "set null" }),
-  readAt: timestamp("read_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    type: notificationTypeEnum("type").notNull(),
+    targetId: uuid("target_id"),
+    actorId: uuid("actor_id").references(() => authUsers.id, { onDelete: "set null" }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // Inbox feed + unread count both hit (user_id, read_at, created_at DESC).
+    // read_at IS NULL filters unread; created_at orders the inbox.
+    userUnreadIdx: index("notifications_user_unread_idx").on(
+      table.userId,
+      table.readAt,
+      desc(table.createdAt),
+    ),
+  }),
+);
 
 // ─────────────────────────────────────────────────────────────
 // Library imports
@@ -405,23 +447,36 @@ export const platformConnections = pgTable(
   }),
 );
 
-export const imports = pgTable("imports", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  platform: platformEnum("platform").notNull(),
-  status: importStatusEnum("status").notNull().default("queued"),
-  importedCount: integer("imported_count").notNull().default(0),
-  totalCount: integer("total_count").notNull().default(0),
-  errorMessage: text("error_message"),
-  conflictsJsonb: jsonb("conflicts_jsonb").notNull().default(sql`'[]'::jsonb`),
-  unmatchedJsonb: jsonb("unmatched_jsonb").notNull().default(sql`'[]'::jsonb`),
-  surfaced: boolean("surfaced").notNull().default(true),
-  startedAt: timestamp("started_at", { withTimezone: true }),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const imports = pgTable(
+  "imports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    platform: platformEnum("platform").notNull(),
+    status: importStatusEnum("status").notNull().default("queued"),
+    importedCount: integer("imported_count").notNull().default(0),
+    totalCount: integer("total_count").notNull().default(0),
+    errorMessage: text("error_message"),
+    conflictsJsonb: jsonb("conflicts_jsonb").notNull().default(sql`'[]'::jsonb`),
+    unmatchedJsonb: jsonb("unmatched_jsonb").notNull().default(sql`'[]'::jsonb`),
+    surfaced: boolean("surfaced").notNull().default(true),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // /api/imports/latest polls during active imports — without this index
+    // it seq-scans by user. (user_id, status, created_at DESC) matches the
+    // ORDER BY created_at DESC LIMIT 1 lookup pattern.
+    userStatusCreatedIdx: index("imports_user_status_created_idx").on(
+      table.userId,
+      table.status,
+      desc(table.createdAt),
+    ),
+  }),
+);
 
 // ─────────────────────────────────────────────────────────────
 // AI cost telemetry
