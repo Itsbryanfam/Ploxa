@@ -108,7 +108,7 @@
     {
       "id": 16,
       "subject": "Task 16: dominant-pose + playstyle + Vercel OG trading-card endpoint",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** Vercel OG renders 1200×630 pixel-art trading card. Mascot pose maps to dominant taste cluster; stats panel + narrative excerpt. Edge runtime; public-only.\n\n**Files:** lib/og/dominant-pose.ts, lib/taste/playstyle.ts, lib/og/taste-card.tsx, app/api/og/taste/[username]/route.ts\n\n**Verify:** Visit /api/og/taste/{username}?v=2026 in browser — image renders\n\n```json:metadata\n{\"files\":[\"lib/og/dominant-pose.ts\",\"lib/taste/playstyle.ts\",\"lib/og/taste-card.tsx\",\"app/api/og/taste/[username]/route.ts\"],\"verifyCommand\":\"manual: browse /api/og/taste/{username}\",\"acceptanceCriteria\":[\"5 keyword pose mappings (tactician/lantern/cozy/ready/wary) + narrating default\",\"14 mechanic → playstyle mappings\",\"OG JSX renders 1200×630 with mascot + stats + narrative\",\"404 on private profile\",\"Cache-Control: public, s-maxage=604800, stale-while-revalidate=86400\"]}\n```"
     },
