@@ -13,7 +13,10 @@
     {
       "id": 2,
       "subject": "Task 2: Drizzle schema.ts mirror",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-12",
+      "completedSha": "5ba0f69",
+      "completionNotes": "All 9 acceptance criteria PASS. Spec review found no issues. Code review found 0 Critical/Important, 2 Minor: (a) snapshot debt from T1 still open — running `pnpm drizzle-kit generate` would emit a duplicate-work migration since meta/ has snapshots only through 0006; this footgun doesn't bite T3-T29's workflow (none use `generate`, all use `check`); deferred to post-phase cleanup. (b) Typo 'an Index' → 'an index' fixed inline.",
       "blockedBy": [1],
       "description": "**Goal:** Update lib/db/schema.ts to mirror migration 0008 changes. Drizzle enums reference existing PG types via pgEnum(). New tables exported as schema.blocks, schema.listLikes, schema.reports.\n\n**Files:** lib/db/schema.ts\n\n**Verify:** `pnpm drizzle-kit check && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/db/schema.ts\"],\"verifyCommand\":\"pnpm drizzle-kit check && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"notificationTypeEnum has 6 values including comment_replied\",\"reportTargetTypeEnum + reportStatusEnum + emailDigestCadenceEnum defined\",\"blocks, listLikes, reports tables exported\",\"profiles has emailDigestCadence + lastDigestSentAt\",\"logs has lastEventAt + lastEventType + userEventIdx partial index\",\"comments has isHidden + reviewCreatedIdx\",\"lists has slug + publishedAt + userSlugUniq + userPublishedIdx\",\"notifications has dedupeUniq\",\"drizzle-kit check reports no drift\"]}\n```"
     },

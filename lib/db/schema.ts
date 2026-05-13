@@ -539,7 +539,7 @@ export const listLikes = pgTable(
   (table) => ({
     pk: primaryKey({ columns: [table.userId, table.listId] }),
     // Like-count aggregation on list detail page filters by listId alone; PK
-    // leads with userId so an Index helps.
+    // leads with userId so an index helps.
     listIdIdx: index("list_likes_list_id_idx").on(table.listId),
   }),
 );
