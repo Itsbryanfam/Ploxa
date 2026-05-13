@@ -21,7 +21,7 @@ export function PopularGamesGrid({ games }: { games: PopularGame[] }) {
         <li key={g.id}>
           <Link href={`/games/${g.slug}`} className="group block">
             {g.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- RAWG/Supabase Storage URLs not in remotePatterns
+              // eslint-disable-next-line @next/next/no-img-element -- matches T24 ListCard pattern; raw <img> bypasses Next image-optimization layer across mixed hosts (RAWG, Steam CDN, SteamGridDB, occasional Supabase Storage)
               <img
                 src={g.coverUrl}
                 alt={g.title}

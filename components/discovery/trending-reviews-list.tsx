@@ -28,7 +28,7 @@ export function TrendingReviewsList({ reviews }: { reviews: TrendingReview[] }) 
               className="grid grid-cols-[80px_1fr] gap-4 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4 hover:border-[var(--accent)] transition"
             >
               {r.gameCoverUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- RAWG/Supabase Storage URLs not in remotePatterns
+                // eslint-disable-next-line @next/next/no-img-element -- matches T24 ListCard pattern; raw <img> bypasses Next image-optimization layer across mixed hosts (RAWG, Steam CDN, SteamGridDB, occasional Supabase Storage)
                 <img
                   src={r.gameCoverUrl}
                   alt={r.gameTitle}
