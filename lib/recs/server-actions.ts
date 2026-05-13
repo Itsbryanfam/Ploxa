@@ -608,12 +608,20 @@ export async function saveRecForLater(
   if (!row) return { ok: false, reason: "not-found" };
   if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
 
-  await ensureLog({ userId: me.id, gameId: row.gameId, status: "backlog" });
-
+  // Dismiss BEFORE ensureLog. ensureLog fires triggerOnLogWrite which
+  // DELETE FROM recommendations WHERE user_id=$1 AND dismissed=false —
+  // if we marked dismissed after the log write, the rec row would be
+  // wiped before the UPDATE could flip it to dismissed=true, and the
+  // gameId would never enter the rerank prompt's negative-context
+  // SELECT (which filters on dismissed=true). The save-for-later
+  // action is conceptually a "dismiss with a side effect" — model it
+  // that way at the SQL level too.
   await db
     .update(recommendations)
     .set({ dismissed: true })
     .where(eq(recommendations.id, recId));
+
+  await ensureLog({ userId: me.id, gameId: row.gameId, status: "backlog" });
 
   revalidatePath("/play-next");
   revalidatePath("/library");
@@ -693,16 +701,21 @@ export async function playRec(
     return { ok: true, redirect: true, slug: game.slug };
   }
 
+  // Dismiss BEFORE ensureLog — same reasoning as saveRecForLater above.
+  // triggerOnLogWrite (fired inside ensureLog) DELETEs non-dismissed rec
+  // rows; the dismissed=true UPDATE must land first so the row survives
+  // and contributes to future rerank prompts' negative context.
+  await db
+    .update(recommendations)
+    .set({ dismissed: true })
+    .where(eq(recommendations.id, recId));
+
   await ensureLog({
     userId: me.id,
     gameId: row.gameId,
     status: "playing",
     platforms: [platform],
   });
-  await db
-    .update(recommendations)
-    .set({ dismissed: true })
-    .where(eq(recommendations.id, recId));
 
   revalidatePath("/play-next");
   revalidatePath("/library");
