@@ -91,9 +91,7 @@ export async function createComment(input: unknown): Promise<CommentResult> {
     parentAuthorId = parent.userId;
   }
 
-  // Auto-flag: rule-based pre-check. checkSpamRules is pure (no IO) and
-  // returns reason codes that the report row's `details` field surfaces
-  // for the mod queue (T24).
+  // Auto-flag: rule-based pre-check (see lib/social/moderation/rules.ts).
   const flagCheck = checkSpamRules(body);
 
   const inserted = await db
@@ -157,6 +155,34 @@ export async function editComment(input: unknown): Promise<CommentResult> {
     .update(comments)
     .set({ body, editedAt: new Date(), isHidden: flagCheck.isFlagged })
     .where(and(eq(comments.id, commentId), eq(comments.userId, user.id)));
+
+  // Auto-flag → reports row (parity with createComment). Dedupe by
+  // (target_type='comment', target_id, status='auto_flagged'): without this
+  // guard, every edit of an already-flagged comment would stack duplicate
+  // mod-queue entries. auto_flagged is the unresolved bucket — once a mod
+  // resolves it (resolved_action_taken or resolved_no_action), a fresh
+  // re-edit flagging again WILL surface as a new report, which is the
+  // intended escalation path.
+  if (flagCheck.isFlagged) {
+    const existing = await db.query.reports.findFirst({
+      where: and(
+        eq(schema.reports.targetType, "comment"),
+        eq(schema.reports.targetId, commentId),
+        eq(schema.reports.status, "auto_flagged"),
+      ),
+      columns: { id: true },
+    });
+    if (!existing) {
+      await db.insert(schema.reports).values({
+        reporterId: null, // system-generated
+        targetType: "comment",
+        targetId: commentId,
+        reason: flagCheck.reasons[0] ?? "unknown",
+        details: flagCheck.reasons.join(", "),
+        status: "auto_flagged",
+      });
+    }
+  }
 
   // Revalidate the review listing. editComment only has commentId in scope,
   // so we fetch the comment to retrieve its reviewId before delegating to
