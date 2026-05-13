@@ -253,7 +253,10 @@
     {
       "id": 22,
       "subject": "Task 22: Digest cron via Vercel API route + /unsubscribe route",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-13",
+      "completedSha": "b90e7f1",
+      "completionNotes": "Ships at e0492c0 (impl) + b90e7f1 (code-quality follow-ups). MIGRATION NOT YET APPLIED — Supabase MCP apply + Vault secret + Vercel CRON_SECRET env setup all deferred to T29 manual gate where user controls secret values. Controller pre-corrected 5 plan bugs in implementer prompt: (1) serverEnv→requireEnv/env split; (2) APP_URL not added (reused NEXT_PUBLIC_APP_URL clientSchema default); (3) RESEND_API_KEY not double-added (already present); (4) CRON_SECRET as optionalString (not .min(32) required); (5) migration filename 20260513_0001 (not 20260512_0002). Implementer added Mascot to /unsubscribe/invalid (plan omitted; accepted as filling acceptance criterion). Spec compliance review clean (all 20 numbered requirements). Code-quality review found 2 Important + 4 Minor — actionable fixes applied: (a) Migration switched from `app.cron_secret` GUC pattern to `vault.decrypted_secrets WHERE name='phase5_cron_secret'` — matches Phase 3/4 pattern; GUC is blocked on managed Supabase. (b) Resend SDK returns {data, error} and does NOT throw — worker now checks sendResult.error explicitly. (c) sent++ reordered before lastDigestSentAt update so a DB write failure post-send is loud + logged with distinct message rather than silently triggering duplicate send on next cron. (d) Response JSON gained `failed` counter alongside `sent` + `candidates`. (e) /unsubscribe/invalid h1 mt-6 added for visual parity with /unsubscribe/confirmed. typecheck+lint+build clean throughout. /unsubscribe pre-fetch tradeoff documented in route JSDoc — state change is idempotent + reversible via settings, accepted for this stage.",
       "blockedBy": [
         21
       ],
