@@ -18,6 +18,7 @@ import {
 type Fixtures = {
   privateUser: TestUser;
   publicUser: TestUser;
+  publicUser2: TestUser;
 };
 
 async function withTestUser(
@@ -37,6 +38,9 @@ export const test = base.extend<Fixtures>({
     await withTestUser({ isPublic: false }, use);
   },
   publicUser: async ({}, use) => {
+    await withTestUser({ isPublic: true }, use);
+  },
+  publicUser2: async ({}, use) => {
     await withTestUser({ isPublic: true }, use);
   },
 });

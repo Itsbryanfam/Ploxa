@@ -50,6 +50,9 @@ export function mergeImportedGame(
   platform: PlatformKey,
 ): MergeResult {
   if (!existing) {
+    // lastEventAt is intentionally NOT set on import inserts. Imports are bulk
+    // backlog adds (non-material status) and should never surface in followers'
+    // activity feeds. See materialEventFromMutation in lib/logs/server-actions.ts.
     return {
       action: "insert",
       row: {

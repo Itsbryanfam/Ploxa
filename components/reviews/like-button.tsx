@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { HeartFull, HeartEmpty } from "@/components/pixel/hearts";
-import { likeReview, unlikeReview } from "@/lib/reviews/server-actions";
+import { likeReview, unlikeReview } from "@/lib/social/reactions/server-actions";
 
 interface Props {
   reviewId: string;
@@ -29,7 +29,7 @@ export function LikeButton({ reviewId, initialLiked, initialCount, loggedOut }: 
     setLiked(willLike);
     setCount((c) => c + (willLike ? 1 : -1));
     startTransition(async () => {
-      const result = willLike ? await likeReview({ reviewId }) : await unlikeReview({ reviewId });
+      const result = willLike ? await likeReview(reviewId) : await unlikeReview(reviewId);
       if (!result.ok) {
         // Revert on failure
         setLiked(!willLike);

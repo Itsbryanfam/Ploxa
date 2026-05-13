@@ -10,6 +10,7 @@ import { LOG_STATUSES, type LogStatus } from "@/lib/db/schema-types";
 import { triggerOnLogWrite } from "@/lib/taste/triggers";
 import { mapRowToLibraryItem, type LibraryItem } from "./library-item";
 import { LOG_GAME_SELECT } from "./select";
+import { materialEventFromMutation } from "./material-event";
 
 // Re-exported so existing `import type { LibraryItem, UserStats } from "@/lib/logs/server-actions"`
 // callers keep working. Type-only re-exports are erased at compile time, so this is
@@ -60,6 +61,14 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   // Insert. The (userId, gameId, isReplay) unique index enforces dedup.
   // SQLSTATE 23505 (unique violation) maps to the friendly "Already logged"
   // message; no pre-check SELECT is needed.
+  const newRating = rating != null && rating > 0 ? rating : null;
+  const createEventInfo = materialEventFromMutation({
+    prevStatus: null,
+    newStatus: status,
+    prevRating: null,
+    newRating,
+  });
+
   let inserted: { id: string } | undefined;
   try {
     [inserted] = await db
@@ -70,8 +79,11 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
         status,
         // rating > 0 already short-circuits when rating is undefined (undefined > 0 is false);
         // wrapping in `rating != null` makes the intent explicit.
-        rating: rating != null && rating > 0 ? String(rating) : null,
+        rating: newRating !== null ? String(newRating) : null,
         notes: note?.trim() || null,
+        ...(createEventInfo
+          ? { lastEventAt: new Date(), lastEventType: createEventInfo.eventType }
+          : {}),
       })
       .returning({ id: schema.logs.id });
   } catch (err) {
@@ -119,6 +131,9 @@ export async function ensureLog(input: {
   platforms?: string[];
 }): Promise<void> {
   if (input.status === "playing") {
+    // "playing" is a material status — set lastEventAt on both the fresh-insert
+    // path and the on-conflict-update path so either code path produces an event.
+    const playingEventAt = new Date();
     await db
       .insert(schema.logs)
       .values({
@@ -126,6 +141,8 @@ export async function ensureLog(input: {
         gameId: input.gameId,
         status: "playing",
         platforms: input.platforms,
+        lastEventAt: playingEventAt,
+        lastEventType: "status_change",
       })
       .onConflictDoUpdate({
         target: [schema.logs.userId, schema.logs.gameId, schema.logs.isReplay],
@@ -137,6 +154,8 @@ export async function ensureLog(input: {
           // Postgres ON CONFLICT DO UPDATE — keeps the row's prior value).
           platforms: input.platforms ?? schema.logs.platforms,
           updatedAt: new Date(),
+          lastEventAt: playingEventAt,
+          lastEventType: "status_change",
         },
       });
   } else {
@@ -323,9 +342,31 @@ export async function updateLogStatus(input: unknown): Promise<{ ok: boolean; er
   const user = await getCachedUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
+  // Read prev row to determine if this status change is a material event.
+  const existing = await db.query.logs.findFirst({
+    where: and(eq(schema.logs.id, parsed.data.logId), eq(schema.logs.userId, user.id)),
+  });
+  if (!existing) return { ok: false, error: "Log not found" };
+
+  // updateLogStatus only changes status — pass null/null for rating so only
+  // the status-delta branch of materialEventFromMutation can fire.
+  const statusEventInfo = materialEventFromMutation({
+    prevStatus: existing.status,
+    newStatus: parsed.data.status,
+    prevRating: null,
+    newRating: null,
+  });
+
+  const now = new Date();
   const result = await db
     .update(schema.logs)
-    .set({ status: parsed.data.status, updatedAt: new Date() })
+    .set({
+      status: parsed.data.status,
+      updatedAt: now,
+      ...(statusEventInfo
+        ? { lastEventAt: now, lastEventType: statusEventInfo.eventType }
+        : {}),
+    })
     .where(and(eq(schema.logs.id, parsed.data.logId), eq(schema.logs.userId, user.id)))
     .returning({ id: schema.logs.id });
 
@@ -392,11 +433,31 @@ export async function updateLogFull(input: unknown): Promise<{ ok: boolean; erro
   if (!user) return { ok: false, error: "Not signed in" };
 
   const d = parsed.data;
+
+  // Read prev row to determine material event (needs prev status + prev rating).
+  const existing = await db.query.logs.findFirst({
+    where: and(eq(schema.logs.id, d.logId), eq(schema.logs.userId, user.id)),
+  });
+  if (!existing) return { ok: false, error: "Log not found" };
+
+  // logs.rating is a Drizzle `numeric` column — postgres-js returns it as a
+  // string (e.g. "8.5"). Coerce with Number() before passing to the helper.
+  const prevRating = existing.rating != null ? Number(existing.rating) : null;
+  const newRating = d.rating != null && d.rating > 0 ? d.rating : null;
+
+  const fullEventInfo = materialEventFromMutation({
+    prevStatus: existing.status,
+    newStatus: d.status,
+    prevRating,
+    newRating,
+  });
+
+  const now = new Date();
   const result = await db
     .update(schema.logs)
     .set({
       status: d.status,
-      rating: d.rating != null && d.rating > 0 ? String(d.rating) : null,
+      rating: newRating !== null ? String(newRating) : null,
       startedAt: d.startedAt ? new Date(d.startedAt) : null,
       finishedAt: d.finishedAt ? new Date(d.finishedAt) : null,
       hoursPlayed: d.hoursPlayed != null ? String(d.hoursPlayed) : null,
@@ -404,7 +465,10 @@ export async function updateLogFull(input: unknown): Promise<{ ok: boolean; erro
       isReplay: d.isReplay,
       isPrivate: d.isPrivate,
       notes: d.notes?.trim() || null,
-      updatedAt: new Date(),
+      updatedAt: now,
+      ...(fullEventInfo
+        ? { lastEventAt: now, lastEventType: fullEventInfo.eventType }
+        : {}),
     })
     .where(and(eq(schema.logs.id, d.logId), eq(schema.logs.userId, user.id)))
     .returning({ id: schema.logs.id });

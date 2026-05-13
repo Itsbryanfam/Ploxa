@@ -68,6 +68,30 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "review_commented",
   "list_liked",
   "wishlist_logged_by_friend",
+  "comment_replied",
+]);
+
+// ─────────────────────────────────────────────────────────────
+// Phase 5 enums (live in DB via migration 0008)
+// ─────────────────────────────────────────────────────────────
+export const reportTargetTypeEnum = pgEnum("report_target_type", [
+  "comment",
+  "review",
+  "list",
+  "profile",
+]);
+
+export const reportStatusEnum = pgEnum("report_status", [
+  "pending",
+  "resolved_action_taken",
+  "resolved_no_action",
+  "auto_flagged",
+]);
+
+export const emailDigestCadenceEnum = pgEnum("email_digest_cadence", [
+  "off",
+  "daily",
+  "weekly",
 ]);
 
 // ─────────────────────────────────────────────────────────────
@@ -95,6 +119,11 @@ export const profiles = pgTable("profiles", {
   isPublic: boolean("is_public").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Phase 5: email digest preference. 'weekly' default = Sunday digest cron.
+  emailDigestCadence: emailDigestCadenceEnum("email_digest_cadence")
+    .notNull()
+    .default("weekly"),
+  lastDigestSentAt: timestamp("last_digest_sent_at", { withTimezone: true }),
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -169,11 +198,21 @@ export const logs = pgTable(
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Phase 5: feed event tracking. Bumped on status change / rating set/changed.
+    // Cleared rating does NOT update this (clearing isn't a positive social signal).
+    // NOTE: T1's universal backfill marked ALL existing rows (including backlog +
+    // wishlist) with last_event_at=updated_at. T13 owns the cleanup that nulls
+    // these out for status IN ('backlog','wishlist').
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    lastEventType: text("last_event_type"), // 'status_change' | 'rating_set'
   },
   (table) => ({
     userGameIdx: uniqueIndex("logs_user_game_replay_uniq").on(table.userId, table.gameId, table.isReplay),
     userUpdatedAtIdx: index("logs_user_updated_at_idx").on(table.userId, desc(table.updatedAt)),
     userStatusUpdatedIdx: index("logs_user_status_updated_at_idx").on(table.userId, table.status, desc(table.updatedAt)),
+    userEventIdx: index("logs_user_event_idx")
+      .on(table.userId, desc(table.lastEventAt))
+      .where(sql`${table.lastEventAt} IS NOT NULL`),
   }),
 );
 
@@ -323,6 +362,9 @@ export const follows = pgTable(
     // Block self-follows at the DB level so the activity-feed generator
     // (Phase 5) can't produce actor=target rows even via a bug.
     noSelf: check("follows_no_self", sql`${table.followerId} <> ${table.followedId}`),
+    // PK leads with follower_id so WHERE followed_id = X can't use it.
+    // FK constraints don't auto-create indexes in PG; this closes the gap.
+    followedIdIdx: index("follows_followed_id_idx").on(table.followedId),
   }),
 );
 
@@ -347,38 +389,65 @@ export const likes = pgTable(
   }),
 );
 
-export const comments = pgTable("comments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  reviewId: uuid("review_id")
-    .notNull()
-    .references(() => reviews.id, { onDelete: "cascade" }),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  // Self-referencing FK (migration 0007). The same-review invariant
-  // (child.review_id = parent.review_id) is enforced by a BEFORE INSERT/UPDATE
-  // trigger that lives in migration 0007 — Postgres CHECK can't reference
-  // another row, so a trigger is the right level. Drizzle doesn't emit
-  // triggers, so keep the trigger SQL and the schema in lock-step.
-  parentId: uuid("parent_id").references((): AnyPgColumn => comments.id, {
-    onDelete: "cascade",
+export const comments = pgTable(
+  "comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reviewId: uuid("review_id")
+      .notNull()
+      .references(() => reviews.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    // Self-referencing FK (migration 0007). The same-review invariant
+    // (child.review_id = parent.review_id) is enforced by a BEFORE INSERT/UPDATE
+    // trigger that lives in migration 0007 — Postgres CHECK can't reference
+    // another row, so a trigger is the right level. Drizzle doesn't emit
+    // triggers, so keep the trigger SQL and the schema in lock-step.
+    parentId: uuid("parent_id").references((): AnyPgColumn => comments.id, {
+      onDelete: "cascade",
+    }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    // Phase 5: auto-flag pipeline sets true; read predicate hides from non-author.
+    isHidden: boolean("is_hidden").notNull().default(false),
+  },
+  (table) => ({
+    reviewCreatedIdx: index("comments_review_created_idx").on(
+      table.reviewId,
+      desc(table.createdAt),
+    ),
+    userIdx: index("comments_user_idx").on(table.userId),
   }),
-  body: text("body").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  editedAt: timestamp("edited_at", { withTimezone: true }),
-});
+);
 
-export const lists = pgTable("lists", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  description: text("description"),
-  isPublic: boolean("is_public").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const lists = pgTable(
+  "lists",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    isPublic: boolean("is_public").notNull().default(true),
+    // Phase 5: stable URL slug derived from title. Backfilled on migration.
+    slug: text("slug").notNull().default(""),
+    // Phase 5: timestamp of first publish (kept stable on subsequent edits).
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // /u/{name}/lists/{slug} must be unique per user.
+    userSlugUniq: uniqueIndex("lists_user_slug_uniq").on(table.userId, table.slug),
+    // Feed pull: filter published lists by user, order by publish time.
+    userPublishedIdx: index("lists_user_published_idx")
+      .on(table.userId, desc(table.publishedAt))
+      .where(sql`${table.publishedAt} IS NOT NULL`),
+  }),
+);
 
 export const listItems = pgTable(
   "list_items",
@@ -416,6 +485,98 @@ export const notifications = pgTable(
     userUnreadIdx: index("notifications_user_unread_idx").on(
       table.userId,
       table.readAt,
+      desc(table.createdAt),
+    ),
+    // Phase 5: ON CONFLICT chokepoint in lib/social/notifications/emit.ts
+    // collapses repeat (user, type, target, actor) into one bumped row.
+    dedupeUniq: uniqueIndex("notifications_dedupe_uniq").on(
+      table.userId,
+      table.type,
+      table.targetId,
+      table.actorId,
+    ),
+  }),
+);
+
+// ─────────────────────────────────────────────────────────────
+// Phase 5: blocks graph (bidirectional w/ logged-out exception)
+// ─────────────────────────────────────────────────────────────
+export const blocks = pgTable(
+  "blocks",
+  {
+    blockerId: uuid("blocker_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    blockedId: uuid("blocked_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.blockerId, table.blockedId] }),
+    // Self-block prevention. App-side check is the friendly UX path; this CHECK
+    // is defense-in-depth same as follows_no_self in migration 0007.
+    noSelf: check("blocks_no_self", sql`${table.blockerId} <> ${table.blockedId}`),
+    // Reverse lookup for "is X blocked by anyone I am?" — used by
+    // withBlockedFilter's notExists subquery on the author side.
+    blockedBlockerIdx: index("blocks_blocked_blocker_idx").on(
+      table.blockedId,
+      table.blockerId,
+    ),
+  }),
+);
+
+// ─────────────────────────────────────────────────────────────
+// Phase 5: list reactions (parallel to review likes — kept separate)
+// ─────────────────────────────────────────────────────────────
+export const listLikes = pgTable(
+  "list_likes",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    listId: uuid("list_id")
+      .notNull()
+      .references(() => lists.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.listId] }),
+    // Like-count aggregation on list detail page filters by listId alone; PK
+    // leads with userId so an index helps.
+    listIdIdx: index("list_likes_list_id_idx").on(table.listId),
+  }),
+);
+
+// ─────────────────────────────────────────────────────────────
+// Phase 5: moderation reports (polymorphic target — no FK)
+// ─────────────────────────────────────────────────────────────
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Nullable so a deleted account doesn't kill the report; ON DELETE SET NULL.
+    reporterId: uuid("reporter_id").references(() => authUsers.id, {
+      onDelete: "set null",
+    }),
+    targetType: reportTargetTypeEnum("target_type").notNull(),
+    // Polymorphic — discriminator is targetType. No FK because of the 4-target
+    // shape. Lookup queries always carry targetType.
+    targetId: uuid("target_id").notNull(),
+    reason: text("reason").notNull(), // 'spam' | 'harassment' | 'spoiler' | 'off_topic' | 'other'
+    details: text("details"),
+    status: reportStatusEnum("status").notNull().default("pending"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => authUsers.id, {
+      onDelete: "set null",
+    }),
+    resolverNote: text("resolver_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // Admin queue: pending newest first.
+    statusCreatedIdx: index("reports_status_created_idx").on(
+      table.status,
       desc(table.createdAt),
     ),
   }),

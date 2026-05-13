@@ -14,6 +14,8 @@ export function NavTabs({ profileHref }: { profileHref: string }) {
   const pathname = usePathname();
   const tabs: Tab[] = [
     { label: "Home", href: "/home", match: (p) => p === "/home" || p === "/dashboard" },
+    { label: "Feed", href: "/home/feed", match: (p) => p.startsWith("/home/feed") },
+    { label: "Discover", href: "/discover", match: (p) => p.startsWith("/discover") },
     { label: "Library", href: "/library", match: (p) => p.startsWith("/library") },
     { label: "Profile", href: profileHref, match: (p) => p.startsWith("/u/") },
   ];
