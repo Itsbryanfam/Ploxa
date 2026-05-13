@@ -1,6 +1,6 @@
 import { Mascot } from "@/components/mascot/mascot";
 
-export function FeedEmptyState(props: { mode: "no-followees-or-events" | "no-more" }) {
+export function FeedEmptyState(props: { mode: "no-followees" | "no-events" | "no-more" }) {
   if (props.mode === "no-more") {
     return (
       <div className="text-center py-12">
@@ -8,6 +8,20 @@ export function FeedEmptyState(props: { mode: "no-followees-or-events" | "no-mor
       </div>
     );
   }
+
+  if (props.mode === "no-events") {
+    return (
+      <div className="text-center py-16">
+        <Mascot size="lg" mood="thinking" silent />
+        <h2 className="mt-6 text-xl font-semibold">Quiet around here</h2>
+        <p className="mt-2 text-sm text-[var(--text-dim)] max-w-md mx-auto">
+          Your followees haven&apos;t posted any new logs, reviews, or lists yet. Check back later.
+        </p>
+      </div>
+    );
+  }
+
+  // mode === "no-followees"
   return (
     <div className="text-center py-16">
       <Mascot size="lg" mood="idle" silent />

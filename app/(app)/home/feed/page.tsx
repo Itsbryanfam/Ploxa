@@ -18,16 +18,24 @@ export default async function FeedPage({
   if (!user) redirect("/login?next=/home/feed");
   const { cursor } = await searchParams;
 
-  const { items, nextCursor } = await getFeed({
+  const { items, nextCursor, hasFollowees } = await getFeed({
     viewerId: user.id,
     cursor: cursor ?? null,
     limit: 50,
   });
 
   if (items.length === 0) {
+    let mode: "no-followees" | "no-events" | "no-more";
+    if (cursor) {
+      mode = "no-more";
+    } else if (!hasFollowees) {
+      mode = "no-followees";
+    } else {
+      mode = "no-events";
+    }
     return (
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <FeedEmptyState mode={cursor ? "no-more" : "no-followees-or-events"} />
+        <FeedEmptyState mode={mode} />
       </div>
     );
   }

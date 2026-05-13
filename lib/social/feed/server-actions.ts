@@ -21,12 +21,18 @@ const { follows, blocks } = schema;
  * `nextCursor` is non-null only when `items.length === limit`, which is the
  * standard "there may be more" heuristic. An exact match on `limit` doesn't
  * guarantee another page exists, but false-positives here are harmless.
+ *
+ * `hasFollowees` is true when the viewer follows at least one account (before
+ * the block filter). Callers use this to distinguish two empty-feed cases:
+ *   - `hasFollowees: false` → viewer follows nobody → show idle pose + Find people CTA
+ *   - `hasFollowees: true, items: []` → followees exist but haven't posted → show
+ *     thinking pose + "Quiet around here. Check back later."
  */
 export async function getFeed(args: {
   viewerId: string;
   cursor?: string | null;
   limit?: number;
-}): Promise<{ items: FeedRow[]; nextCursor: string | null }> {
+}): Promise<{ items: FeedRow[]; nextCursor: string | null; hasFollowees: boolean }> {
   const { viewerId, cursor: rawCursor, limit = 50 } = args;
   const cursor = decodeCursor(rawCursor);
 
@@ -36,8 +42,10 @@ export async function getFeed(args: {
     .from(follows)
     .where(eq(follows.followerId, viewerId));
 
-  if (followeeRows.length === 0) {
-    return { items: [], nextCursor: null };
+  const hasFollowees = followeeRows.length > 0;
+
+  if (!hasFollowees) {
+    return { items: [], nextCursor: null, hasFollowees: false };
   }
   const followeeIds = followeeRows.map((r) => r.id);
 
@@ -61,7 +69,7 @@ export async function getFeed(args: {
   );
 
   if (visibleFolloweeIds.length === 0) {
-    return { items: [], nextCursor: null };
+    return { items: [], nextCursor: null, hasFollowees: true };
   }
 
   // Step 3: the actual feed query.
@@ -81,5 +89,5 @@ export async function getFeed(args: {
         })
       : null;
 
-  return { items, nextCursor };
+  return { items, nextCursor, hasFollowees: true };
 }
