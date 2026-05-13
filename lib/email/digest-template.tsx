@@ -97,7 +97,7 @@ export function DigestEmail(props: {
 
           <Text style={{ color: "#a3a3a3" }}>
             {"Here's what happened since "}
-            {payload.since.toLocaleDateString()}:
+            {payload.since.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}:
           </Text>
 
           {payload.newFollowers.length > 0 && (
@@ -206,7 +206,7 @@ export function renderDigestPlainText(args: {
   const lines: string[] = [];
   lines.push(`Hi @${payload.recipient.username},`);
   lines.push("");
-  lines.push(`Here's what happened since ${payload.since.toLocaleDateString()}:`);
+  lines.push(`Here's what happened since ${payload.since.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}:`);
   lines.push("");
   if (payload.newFollowers.length > 0) {
     lines.push(
