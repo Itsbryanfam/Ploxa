@@ -71,6 +71,13 @@
       "when": 1778889600000,
       "tag": "0009_follows_followed_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778976000000,
+      "tag": "0010_comments_user_idx",
+      "breakpoints": true
     }
   ]
 }

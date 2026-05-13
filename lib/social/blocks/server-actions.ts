@@ -23,14 +23,15 @@ export async function block(targetUserId: string): Promise<BlockResult> {
     .onConflictDoNothing()
     .returning({ blockerId: blocks.blockerId });
 
-  // Cascade only on a fresh insert — not on a redundant block() call while
-  // the block row already exists. (Goal text says "re-block re-runs cascade"
-  // but that conflicts with this guard; follow the code, not the prose.)
+  // Guard: only run cascade on a fresh block row. If the block already
+  // exists, the cascade either already ran (or the content was already gone
+  // before the first block). Skipping redundant hard-deletes here.
   if (inserted.length > 0) {
     await cascadeBlock({ blockerId: user.id, blockedId: targetUserId });
   }
 
   revalidatePath("/home/feed");
+  revalidatePath("/settings/blocked");
   return { ok: true };
 }
 
@@ -47,7 +48,29 @@ export async function unblock(targetUserId: string): Promise<BlockResult> {
   return { ok: true };
 }
 
-export async function getBlocked(userId: string) {
+/**
+ * Returns the current user's block list — usernames + avatars + blocked-at
+ * timestamps, newest first. Drives /settings/blocked.
+ *
+ * No `userId` parameter on purpose: a block list is private data. Identity
+ * is derived from session via getCachedUser() — never trust a caller-supplied
+ * UUID for this kind of read. (Contrast: getFollowers/getFollowing in
+ * follows/server-actions.ts accept viewerId because follow edges are public.)
+ *
+ * Returns `[]` for logged-out callers rather than throwing — keeps the
+ * /settings/blocked page render straightforward.
+ */
+export async function getBlocked(): Promise<
+  Array<{
+    userId: string;
+    username: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+    blockedAt: Date;
+  }>
+> {
+  const user = await getCachedUser();
+  if (!user) return [];
   return await db
     .select({
       userId: profiles.userId,
@@ -58,6 +81,6 @@ export async function getBlocked(userId: string) {
     })
     .from(blocks)
     .innerJoin(profiles, eq(profiles.userId, blocks.blockedId))
-    .where(eq(blocks.blockerId, userId))
+    .where(eq(blocks.blockerId, user.id))
     .orderBy(desc(blocks.createdAt));
 }

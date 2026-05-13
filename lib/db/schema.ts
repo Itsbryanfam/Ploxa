@@ -418,6 +418,7 @@ export const comments = pgTable(
       table.reviewId,
       desc(table.createdAt),
     ),
+    userIdx: index("comments_user_idx").on(table.userId),
   }),
 );
 
