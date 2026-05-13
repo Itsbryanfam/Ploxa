@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { relativeTime } from "@/lib/utils";
 import { editComment, softDeleteComment } from "@/lib/social/comments/server-actions";
 import { avatarColorFor } from "@/lib/design/avatar-palette";
+import { ReportModal } from "@/components/moderation/report-modal";
 import { FlaggedBadge } from "./flagged-badge";
 
 export function CommentCard(props: {
@@ -125,6 +126,9 @@ export function CommentCard(props: {
               >
                 Reply
               </button>
+            )}
+            {!isOwner && props.viewerId && (
+              <ReportModal targetType="comment" targetId={props.comment.id} />
             )}
             {isOwner && (
               <button

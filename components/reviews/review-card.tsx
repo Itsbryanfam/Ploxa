@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Mascot } from "@/components/mascot/mascot";
 import { HeartRating } from "@/components/ui/heart-rating";
+import { ReportModal } from "@/components/moderation/report-modal";
 import { LikeButton } from "./like-button";
 import { DeleteReviewLink } from "./delete-review-link";
 
@@ -75,12 +76,17 @@ export function ReviewCard({
       </div>
 
       <footer className="flex items-center justify-between border-t border-[var(--border)] pt-4">
-        <LikeButton
-          reviewId={review.id}
-          initialLiked={initialLiked}
-          initialCount={initialLikeCount}
-          loggedOut={loggedOut}
-        />
+        <div className="flex items-center gap-4">
+          <LikeButton
+            reviewId={review.id}
+            initialLiked={initialLiked}
+            initialCount={initialLikeCount}
+            loggedOut={loggedOut}
+          />
+          {!loggedOut && !isOwner && (
+            <ReportModal targetType="review" targetId={review.id} />
+          )}
+        </div>
         {isOwner && (
           <div className="flex gap-2 text-sm">
             <Link

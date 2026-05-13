@@ -4,6 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ListDetail } from "@/components/lists/list-detail";
+import { ReportModal } from "@/components/moderation/report-modal";
 
 interface Props {
   params: Promise<{ username: string; listSlug: string }>;
@@ -66,18 +67,25 @@ export default async function ListDetailPage({ params }: Props) {
   }));
 
   return (
-    <ListDetail
-      list={{
-        id: list.id,
-        title: list.title,
-        description: list.description,
-        publishedAt: list.publishedAt,
-      }}
-      items={items}
-      author={{
-        username: profile.username,
-        displayName: profile.displayName ?? null,
-      }}
-    />
+    <>
+      <ListDetail
+        list={{
+          id: list.id,
+          title: list.title,
+          description: list.description,
+          publishedAt: list.publishedAt,
+        }}
+        items={items}
+        author={{
+          username: profile.username,
+          displayName: profile.displayName ?? null,
+        }}
+      />
+      {viewer && !isOwner && (
+        <div className="mx-auto max-w-3xl px-6 pb-8 flex justify-end">
+          <ReportModal targetType="list" targetId={list.id} />
+        </div>
+      )}
+    </>
   );
 }

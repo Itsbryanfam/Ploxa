@@ -36,6 +36,14 @@ const serverSchema = z.object({
   UNSUBSCRIBE_SECRET: optionalString,
   RESEND_DIGEST_FROM_ADDRESS: optionalString,
   CRON_SECRET: optionalString,
+  // Admin allowlist for /admin/reports (comma-separated UUIDs).
+  // Transformed at parse time into a string[] for direct membership checks
+  // via lib/social/moderation/admin.ts. Beta-scale (1-3 admins); if the
+  // operator pool grows, migrate to a user_roles(user_id, role) table.
+  ADMIN_USER_IDS: z
+    .string()
+    .optional()
+    .transform((s) => (s ?? "").split(",").map((id) => id.trim()).filter(Boolean)),
 });
 
 const clientSchema = z.object({
@@ -71,6 +79,7 @@ const serverEnv =
         UNSUBSCRIBE_SECRET: process.env.UNSUBSCRIBE_SECRET,
         RESEND_DIGEST_FROM_ADDRESS: process.env.RESEND_DIGEST_FROM_ADDRESS,
         CRON_SECRET: process.env.CRON_SECRET,
+        ADMIN_USER_IDS: process.env.ADMIN_USER_IDS,
       })
     : ({} as z.infer<typeof serverSchema>);
 
