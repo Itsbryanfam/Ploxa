@@ -120,7 +120,10 @@
     {
       "id": 13,
       "subject": "Task 13: logs.last_event_at population — wire into existing log mutation paths",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-13",
+      "completedSha": "89d6ab8",
+      "completionNotes": "Ships at f1e3dc8 (impl) + 89d6ab8 (code-quality follow-ups). Files: lib/logs/material-event.ts (NEW — extracted because Turbopack rejects sync exports from 'use server' files; pure module, no directive), lib/logs/server-actions.ts (4 paths wired: createLog, ensureLog playing-branch BOTH values+onConflictDoUpdate, updateLogStatus, updateLogFull — both update paths now SELECT prev row first), lib/imports/merge.ts (insert-branch comment only; merge.ts's update action never touches status/rating so AC8 satisfied vacuously), lib/db/migrations/0011_backfill_cleanup_last_event_at.sql (one-shot cleanup of T1 universal backfill — applied to live DB via Supabase MCP, journal idx 11 added). Tests: 17 cases in last-event-tracking.test.ts (164→165 total). Imports path verified: supabase/functions/_shared/import-engine.ts INSERT only names 6 columns — neither last_event_at nor last_event_type appear, so AC7 satisfied by absence. Code-quality reviewer flagged 1 Important + 3 Suggestions; Important + 1 Suggestion fixed (updateLogStatus + updateLogFull now capture single `const now = new Date()` before .set() and reuse for both updatedAt and lastEventAt — matches ensureLog playingEventAt discipline; added null→playing test case). Deferred suggestions: pgEnum for last_event_type column (future migration), idempotent guard on 0011 (one-shot, won't re-run).",
       "blockedBy": [2],
       "description": "**Goal:** Every existing log mutation path sets lastEventAt + lastEventType correctly. Steam/Xbox imports leave NULL. materialEventFromMutation centralizes the rule. Vitest pins truth table.\n\n**Files:** lib/logs/server-actions.ts, lib/imports/merge.ts, tests/unit/last-event-tracking.test.ts\n\n**Verify:** `pnpm test && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/logs/server-actions.ts\",\"lib/imports/merge.ts\",\"tests/unit/last-event-tracking.test.ts\"],\"verifyCommand\":\"pnpm test && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"materialEventFromMutation: status change (not to backlog/wishlist) OR rating set/changed (not cleared)\",\"createLog + updateLog set lastEventAt on material mutations\",\"Imports leave lastEventAt NULL on backlog inserts\",\"Vitest pins 16+ cases\"]}\n```"
     },
@@ -237,5 +240,5 @@
       "description": "**Goal:** Close the phase. Run M1-M5 manual gate items, polish rough edges, update memory, tag phase-5-complete on main HEAD.\n\n**Files:** memory/MEMORY.md, memory/phase_5_complete.md\n\n**Verify:** `pnpm tsx scripts/verify-phase-5.ts` clean + all manual items signed off in memory\n\n```json:metadata\n{\"files\":[\"memory/MEMORY.md\",\"memory/phase_5_complete.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-5.ts\",\"acceptanceCriteria\":[\"M1 real digest email delivered + unsubscribe round-trip\",\"M2 visual rendering breakpoints (desktop + mobile)\",\"M3 @-mention autocomplete UX\",\"M4 drag-to-reorder touch + mouse\",\"M5 bell badge polling 2-tab\",\"verify-phase-5.ts runs green\",\"memory updated\",\"git tag phase-5-complete\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-13T01:45:00Z"
+  "lastUpdated": "2026-05-13T02:15:00Z"
 }
