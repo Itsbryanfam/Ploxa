@@ -67,20 +67,27 @@ export function ReportModal({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger className="inline-flex items-center gap-1 text-xs text-[var(--text-dim)] hover:text-[var(--text)]">
-        <Flag size={12} /> Report
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-xs text-[var(--text-dim)] hover:text-[var(--text)]"
+        >
+          <Flag size={12} /> Report
+        </button>
       </DialogTrigger>
       <DialogContent>
-        {success ? (
-          <p className="text-sm">Thanks — we&apos;ll review this within 48 hours.</p>
-        ) : (
+        <DialogHeader>
+          <DialogTitle>
+            {success ? "Report submitted" : `Report this ${targetType}`}
+          </DialogTitle>
+          <DialogDescription>
+            {success
+              ? "Thanks — we'll review this within 48 hours."
+              : "Pick a reason. Optional context helps the mods."}
+          </DialogDescription>
+        </DialogHeader>
+        {!success && (
           <>
-            <DialogHeader>
-              <DialogTitle>Report this {targetType}</DialogTitle>
-              <DialogDescription>
-                Pick a reason. Optional context helps the mods.
-              </DialogDescription>
-            </DialogHeader>
             <fieldset className="space-y-2">
               {REASONS.map((r) => (
                 <label

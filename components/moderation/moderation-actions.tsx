@@ -2,6 +2,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { EyeOff, Check } from "lucide-react";
+import { toast } from "sonner";
 
 import { resolveReport } from "@/lib/social/moderation/server-actions";
 
@@ -10,8 +11,8 @@ import { resolveReport } from "@/lib/social/moderation/server-actions";
  * `is_hidden=true` (review/list/profile resolutions are metadata-only — see
  * resolveReport docs). Keep records the resolution with no target mutation.
  *
- * Surfaces failures inline via `alert` — admin queue is intentionally low-
- * traffic and a richer toast UI isn't worth the bytes here.
+ * Surfaces success + failure via `sonner` toasts (Toaster mounted globally
+ * in app/providers.tsx) for consistency with the rest of the client UI.
  */
 export function ModerationActions({
   reportId,
@@ -28,8 +29,9 @@ export function ModerationActions({
       const result = await resolveReport({ reportId, action });
       if (result.ok) {
         router.refresh();
+        toast.success("Report resolved");
       } else {
-        alert(`Resolve failed: ${result.reason ?? "unknown"}`);
+        toast.error(`Couldn't resolve report: ${result.reason ?? "unknown"}`);
       }
     });
   }
