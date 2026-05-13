@@ -33,6 +33,8 @@ const serverSchema = z.object({
   // long-tail fallback after Steam CDN. Free key:
   // https://www.steamgriddb.com/profile/preferences/api
   SGDB_API_KEY: optionalString,
+  UNSUBSCRIBE_SECRET: optionalString,
+  RESEND_DIGEST_FROM_ADDRESS: optionalString,
 });
 
 const clientSchema = z.object({
@@ -65,6 +67,8 @@ const serverEnv =
         SUPABASE_FUNCTIONS_URL: process.env.SUPABASE_FUNCTIONS_URL,
         IMPORT_ENCRYPTION_KEY: process.env.IMPORT_ENCRYPTION_KEY,
         SGDB_API_KEY: process.env.SGDB_API_KEY,
+        UNSUBSCRIBE_SECRET: process.env.UNSUBSCRIBE_SECRET,
+        RESEND_DIGEST_FROM_ADDRESS: process.env.RESEND_DIGEST_FROM_ADDRESS,
       })
     : ({} as z.infer<typeof serverSchema>);
 
