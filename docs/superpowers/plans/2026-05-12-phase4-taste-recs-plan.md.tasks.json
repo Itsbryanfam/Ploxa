@@ -115,7 +115,7 @@
     {
       "id": 17,
       "subject": "Task 17: Share modal — Tweet / Copy link / Download",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [16, 6],
       "description": "**Goal:** ShareButton placeholder from T6 becomes a real modal previewing the trading card with three share affordances. Defensive privacy gating.\n\n**Files:** components/taste/share-modal.tsx, components/taste/tier-narrative.tsx (replace stub)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual Tweet/Copy/Download test\n\n```json:metadata\n{\"files\":[\"components/taste/share-modal.tsx\",\"components/taste/tier-narrative.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"dialog with live OG preview (cache-busted by narrativeGeneratedAt)\",\"Tweet: opens twitter.com/intent/tweet in new window\",\"Copy link: clipboard write + toast\",\"Download: fetch + blob download as {username}-taste.png\",\"disabled button + tooltip for private profiles\"]}\n```"
     },
