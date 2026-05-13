@@ -50,7 +50,8 @@ export default async function ProfilePage({
           username: profile.username,
           displayName: profile.displayName,
           bio: profile.bio,
-          avatarUrl: profile.avatarUrl,
+          profilePictureUrl: profile.profilePictureUrl,
+          profilePictureKind: profile.profilePictureKind,
         }}
         isOwner={isOwner}
         isViewerLoggedIn={Boolean(user)}

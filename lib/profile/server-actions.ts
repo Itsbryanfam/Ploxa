@@ -195,7 +195,11 @@ export async function ensureMyProfile(opts?: { username?: string }) {
   try {
     const [created] = await db
       .insert(schema.profiles)
-      .values({ userId: user.id, username, displayName: user.email ?? username })
+      // displayName intentionally null at signup. The header walks
+      // `displayName ?? username` so the UI shows @username until the
+      // user sets a real display name in /settings. Seeding with the
+      // email leaked PII on the public profile page (caught 2026-05-13).
+      .values({ userId: user.id, username, displayName: null })
       .returning();
     return created;
   } catch (err) {
