@@ -48,10 +48,14 @@ export async function GET(req: NextRequest) {
   }
   const steamId = match[1];
 
-  // Best-effort persona fetch (result unused — connect() upserts display handle elsewhere)
-  await steamAdapter.connect({ kind: "steam", steamId }).catch(() => {
-    // Swallow — persona name is optional; SteamID is all we need to proceed
-  });
+  // Best-effort persona fetch. We persist displayHandle on platform_connections
+  // for the profile-page connector pill ("Steam · papi"). A failed fetch must
+  // not block the connection — Steam API hiccups happen and a SteamID alone is
+  // enough for imports + a generic "Steam" pill.
+  const connectResult = await steamAdapter
+    .connect({ kind: "steam", steamId })
+    .catch(() => null);
+  const displayName = connectResult?.displayHandle ?? null;
 
   // Upsert platform_connections
   await db
@@ -60,13 +64,18 @@ export async function GET(req: NextRequest) {
       userId: user.id,
       platform: "steam",
       externalId: steamId,
+      displayName,
       accessTokenEncrypted: null,
       refreshTokenEncrypted: null,
       isActive: true,
     })
     .onConflictDoUpdate({
       target: [platformConnections.userId, platformConnections.platform],
-      set: { externalId: steamId, isActive: true },
+      // Only overwrite displayName when a fresh non-null value came back;
+      // a transient Steam API failure shouldn't clobber the cached gamertag.
+      set: displayName
+        ? { externalId: steamId, displayName, isActive: true }
+        : { externalId: steamId, isActive: true },
     });
 
   // Insert imports row

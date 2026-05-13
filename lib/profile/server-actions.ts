@@ -310,3 +310,47 @@ export async function updateUsername(
   revalidatePath(`/u/${parsed.data}`, "page");
   return { ok: true, username: parsed.data };
 }
+
+// ---------------------------------------------------------------------------
+// Discord handle (profile pill, no OAuth)
+// ---------------------------------------------------------------------------
+
+export type UpdateDiscordResult =
+  | { ok: true; discordUsername: string | null }
+  | { ok: false; error: string };
+
+/**
+ * Set the Discord handle that renders as a copy-to-clipboard pill on the
+ * profile hub. Pass an empty string to clear. We don't validate the handle's
+ * actual format — Discord supports the legacy `name#1234` and the newer
+ * `@username` shapes, plus older accounts with non-ASCII display names.
+ * The 32-char DB cap and the strip-leading-@ normalization are the only
+ * gates; let the user own how their handle renders.
+ */
+export async function updateDiscordUsername(
+  raw: string,
+): Promise<UpdateDiscordResult> {
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const trimmed = raw.trim().replace(/^@/, ""); // leading @ is presentational
+  if (trimmed.length > 32) {
+    return { ok: false, error: "Discord handle is too long (32 max)." };
+  }
+  const value = trimmed.length === 0 ? null : trimmed;
+
+  // Read existing username for revalidation; if no profile, surface clean.
+  const existing = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.userId, user.id),
+    columns: { username: true },
+  });
+  if (!existing) return { ok: false, error: "Profile not found." };
+
+  await db
+    .update(schema.profiles)
+    .set({ discordUsername: value, updatedAt: new Date() })
+    .where(eq(schema.profiles.userId, user.id));
+
+  revalidatePath(`/u/${existing.username}`, "page");
+  return { ok: true, discordUsername: value };
+}

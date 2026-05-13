@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Mascot } from "@/components/mascot/mascot";
 
 import { BlockAction } from "./block-action";
+import { ConnectorPills } from "./connector-pills";
 import { FollowButton } from "./follow-button";
 
 /**
@@ -35,6 +36,7 @@ import { FollowButton } from "./follow-button";
  */
 export function ProfileOverviewHeader({
   profile,
+  connections,
   isOwner,
   isViewerLoggedIn,
   isFollowing,
@@ -48,13 +50,21 @@ export function ProfileOverviewHeader({
     bio: string | null;
     profilePictureUrl: string | null;
     profilePictureKind: "static" | "gif" | null;
+    discordUsername: string | null;
   };
+  connections: Array<{
+    platform: "steam" | "xbox" | "psn";
+    externalId: string;
+    displayName: string | null;
+  }>;
   isOwner: boolean;
   isViewerLoggedIn: boolean;
   isFollowing: boolean;
   followerCount: number;
   followingCount: number;
 }) {
+  const steam = connections.find((c) => c.platform === "steam");
+  const xbox = connections.find((c) => c.platform === "xbox");
   const showActions = isViewerLoggedIn && !isOwner;
   const displayName = profile.displayName ?? profile.username;
   return (
@@ -78,6 +88,11 @@ export function ProfileOverviewHeader({
             {displayName}
           </h1>
           <p className="text-sm text-[var(--text-dim)]">@{profile.username}</p>
+          <ConnectorPills
+            steam={steam ? { gamertag: steam.displayName, steamId: steam.externalId } : null}
+            xbox={xbox ? { gamertag: xbox.displayName, xuid: xbox.externalId } : null}
+            discord={profile.discordUsername}
+          />
           {profile.bio && (
             <p className="mt-2 text-sm text-[var(--text)] max-w-md">
               {profile.bio}

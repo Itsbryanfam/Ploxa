@@ -116,6 +116,10 @@ export const profiles = pgTable("profiles", {
   // migration 0001 to get the constraint.
   profilePictureKind: text("profile_picture_kind", { enum: ["static", "gif"] }),
   mascotVariant: varchar("mascot_variant", { length: 32 }).default("default"),
+  // Self-reported Discord handle for the profile pill ("username" or
+  // "username#1234"). No OAuth — display-only with click-to-copy because
+  // Discord profile URLs aren't publicly routable. Added 2026-05-13.
+  discordUsername: varchar("discord_username", { length: 32 }),
   isPublic: boolean("is_public").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -594,6 +598,9 @@ export const platformConnections = pgTable(
       .references(() => authUsers.id, { onDelete: "cascade" }),
     platform: platformEnum("platform").notNull(),
     externalId: text("external_id").notNull(),
+    // Cached human-readable gamertag (Steam personaname, Xbox Gamertag).
+    // Populated by sync; nullable for legacy rows that predate this column.
+    displayName: varchar("display_name", { length: 64 }),
     accessTokenEncrypted: text("access_token_encrypted"),
     refreshTokenEncrypted: text("refresh_token_encrypted"),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),

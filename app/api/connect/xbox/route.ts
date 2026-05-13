@@ -56,19 +56,28 @@ export async function POST(req: NextRequest) {
 
   const accessTokenEncrypted = encryptSecret(body.key);
 
+  // displayHandle (the Xbox gamertag) feeds the profile-page connector pill.
+  // OpenXBL returns it on every successful connect, but tighten the contract
+  // anyway: if it ever comes back null we don't clobber a previously-cached
+  // value on re-connect.
+  const displayName = connect.displayHandle ?? null;
+
   await db
     .insert(platformConnections)
     .values({
       userId: user.id,
       platform: "xbox",
       externalId: connect.externalId,
+      displayName,
       accessTokenEncrypted,
       refreshTokenEncrypted: null,
       isActive: true,
     })
     .onConflictDoUpdate({
       target: [platformConnections.userId, platformConnections.platform],
-      set: { externalId: connect.externalId, accessTokenEncrypted, isActive: true },
+      set: displayName
+        ? { externalId: connect.externalId, displayName, accessTokenEncrypted, isActive: true }
+        : { externalId: connect.externalId, accessTokenEncrypted, isActive: true },
     });
 
   const [importRow] = await db

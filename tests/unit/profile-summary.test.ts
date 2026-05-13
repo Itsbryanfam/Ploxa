@@ -111,6 +111,13 @@ vi.mock("@/lib/db", () => {
         slug: {},
         coverUrl: {},
       },
+      platformConnections: {
+        userId: {},
+        platform: {},
+        externalId: {},
+        displayName: {},
+        isActive: {},
+      },
     },
   };
 });

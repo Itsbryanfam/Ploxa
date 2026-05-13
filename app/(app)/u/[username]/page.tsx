@@ -36,6 +36,7 @@ export default async function ProfilePage({
     topLists,
     recentReviews,
     libraryTruncated,
+    connections,
     isOwner,
     isFollowing,
     followerCount,
@@ -52,7 +53,9 @@ export default async function ProfilePage({
           bio: profile.bio,
           profilePictureUrl: profile.profilePictureUrl,
           profilePictureKind: profile.profilePictureKind,
+          discordUsername: profile.discordUsername,
         }}
+        connections={connections}
         isOwner={isOwner}
         isViewerLoggedIn={Boolean(user)}
         isFollowing={isFollowing}

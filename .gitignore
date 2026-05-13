@@ -61,3 +61,6 @@ skills-lock.json
 
 # Supabase CLI temp / cache
 /supabase/.temp/
+
+# Codex CLI local config — per-developer MCP URLs etc., not source-of-truth
+.codex/

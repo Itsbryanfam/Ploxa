@@ -4,15 +4,20 @@ import { useState, useTransition } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { AvatarUploader } from "@/components/settings/avatar-uploader";
 import { uploadAvatar } from "@/lib/profile/avatar-actions";
-import { updateUsername, type HeaderUser } from "@/lib/profile/server-actions";
+import {
+  updateDiscordUsername,
+  updateUsername,
+  type HeaderUser,
+} from "@/lib/profile/server-actions";
 import { UsernameInput } from "@/components/auth/username-input";
 import { Button } from "@/components/ui/button";
 
 interface Props {
   user: HeaderUser;
+  discordUsername: string | null;
 }
 
-export function ProfileSection({ user }: Props) {
+export function ProfileSection({ user, discordUsername }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +74,31 @@ export function ProfileSection({ user }: Props) {
     // when re-opened); flagging it as valid keeps state consistent.
     setUsernameDraft({ value: user.username ?? "", valid: true });
     setUsernameError(null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Discord handle (saves on blur; null = no pill rendered on profile page)
+  // ---------------------------------------------------------------------------
+  const [discordDraft, setDiscordDraft] = useState(discordUsername ?? "");
+  const [discordSaved, setDiscordSaved] = useState<string | null>(discordUsername);
+  const [discordError, setDiscordError] = useState<string | null>(null);
+  const [savingDiscord, startDiscordTransition] = useTransition();
+
+  function saveDiscordOnBlur() {
+    const next = discordDraft.trim().replace(/^@/, "");
+    const current = discordSaved ?? "";
+    if (next === current) return; // no-op
+    setDiscordError(null);
+    startDiscordTransition(async () => {
+      const res = await updateDiscordUsername(discordDraft);
+      if (res.ok) {
+        setDiscordSaved(res.discordUsername);
+        // Re-sync the input with the canonical normalized value (leading @ stripped).
+        setDiscordDraft(res.discordUsername ?? "");
+      } else {
+        setDiscordError(res.error);
+      }
+    });
   }
 
   return (
@@ -132,6 +162,38 @@ export function ProfileSection({ user }: Props) {
                 </p>
               )}
             </div>
+          )}
+        </div>
+        <div>
+          <div className="text-sm text-[var(--text-dim)] mb-1">
+            Discord{" "}
+            <span className="text-xs text-[var(--text-faint)]">
+              (shown as a copy-to-clipboard pill on your profile)
+            </span>
+          </div>
+          <input
+            type="text"
+            inputMode="text"
+            value={discordDraft}
+            onChange={(e) => setDiscordDraft(e.target.value)}
+            onBlur={saveDiscordOnBlur}
+            placeholder="username"
+            maxLength={32}
+            className="w-full max-w-xs rounded border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm focus:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          />
+          <p className="text-xs text-[var(--text-dim)] mt-1 h-4" aria-live="polite">
+            {savingDiscord
+              ? "Saving…"
+              : discordError
+                ? ""
+                : discordSaved
+                  ? `Saved as ${discordSaved}`
+                  : ""}
+          </p>
+          {discordError && (
+            <p className="text-sm text-red-500" role="alert">
+              {discordError}
+            </p>
           )}
         </div>
         <div>

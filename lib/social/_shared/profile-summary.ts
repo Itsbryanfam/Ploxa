@@ -12,7 +12,7 @@ import {
 import { isBlockedBetween } from "./visibility";
 import { tierForUser } from "@/lib/taste/tier";
 
-const { profiles, logs, reviews, lists, follows, tasteFingerprints } = schema;
+const { profiles, logs, reviews, lists, follows, tasteFingerprints, platformConnections } = schema;
 
 export type ProfileSummary = {
   profile: typeof profiles.$inferSelect;
@@ -38,6 +38,13 @@ export type ProfileSummary = {
     gameCoverUrl: string | null;
   }>;
   libraryTruncated: LibraryItem[]; // first 12 most recently updated
+  // Active platform connections (Steam, Xbox) for connector-pill rendering.
+  // Discord lives on profile.discordUsername (no OAuth, text-only).
+  connections: Array<{
+    platform: "steam" | "xbox" | "psn";
+    externalId: string;
+    displayName: string | null;
+  }>;
   isOwner: boolean;
   isFollowing: boolean;
   isBlocked: boolean;
@@ -76,7 +83,7 @@ export async function getProfileSummary(
     if (await isBlockedBetween(viewerId, profile.userId)) return null;
   }
 
-  // 7 parallel fetches — none depend on each other's results.
+  // 8 parallel fetches — none depend on each other's results.
   const [
     rawLogs,
     rawReviews,
@@ -85,6 +92,7 @@ export async function getProfileSummary(
     rawFollowerCount,
     rawFollowingCount,
     rawIsFollowing,
+    rawConnections,
   ] = await Promise.all([
     // Library — own profile sees everything, public sees non-private. NOTE: no
     // .limit() here on purpose: computeUserStatsFromLibrary needs the full set
@@ -176,6 +184,24 @@ export async function getProfileSummary(
           ),
         })
       : Promise.resolve(undefined),
+
+    // Active platform connections for connector pills. Filter is_active so
+    // a user who disconnected Steam doesn't leak a dead pill. Order is
+    // platform-asc so render order is stable across page loads.
+    db
+      .select({
+        platform: platformConnections.platform,
+        externalId: platformConnections.externalId,
+        displayName: platformConnections.displayName,
+      })
+      .from(platformConnections)
+      .where(
+        and(
+          eq(platformConnections.userId, profile.userId),
+          eq(platformConnections.isActive, true),
+        ),
+      )
+      .orderBy(platformConnections.platform),
   ]);
 
   const allLibrary: LibraryItem[] = rawLogs.map((r) =>
@@ -195,6 +221,7 @@ export async function getProfileSummary(
     topLists: rawTopLists,
     recentReviews: rawReviews,
     libraryTruncated: allLibrary.slice(0, 12),
+    connections: rawConnections,
     isOwner,
     isFollowing: Boolean(rawIsFollowing),
     // isBlocked is always false on a returned result: blocked non-owners hit
