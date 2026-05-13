@@ -78,6 +78,13 @@
       "when": 1778976000000,
       "tag": "0010_comments_user_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779062400000,
+      "tag": "0011_backfill_cleanup_last_event_at",
+      "breakpoints": true
     }
   ]
 }
