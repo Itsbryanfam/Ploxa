@@ -40,6 +40,11 @@ export async function emit(args: EmitArgs): Promise<void> {
   // reverse index from migration 0008.
   if (await isBlockedBetween(args.recipientUserId, args.actorUserId)) return;
 
+  // Best-effort INSERT: a rare race (actor row deleted mid-flight → ON DELETE
+  // SET NULL cascades on notifications.actor_id) propagates to the caller.
+  // Callers treat notification emission as fire-and-forget, so a thrown error
+  // would surface as a failed mutation. T19's inbox polling will paper over
+  // any dropped rows by re-fetching on focus.
   await db
     .insert(notifications)
     .values({
