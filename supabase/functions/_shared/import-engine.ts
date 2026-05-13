@@ -136,7 +136,27 @@ export async function matchToRawg(
 }
 
 /** RAWG API client (vendored inline; mirrors lib/rawg/client.ts).
- *  Fetches the top search hit and upserts into the local `games` table.
+ *  Fetches the top search hit, then a follow-up /games/{id} detail call,
+ *  and upserts the enriched row into the local `games` table.
+ *
+ *  Why two calls: RAWG /games?search returns only id/slug/name/released/
+ *  background_image/rating/metacritic/genres — no themes (tags), no
+ *  playtime, no description. Fingerprint vectors, AI rerank prompts, and
+ *  the session-length card all depend on those fields, so importing a
+ *  bare row leaves /u/{name}/taste with washed-out themes and an empty
+ *  mechanics card. The extra ~300ms per game is amortized across the
+ *  import's per-game RAWG-search step that already runs.
+ *
+ *  Returns the new games.id, or null if RAWG has no match. The detail
+ *  fetch is best-effort: if it fails we still INSERT the basic row so
+ *  the import doesn't lose the game entirely.
+ *
+ *  ON CONFLICT switched from DO NOTHING → DO UPDATE: this function only
+ *  fires when matchToRawg's local lookups missed, so the row is normally
+ *  new. Conflicts indicate either (a) a race between concurrent imports
+ *  finding the same new game, or (b) a backfill job re-running on an
+ *  existing row. In both cases our just-fetched data is at least as
+ *  fresh as what's there, so updating is safe.
  *  Returns the new games.id or null if RAWG has no match. */
 async function searchRawgAndUpsert(
   sql: ReturnType<typeof postgres>,
@@ -188,9 +208,42 @@ async function searchRawgAndUpsert(
     if (yearMatch) pick = yearMatch;
   }
 
+  // Best-effort detail fetch for themes/playtime/description/platforms.
+  // Mirrors the RawgGameDetailSchema in lib/rawg/types.ts. If this errors
+  // or the response shape is unexpected, fall back to the search-only
+  // payload so the game still lands in the catalog.
+  type RawgGameDetail = {
+    description_raw?: string;
+    playtime?: number; // hours
+    tags?: Array<{ name: string }>;
+    platforms?: Array<{ platform: { name: string } }>;
+  };
+  let detail: RawgGameDetail = {};
+  try {
+    const detailRes = await fetch(
+      `https://api.rawg.io/api/games/${pick.id}?key=${encodeURIComponent(rawgApiKey)}`,
+    );
+    if (detailRes.ok) {
+      detail = (await detailRes.json()) as RawgGameDetail;
+    }
+  } catch {
+    // Swallow — fall back to bare insert.
+  }
+
   const genres = (pick.genres ?? []).map((g) => g.name);
+  // Cap themes at 20 to bound DB array size — matches lib/games/server-actions.ts.
+  const themes = (detail.tags ?? []).slice(0, 20).map((t) => t.name);
+  const platforms = (detail.platforms ?? []).map((p) => p.platform.name);
+  // RAWG occasionally returns "" for description_raw; coerce to null.
+  const description = detail.description_raw?.trim() || null;
+  // RAWG `playtime` is hours; numeric(5,1) on disk → string for postgres-js.
+  const playtimeAvgHours = detail.playtime ? String(detail.playtime) : null;
+
   await sql`
-    INSERT INTO games (id, slug, title, released, cover_url, rawg_rating, metacritic_score, genres)
+    INSERT INTO games (
+      id, slug, title, released, cover_url, rawg_rating, metacritic_score,
+      genres, themes, mechanics, platforms, playtime_avg_hours, description
+    )
     VALUES (
       ${pick.id},
       ${pick.slug},
@@ -199,9 +252,19 @@ async function searchRawgAndUpsert(
       ${pick.background_image ?? null},
       ${pick.rating ?? null},
       ${pick.metacritic ?? null},
-      ${genres}
+      ${genres},
+      ${themes},
+      ${[] as string[]},
+      ${platforms},
+      ${playtimeAvgHours},
+      ${description}
     )
-    ON CONFLICT (id) DO NOTHING
+    ON CONFLICT (id) DO UPDATE SET
+      themes = EXCLUDED.themes,
+      platforms = EXCLUDED.platforms,
+      playtime_avg_hours = EXCLUDED.playtime_avg_hours,
+      description = EXCLUDED.description,
+      cached_at = NOW()
   `;
   return pick.id;
 }
