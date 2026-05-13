@@ -74,7 +74,6 @@ export function ProfileOverviewHeader({
         <div className="flex items-center gap-2">
           <FollowButton
             targetUserId={profile.userId}
-            targetUsername={profile.username}
             initialIsFollowing={isFollowing}
           />
           <BlockAction

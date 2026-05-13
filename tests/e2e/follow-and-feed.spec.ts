@@ -17,9 +17,9 @@ test("publicUser can follow publicUser2 and see Following state", async ({
 }) => {
   // Log in as publicUser via the password form.
   await page.goto("/login");
-  await page.fill("input[name='email']", publicUser.email);
-  await page.fill("input[name='password']", publicUser.password);
-  await page.click("button[type='submit']");
+  await page.getByLabel("Email").fill(publicUser.email);
+  await page.getByLabel("Password").fill(publicUser.password);
+  await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL("/home");
 
   // Visit publicUser2's profile and click Follow.

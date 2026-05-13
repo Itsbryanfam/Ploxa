@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 
+import { useRouter } from "next/navigation";
+
 import { follow, unfollow } from "@/lib/social/follows/server-actions";
 
 /**
@@ -22,9 +24,9 @@ export function FollowButton({
   initialIsFollowing,
 }: {
   targetUserId: string;
-  targetUsername: string;
   initialIsFollowing: boolean;
 }) {
+  const router = useRouter();
   const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
   const [isPending, startTransition] = useTransition();
 
@@ -36,7 +38,13 @@ export function FollowButton({
         ? await follow(targetUserId)
         : await unfollow(targetUserId);
       if (!result.ok) {
-        setIsFollowing(!next); // rollback on failure
+        setIsFollowing(!next); // rollback
+        if (result.reason === "not-authenticated") {
+          router.push("/login");
+        }
+        // Other reasons (self-follow, blocked) shouldn't be reachable given
+        // ProfileOverviewHeader's render-time guards. Silent rollback is fine
+        // for those — defense-in-depth, no visible UI feedback needed.
       }
     });
   }

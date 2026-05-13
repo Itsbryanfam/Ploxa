@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useId, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { block } from "@/lib/social/blocks/server-actions";
@@ -21,23 +21,34 @@ export function BlockAction({
   targetUserId: string;
   targetUsername: string;
 }) {
+  const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+
+  function handleClose() {
+    dialogRef.current?.close();
+    triggerRef.current?.focus();
+  }
 
   function confirmBlock() {
     startTransition(async () => {
       const result = await block(targetUserId);
-      dialogRef.current?.close();
-      if (result.ok) router.push("/home");
+      if (result.ok) {
+        router.push("/home");
+      } else {
+        handleClose(); // focus returns to trigger on failure
+      }
     });
   }
 
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
-        aria-label="Profile menu"
+        aria-label="More options"
         onClick={() => dialogRef.current?.showModal()}
         className="px-2 py-1.5 text-sm rounded-md border border-[var(--border)] hover:border-[var(--border-hover)]"
       >
@@ -45,9 +56,10 @@ export function BlockAction({
       </button>
       <dialog
         ref={dialogRef}
-        className="rounded-lg p-6 bg-[var(--bg-elevated)] text-[var(--text)] border border-[var(--border)] backdrop:bg-black/40 max-w-sm"
+        aria-labelledby={titleId}
+        className="rounded-lg p-6 bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] backdrop:bg-black/40 max-w-sm"
       >
-        <h2 className="text-lg font-semibold">Block @{targetUsername}?</h2>
+        <h2 id={titleId} className="text-lg font-semibold">Block @{targetUsername}?</h2>
         <p className="mt-2 text-sm text-[var(--text-dim)]">
           You won&apos;t see their content. They won&apos;t see yours. Mutual follows and
           likes will be removed and won&apos;t be restored if you unblock.
@@ -55,7 +67,7 @@ export function BlockAction({
         <div className="mt-6 flex gap-2 justify-end">
           <button
             type="button"
-            onClick={() => dialogRef.current?.close()}
+            onClick={handleClose}
             className="px-4 py-1.5 text-sm rounded-md border border-[var(--border)] hover:border-[var(--border-hover)]"
           >
             Cancel

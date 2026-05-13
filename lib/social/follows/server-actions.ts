@@ -1,5 +1,6 @@
 "use server";
 import { and, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
@@ -38,6 +39,17 @@ export async function follow(targetUserId: string): Promise<FollowResult> {
   if (inserted.length > 0) {
     await onFollow({ followerId: user.id, followedId: targetUserId });
   }
+
+  // Revalidate the followed user's profile page so the server-rendered
+  // follower count refreshes on next visit.
+  const followedProfile = await db.query.profiles.findFirst({
+    where: eq(profiles.userId, targetUserId),
+    columns: { username: true },
+  });
+  if (followedProfile) {
+    revalidatePath(`/u/${followedProfile.username}`);
+  }
+
   return { ok: true };
 }
 
@@ -49,6 +61,17 @@ export async function unfollow(targetUserId: string): Promise<FollowResult> {
     .where(
       and(eq(follows.followerId, user.id), eq(follows.followedId, targetUserId)),
     );
+
+  // Revalidate the unfollowed user's profile page so the server-rendered
+  // follower count refreshes on next visit.
+  const unfollowedProfile = await db.query.profiles.findFirst({
+    where: eq(profiles.userId, targetUserId),
+    columns: { username: true },
+  });
+  if (unfollowedProfile) {
+    revalidatePath(`/u/${unfollowedProfile.username}`);
+  }
+
   return { ok: true };
 }
 
