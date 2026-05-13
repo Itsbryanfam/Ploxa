@@ -78,6 +78,7 @@ export async function POST(request: Request) {
 
   const resend = new Resend(resendKey);
   let sent = 0;
+  let failed = 0;
 
   const queue = [...candidates];
 
@@ -94,27 +95,47 @@ export async function POST(request: Request) {
         const html = await renderDigestHtml({ payload, unsubscribeUrl, baseUrl });
         const text = renderDigestPlainText({ payload, unsubscribeUrl });
 
-        await resend.emails.send({
+        // Resend's SDK returns { data, error } and does NOT throw on send failure.
+        // We must check error explicitly; otherwise a failed delivery would still
+        // mark the user as "sent" and we'd skip them on the next cron tick.
+        const sendResult = await resend.emails.send({
           from: fromAddress,
           to: candidate.email,
           subject: SUBJECT,
           html,
           text,
         });
+        if (sendResult.error) {
+          console.error(`Digest send rejected by Resend for ${candidate.user_id}:`, sendResult.error);
+          failed++;
+          continue;
+        }
 
-        await db
-          .update(schema.profiles)
-          .set({ lastDigestSentAt: now })
-          .where(eq(schema.profiles.userId, candidate.user_id));
-
+        // Count the send before the DB update. If the DB update fails the email
+        // has already left our hands — we'd rather log the cooldown-state drift
+        // than understate the count. (The next cron run would resend, producing
+        // a duplicate; flag this loudly so the operator can intervene.)
         sent++;
+
+        try {
+          await db
+            .update(schema.profiles)
+            .set({ lastDigestSentAt: now })
+            .where(eq(schema.profiles.userId, candidate.user_id));
+        } catch (dbErr) {
+          console.error(
+            `lastDigestSentAt update failed AFTER successful send for ${candidate.user_id}; next cron tick may resend:`,
+            dbErr,
+          );
+        }
       } catch (e) {
-        console.error(`Digest send failed for ${candidate.user_id}:`, e);
+        console.error(`Digest pipeline failed for ${candidate.user_id}:`, e);
+        failed++;
       }
     }
   }
 
   await Promise.all(Array.from({ length: BATCH_CONCURRENCY }, () => worker()));
 
-  return NextResponse.json({ sent, candidates: candidates.length });
+  return NextResponse.json({ sent, failed, candidates: candidates.length });
 }

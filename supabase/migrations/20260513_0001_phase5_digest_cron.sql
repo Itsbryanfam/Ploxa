@@ -9,19 +9,26 @@
 --
 -- Apply via Supabase MCP (mcp__supabase__apply_migration) — pg_cron lives
 -- in the cron schema and is not Drizzle-managed.
---
--- AFTER APPLY: set the GUC `app.cron_secret` via Supabase dashboard
--- (Project Settings → Postgres → Custom Config) to the same value as
--- the Vercel env CRON_SECRET. The migration SQL references this GUC
--- via current_setting('app.cron_secret', true) so the secret never
--- appears in the migration file itself.
 -- ============================================================================
 
--- 1. Ensure extensions are enabled (idempotent — Phase 3/4 likely already did this).
+-- 1. Ensure extensions are enabled (idempotent — Phase 3/4 already did this).
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
--- 2. Idempotent unschedule-then-schedule so this migration can be re-applied.
+-- 2. Cron secret stored in Supabase Vault (NOT committed here — set externally).
+--    Run once via Supabase MCP execute_sql or the dashboard SQL Editor with
+--    the same 32+ char value as the Vercel env CRON_SECRET:
+--
+--    SELECT vault.create_secret(
+--      '<32-char-secret-matching-Vercel-CRON_SECRET-env>',
+--      'phase5_cron_secret',
+--      'X-Cron-Secret header value for /api/internal/digest/run'
+--    );
+--
+--    Note: ALTER DATABASE SET app.* is blocked on managed Supabase (not superuser).
+--    Supabase Vault (vault.decrypted_secrets) is the supported alternative.
+
+-- 3. Idempotent unschedule-then-schedule so this migration can be re-applied.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'phase5-digest-email') THEN
@@ -29,21 +36,22 @@ BEGIN
   END IF;
 END $$;
 
--- 3. Schedule daily 12:00 UTC. The Vercel route pulls the secret from the
---    X-Cron-Secret header; we read it here from the GUC app.cron_secret
---    (set once in Project Settings → Postgres → Custom Config).
+-- 4. Schedule daily 12:00 UTC. Mirrors Phase 3/4 shape: read the secret from
+--    Vault at runtime (NOT a hardcoded string in the cron SQL), build the
+--    POST body, and fire-and-forget. The Vercel route ack lands in pg_net
+--    response logs.
 SELECT cron.schedule(
   'phase5-digest-email',
   '0 12 * * *',
   $$
-  SELECT net.http_post(
-    url := 'https://letterboxd-for-games.vercel.app/api/internal/digest/run',
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'X-Cron-Secret', current_setting('app.cron_secret', true)
-    ),
-    body := '{}'::jsonb
-  );
+    SELECT net.http_post(
+      url     := 'https://letterboxd-for-games.vercel.app/api/internal/digest/run',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'X-Cron-Secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'phase5_cron_secret' LIMIT 1)
+      ),
+      body    := '{}'::jsonb
+    ) AS request_id;
   $$
 );
 
