@@ -67,6 +67,12 @@ describe("materialEventFromMutation — truth table", () => {
     expect(result).toEqual({ eventType: "status_change" });
   });
 
+  it("null → playing IS material (fresh log direct to playing)", () => {
+    expect(materialEventFromMutation({
+      prevStatus: null, newStatus: "playing", prevRating: null, newRating: null,
+    })?.eventType).toBe("status_change");
+  });
+
   // -------------------------------------------------------------------------
   // Status transitions → NOT material (non-material targets)
   // -------------------------------------------------------------------------

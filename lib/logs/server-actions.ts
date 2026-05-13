@@ -357,13 +357,14 @@ export async function updateLogStatus(input: unknown): Promise<{ ok: boolean; er
     newRating: null,
   });
 
+  const now = new Date();
   const result = await db
     .update(schema.logs)
     .set({
       status: parsed.data.status,
-      updatedAt: new Date(),
+      updatedAt: now,
       ...(statusEventInfo
-        ? { lastEventAt: new Date(), lastEventType: statusEventInfo.eventType }
+        ? { lastEventAt: now, lastEventType: statusEventInfo.eventType }
         : {}),
     })
     .where(and(eq(schema.logs.id, parsed.data.logId), eq(schema.logs.userId, user.id)))
@@ -451,6 +452,7 @@ export async function updateLogFull(input: unknown): Promise<{ ok: boolean; erro
     newRating,
   });
 
+  const now = new Date();
   const result = await db
     .update(schema.logs)
     .set({
@@ -463,9 +465,9 @@ export async function updateLogFull(input: unknown): Promise<{ ok: boolean; erro
       isReplay: d.isReplay,
       isPrivate: d.isPrivate,
       notes: d.notes?.trim() || null,
-      updatedAt: new Date(),
+      updatedAt: now,
       ...(fullEventInfo
-        ? { lastEventAt: new Date(), lastEventType: fullEventInfo.eventType }
+        ? { lastEventAt: now, lastEventType: fullEventInfo.eventType }
         : {}),
     })
     .where(and(eq(schema.logs.id, d.logId), eq(schema.logs.userId, user.id)))
