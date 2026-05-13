@@ -241,7 +241,10 @@
     {
       "id": 21,
       "subject": "Task 21: React Email digest template + unsubscribe JWT helpers",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-13",
+      "completedSha": "a6fd438",
+      "completionNotes": "Ships at 8774d48 (impl) + a6fd438 (code-quality follow-ups). Controller pre-corrected 2 plan bugs: (1) plan imported non-existent `serverEnv` from lib/env.ts — corrected to requireEnv('UNSUBSCRIBE_SECRET') inside getKey() so the env reads at invocation time, not module load; (2) plan said z.string().min(32) for the secret (required) — corrected to optionalString matching the existing pattern, so build doesn't crash when env isn't set locally. Mascot path corrected too: plan said public/mascot-pixel-24.png (asset doesn't exist); switched to existing /mascot/idle.png with width/height='24' attributes — email clients respect the rendered size regardless of source dimensions. Spec compliance review clean (all 16 numbered requirements). Code-quality review found 0 Critical/1 Important about @react-email/components@1.x deprecated on npm (deferred to follow-up; v2 splits into individual packages but our build resolves fine) + 2 actionable Important + 4 Minor. Actionable fixes applied: (a) toLocaleDateString locale-pinned to en-US explicit format in both HTML and plain-text paths (was implicit locale, server-locale-dependent); (b) new tests/unit/unsubscribe-token.test.ts: 4-case round-trip + tamper + garbage + empty-string coverage via vi.stubEnv pattern matching tests/unit/encryption.test.ts precedent. 210 total tests pass (up from 206). typecheck+lint+build clean throughout (1 pre-existing warning in scripts/verify-phase-3.ts:330). No new mascot asset created.",
       "blockedBy": [
         20
       ],
