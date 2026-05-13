@@ -122,7 +122,7 @@
     {
       "id": 18,
       "subject": "Task 18: Daily drift cron — taste-drift-cron + pg_cron schedule",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** Daily 03:00 UTC cron scans users whose last narrative > 7 days, recomputes vectors, fires refresh-fingerprint when drift > 0.25.\n\n**Files:** supabase/functions/taste-drift-cron/index.ts, supabase/migrations/0007_phase4_drift_cron.sql\n\n**Verify:** Curl with service-role key + aged test row → {scanned, drifted, scheduled} JSON\n\n```json:metadata\n{\"files\":[\"supabase/functions/taste-drift-cron/index.ts\",\"supabase/migrations/0007_phase4_drift_cron.sql\"],\"verifyCommand\":\"curl + manual age-narrative test\",\"acceptanceCriteria\":[\"auth via requireServiceRole\",\"recomputes vectors per candidate user; cosine-distance vs narrative_snapshot_vectors\",\"EdgeRuntime.waitUntil to keep isolate alive for trigger fetches\",\"concurrency cap 10 (matches Phase 3 daily-sync)\",\"pg_cron schedule 0 3 * * * via idempotent migration\"]}\n```"
     },
