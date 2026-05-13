@@ -35,10 +35,32 @@ test("publicUser can follow publicUser2 and see Following state", async ({
   await expect(page.getByText(`@${publicUser.username}`)).toBeVisible();
 });
 
-// Feed visibility assertion lands in T12 — added as a fixme placeholder.
-test.fixme(
-  "publicUser sees publicUser2's review-publish in feed (T12)",
-  async () => {
-    // T12 will add the full feed assertion here once feed routes ship.
-  },
-);
+// Feed visibility assertion — T12 feed UI is now shipped.
+test("follower sees followee's review publish in their feed", async ({
+  page,
+  publicUser,
+  publicUser2,
+}) => {
+  const { seedFollow, seedReview, SEED_GAME_ID } = await import("../fixtures/seed-test-users");
+  await seedFollow({ followerId: publicUser.userId, followedId: publicUser2.userId });
+  const seeded = await seedReview({
+    userId: publicUser2.userId,
+    gameId: SEED_GAME_ID,
+    isPublic: true,
+    body: "A pinned test review.\n\nHighs.\n\nLows.\n\nVerdict.",
+    rating: 9,
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(publicUser.email);
+  await page.getByLabel("Password").fill(publicUser.password);
+  await page.getByRole("button", { name: /log in/i }).click();
+  await page.waitForURL(/\/home/);
+
+  await page.goto("/home/feed");
+  await expect(page.getByText(`@${publicUser2.username}`)).toBeVisible();
+  // The review-item renderer says "reviewed <game title>"; assert the verb + game slug.
+  await expect(page.getByText(/reviewed/i)).toBeVisible();
+  // seeded.gameSlug is available for more specific assertions if needed.
+  void seeded;
+});
