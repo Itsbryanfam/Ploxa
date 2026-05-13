@@ -64,6 +64,13 @@
       "when": 1778803200000,
       "tag": "0008_phase5_social",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778889600000,
+      "tag": "0009_follows_followed_id_idx",
+      "breakpoints": true
     }
   ]
 }

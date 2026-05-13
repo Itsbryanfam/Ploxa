@@ -8,6 +8,10 @@ import { onFollow } from "./triggers";
 
 const { follows, profiles } = schema;
 
+// Shared by follow() and unfollow(). "self-follow" and "blocked" are only
+// reachable from follow() — unfollow() returns { ok: true } even when no
+// row exists (DELETE is idempotent). Callers pattern-matching unfollow()
+// against those reasons will never hit them.
 export type FollowResult =
   | { ok: true }
   | { ok: false; reason: "not-authenticated" | "self-follow" | "blocked" };
@@ -49,8 +53,17 @@ export async function unfollow(targetUserId: string): Promise<FollowResult> {
 }
 
 /**
- * Followers of a given user, filtered against the viewer's block graph.
- * Returns lightweight profile shape suitable for grid rendering.
+ * Users who follow `userId`, filtered by the viewer's block graph.
+ * Pass `viewerId: null` for logged-out callers — block filter skipped
+ * (matches the logged-out exception in visibility.ts).
+ *
+ * `viewerId` is caller-supplied rather than session-derived because these
+ * are read helpers called from Server Components / route handlers that
+ * already resolved the viewer for their own purposes. Same convention as
+ * getProfileSummary(username, viewerId) in profile-summary.ts.
+ *
+ * Backed by the follows_followed_id_idx (migration 0009) for sub-ms
+ * lookup despite followed_id not being the PK leading column.
  */
 export async function getFollowers(
   userId: string,
@@ -73,6 +86,16 @@ export async function getFollowers(
   return await withBlockedFilter(viewerId, base, profiles.userId);
 }
 
+/**
+ * Users that `userId` follows, filtered by the viewer's block graph.
+ * Pass `viewerId: null` for logged-out callers.
+ *
+ * `viewerId` is caller-supplied rather than session-derived — same
+ * convention as getProfileSummary(username, viewerId) in profile-summary.ts.
+ *
+ * Backed by the follows PK (follower_id leading column) — no extra
+ * index needed.
+ */
 export async function getFollowing(
   userId: string,
   viewerId: string | null,

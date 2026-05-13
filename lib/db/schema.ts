@@ -362,6 +362,9 @@ export const follows = pgTable(
     // Block self-follows at the DB level so the activity-feed generator
     // (Phase 5) can't produce actor=target rows even via a bug.
     noSelf: check("follows_no_self", sql`${table.followerId} <> ${table.followedId}`),
+    // PK leads with follower_id so WHERE followed_id = X can't use it.
+    // FK constraints don't auto-create indexes in PG; this closes the gap.
+    followedIdIdx: index("follows_followed_id_idx").on(table.followedId),
   }),
 );
 
