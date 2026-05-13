@@ -23,7 +23,10 @@
     {
       "id": 3,
       "subject": "Task 3: Defense-in-depth RLS policies (0003_phase5_prep.sql)",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-12",
+      "completedSha": "c3ed013",
+      "completionNotes": "RLS policies for blocks/list_likes/reports landed. Self-reviewed (file matches spec byte-for-byte; advisor output confirms relrowsecurity=true on all 3 tables and rls_enabled_no_policy advisor INFO entries are cleared).",
       "blockedBy": [1],
       "description": "**Goal:** RLS policies on blocks, list_likes, reports — defense-in-depth same pattern as 0002_phase5_prep.sql from the Codex audit fix.\n\n**Files:** lib/db/policies/0003_phase5_prep.sql\n\n**Verify:** Apply via MCP + advisor check\n\n```json:metadata\n{\"files\":[\"lib/db/policies/0003_phase5_prep.sql\"],\"verifyCommand\":\"Supabase MCP advisor check\",\"acceptanceCriteria\":[\"blocks: own rows only (auth.uid() = blocker_id)\",\"list_likes: SELECT all, INSERT/DELETE own\",\"reports: INSERT auth, SELECT own\",\"RLS enabled on all 3 tables\",\"Applied via MCP\",\"Advisors clean\"]}\n```"
     },
