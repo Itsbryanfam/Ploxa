@@ -406,8 +406,23 @@ export async function runImport(opts: {
 }): Promise<{ status: "completed" | "failed"; errorMessage?: string }> {
   const { sql, importRow, connection, steamApiKey, encryptionKey } = opts;
 
-  // Mark running
-  await sql`UPDATE imports SET status = 'running', started_at = NOW() WHERE id = ${importRow.id}`;
+  // Atomic claim: queued → running. If another invocation already claimed
+  // this row (status != 'queued') we exit cleanly rather than racing on
+  // chunked imports_count / conflicts_jsonb updates with the other worker.
+  // The resume-from-timeout path described in the Phase 3 design doc isn't
+  // wired to any auto-retry, so the simple guard is correct: only the very
+  // first invocation per importId actually runs. A failed import → "Retry now"
+  // creates a NEW imports row (different id), so it doesn't hit this path.
+  const claimed = await sql<Array<{ id: string }>>`
+    UPDATE imports SET status = 'running', started_at = NOW()
+    WHERE id = ${importRow.id} AND status = 'queued'
+    RETURNING id
+  `;
+  if (claimed.length === 0) {
+    // No-op: another worker holds the claim. Return "completed" so the HTTP
+    // caller gets a 200 — we are not poisoning the imports row state.
+    return { status: "completed" };
+  }
 
   try {
     const decryptedXboxKey =

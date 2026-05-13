@@ -18,7 +18,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const [profile, game] = await Promise.all([
     db.query.profiles.findFirst({
       where: eq(schema.profiles.userId, review.userId),
-      columns: { username: true },
+      // isPublic is queried so we can 404 private profiles even when the
+      // review itself is_public + published. This OG endpoint is reached
+      // by unauthenticated crawlers (Twitter, Discord, etc.), so we don't
+      // have a viewer to special-case the owner — and we wouldn't want to
+      // serve private OG cards to a logged-out share-link visitor anyway.
+      columns: { username: true, isPublic: true },
     }),
     db.query.games.findFirst({
       where: eq(schema.games.id, review.gameId),
@@ -26,6 +31,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }),
   ]);
   if (!profile || !game) return new Response("Not found", { status: 404 });
+  if (!profile.isPublic) return new Response("Not found", { status: 404 });
 
   const hook = (review.body ?? "").split("\n\n")[0] ?? "";
   const hookSnippet = hook.length > 180 ? `${hook.slice(0, 180).trimEnd()}…` : hook;

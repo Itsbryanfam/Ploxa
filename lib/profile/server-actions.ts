@@ -142,9 +142,17 @@ export async function ensureMyProfile(opts?: { username?: string }) {
   // ---------------------------------------------------------------------------
   let username: string;
 
+  // Validate AND reject reserved names — matches updateUsername() at line
+  // 252-261. Without the reserved check, callers feeding user-controlled
+  // strings (e.g. auth callback passing user_metadata.username) could
+  // claim "admin", "api", etc. through this path even though the explicit
+  // /signup path blocks them via checkUsernameAvailability().
+  const parsedExplicit = opts?.username
+    ? usernameSchema.safeParse(opts.username)
+    : null;
   const explicitUsername =
-    opts?.username && usernameSchema.safeParse(opts.username).success
-      ? opts.username
+    parsedExplicit?.success && !RESERVED_USERNAMES.has(parsedExplicit.data)
+      ? parsedExplicit.data
       : undefined;
 
   if (explicitUsername) {

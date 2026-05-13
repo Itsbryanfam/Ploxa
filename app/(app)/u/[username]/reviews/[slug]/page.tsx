@@ -13,9 +13,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username, slug } = await params;
   const profile = await db.query.profiles.findFirst({
     where: eq(schema.profiles.username, username),
-    columns: { userId: true, username: true },
+    // isPublic mirrors the page-body gate below; without this, share unfurlers
+    // would receive the review's hook + OG image URL for a private profile
+    // even though the page itself 404s.
+    columns: { userId: true, username: true, isPublic: true },
   });
   if (!profile) return { title: "Review not found" };
+  // Owner-on-own-URL exception: a logged-in private user looking at their own
+  // canonical review page should still see real metadata in the browser tab.
+  // Unfurlers send no cookies, so getCachedUser() returns null for them and
+  // the !isPublic branch fires correctly.
+  const viewer = await getCachedUser();
+  const isOwner = viewer?.id === profile.userId;
+  if (!profile.isPublic && !isOwner) return { title: "Review not found" };
   const game = await db.query.games.findFirst({
     where: eq(schema.games.slug, slug),
     columns: { id: true, title: true },
@@ -25,8 +35,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     where: and(
       eq(schema.reviews.userId, profile.userId),
       eq(schema.reviews.gameId, game.id),
-      eq(schema.reviews.isPublic, true),
       isNotNull(schema.reviews.publishedAt),
+      // Owners can see their own unpublished/private review metadata.
+      isOwner ? undefined : eq(schema.reviews.isPublic, true),
     ),
     columns: { id: true, body: true },
   });

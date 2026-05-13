@@ -35,11 +35,28 @@ Deno.serve(async (req) => {
     for (let i = 0; i < conns.length; i += CHUNK) {
       const slice = conns.slice(i, i + CHUNK);
       const jobs = slice.map(async (c) => {
-        const [row] = await sql<Array<{ id: string }>>`
+        // Suppress duplicate enqueues: if this connection already has a
+        // queued or running import we leave the existing one alone. The
+        // previous code inserted unconditionally, which produced a second
+        // imports row per cron tick whenever a connection's prior daily
+        // sync was still mid-flight (>23h old but still running).
+        const rows = await sql<Array<{ id: string }>>`
           INSERT INTO imports (user_id, platform, status, surfaced)
-          VALUES (${c.user_id}, ${c.platform}::platform_kind, 'queued', false)
+          SELECT ${c.user_id}, ${c.platform}::platform_kind, 'queued', false
+          WHERE NOT EXISTS (
+            SELECT 1 FROM imports
+            WHERE user_id = ${c.user_id}
+              AND platform = ${c.platform}::platform_kind
+              AND status IN ('queued', 'running')
+          )
           RETURNING id
         `;
+        if (rows.length === 0) {
+          // An import is already in flight — caller will pick it up via the
+          // existing import-platform trigger or polling. Nothing to do.
+          return;
+        }
+        const row = rows[0];
         // Background trigger: kick off import-platform but don't block
         // the cron response on it. `EdgeRuntime.waitUntil` keeps the
         // isolate alive so the fetch isn't truncated when we return.
