@@ -34,17 +34,30 @@ test("comment + reply + edit + soft-delete preserves thread structure", async ({
   await page.getByRole("button", { name: /^Post$/i }).last().click();
   await expect(page.getByText("Agreed.")).toBeVisible();
 
-  // Edit the top-level comment
-  await page.getByRole("button", { name: /^Edit$/i }).first().click();
-  const editArea = page.locator("textarea").first();
-  await editArea.fill("Strong take, agreed too.");
-  await page.getByRole("button", { name: /^Save$/i }).click();
+  // Edit the top-level comment.
+  // The review page has a top-level <article> for the review itself — so
+  // page.getByRole("article").first() grabs the review, not a comment.
+  // Scope inside the <section> rendered by CommentThread, which only
+  // contains CommentCard articles. The first article inside that section
+  // is the top-level comment, regardless of edit state changes (filter by
+  // hasText would break once the <p> is replaced by the edit <textarea>).
+  const commentsSection = page.locator("section").filter({ hasText: "Comments" });
+  const topLevelCard = commentsSection.getByRole("article").first();
+  await topLevelCard.getByRole("button", { name: /^Edit$/i }).click();
+  await topLevelCard.locator("textarea").fill("Strong take, agreed too.");
+  await topLevelCard.getByRole("button", { name: /^Save$/i }).click();
   await expect(page.getByText("Strong take, agreed too.")).toBeVisible();
   await expect(page.getByText("(edited)")).toBeVisible();
 
   // Soft-delete: handle the confirm() dialog
   page.on("dialog", (d) => d.accept());
-  await page.getByRole("button", { name: /^Delete$/i }).first().click();
+  // Same section scope — first article in the comments section is still the
+  // top-level comment after the edit.
+  await commentsSection
+    .getByRole("article")
+    .first()
+    .getByRole("button", { name: /^Delete$/i })
+    .click();
   await expect(page.getByText("[deleted]")).toBeVisible();
   // Reply is still visible (thread structure preserved)
   await expect(page.getByText("Agreed.")).toBeVisible();

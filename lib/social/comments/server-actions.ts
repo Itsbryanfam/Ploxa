@@ -11,6 +11,27 @@ import { onComment } from "./triggers";
 
 const { comments, reviews, profiles } = schema;
 
+/**
+ * Shared helper: revalidate the canonical review listing path for the author
+ * of a given review. Called by createComment, editComment, and softDeleteComment
+ * so all three mutations invalidate the server cache symmetrically.
+ * Fire-and-forget style — revalidation failures do not surface to callers.
+ */
+async function revalidateAuthorReviewListing(reviewId: string): Promise<void> {
+  const review = await db.query.reviews.findFirst({
+    where: eq(reviews.id, reviewId),
+    columns: { userId: true },
+  });
+  if (!review) return;
+  const authorProfile = await db.query.profiles.findFirst({
+    where: eq(profiles.userId, review.userId),
+    columns: { username: true },
+  });
+  if (authorProfile) {
+    revalidatePath(`/u/${authorProfile.username}/reviews`);
+  }
+}
+
 const createSchema = z.object({
   reviewId: z.string().uuid(),
   body: z.string().min(1).max(5000),
@@ -111,16 +132,7 @@ export async function createComment(input: unknown): Promise<CommentResult> {
   });
 
   // Revalidate the canonical review listing so the new comment appears.
-  // We don't have gameSlug in this scope without another lookup; revalidate
-  // the user's reviews root which is the cheaper hit. The canonical
-  // review page is RSC-revalidated per-request via the published_at index.
-  const authorProfile = await db.query.profiles.findFirst({
-    where: eq(profiles.userId, review.userId),
-    columns: { username: true },
-  });
-  if (authorProfile) {
-    revalidatePath(`/u/${authorProfile.username}/reviews`);
-  }
+  await revalidateAuthorReviewListing(reviewId);
 
   return { ok: true, commentId, isFlagged: flagCheck.isFlagged };
 }
@@ -146,6 +158,15 @@ export async function editComment(input: unknown): Promise<CommentResult> {
     .set({ body, editedAt: new Date(), isHidden: flagCheck.isFlagged })
     .where(and(eq(comments.id, commentId), eq(comments.userId, user.id)));
 
+  // Revalidate the review listing. editComment only has commentId in scope,
+  // so we fetch the comment to retrieve its reviewId before delegating to
+  // the shared helper. One extra round-trip is acceptable for consistency.
+  const comment = await db.query.comments.findFirst({
+    where: eq(comments.id, commentId),
+    columns: { reviewId: true },
+  });
+  if (comment) await revalidateAuthorReviewListing(comment.reviewId);
+
   return { ok: true, commentId, isFlagged: flagCheck.isFlagged };
 }
 
@@ -165,6 +186,14 @@ export async function softDeleteComment(input: unknown): Promise<{ ok: boolean }
     .update(comments)
     .set({ body: "[deleted]", editedAt: new Date() })
     .where(and(eq(comments.id, parsed.data.commentId), eq(comments.userId, user.id)));
+
+  // Revalidate the review listing. Same pattern as editComment — fetch the
+  // comment for its reviewId, then delegate to the shared helper.
+  const comment = await db.query.comments.findFirst({
+    where: eq(comments.id, parsed.data.commentId),
+    columns: { reviewId: true },
+  });
+  if (comment) await revalidateAuthorReviewListing(comment.reviewId);
 
   return { ok: true };
 }
