@@ -147,3 +147,25 @@ export async function seedReview(opts: SeedReviewOptions): Promise<SeededReview>
 
 /** A real game id present in the seeded games table — Penarium (id=4). */
 export const SEED_GAME_ID = 4;
+
+/**
+ * Insert a follow row directly via service-role. Idempotent on PK
+ * conflict (23505) — same row already exists, so a noop is the
+ * correct outcome.
+ *
+ * Used by social-flow E2Es that need a pre-existing edge for the
+ * /follow-feed assertions to make sense without first walking the
+ * UI to create them.
+ */
+export async function seedFollow(args: {
+  followerId: string;
+  followedId: string;
+}): Promise<void> {
+  const admin = adminClient();
+  const { error } = await admin
+    .from("follows")
+    .insert({ follower_id: args.followerId, followed_id: args.followedId });
+  if (error && error.code !== "23505") {
+    throw new Error(`seedFollow failed: ${error.message}`);
+  }
+}
