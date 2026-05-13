@@ -289,11 +289,18 @@ async function group5(sql: ReturnType<typeof postgres>) {
   `;
   const present = new Set(enumRows.map((r) => r.enumlabel));
   const missing = [...expectedTypes].filter((v) => !present.has(v));
+  const extras = [...present].filter((v) => !expectedTypes.has(v));
+  const enumExact = missing.length === 0 && extras.length === 0;
   record({
     group,
-    name: "G5.1 — notification_type enum has 6 expected values",
-    status: missing.length === 0 ? "pass" : "fail",
-    detail: missing.length === 0 ? `${present.size} value(s) present` : `missing: ${missing.join(",")}`,
+    name: "G5.1 — notification_type enum has exactly 6 expected values",
+    status: enumExact ? "pass" : "fail",
+    detail:
+      missing.length > 0
+        ? `missing: ${missing.join(",")}`
+        : extras.length > 0
+          ? `unexpected extras: ${extras.join(",")}`
+          : `${present.size} value(s) present`,
     gate: "5",
   });
 
@@ -554,21 +561,40 @@ async function group10(_sql: ReturnType<typeof postgres>) {
 // ───────────────────────────────────────────────────────────────────
 // Run
 // ───────────────────────────────────────────────────────────────────
+async function runGroup(
+  name: string,
+  n: number,
+  fn: (sql: ReturnType<typeof postgres>) => Promise<void>,
+  sql: ReturnType<typeof postgres>,
+) {
+  try {
+    await fn(sql);
+  } catch (e) {
+    record({
+      group: `G${n}.crash`,
+      name: `Group ${n} (${name}) threw — remaining checks unrun`,
+      status: "fail",
+      detail: e instanceof Error ? e.message : String(e),
+      gate: String(n),
+    });
+  }
+}
+
 async function main() {
   console.log("Phase 5 verification — automatable subset\n");
 
   const sql = postgres(databaseUrl(), { prepare: false });
   try {
-    await group1(sql);
-    await group2(sql);
-    await group3(sql);
-    await group4(sql);
-    await group5(sql);
-    await group6(sql);
-    await group7(sql);
-    await group8(sql);
-    await group9(sql);
-    await group10(sql);
+    await runGroup("bidirectional-block", 1, group1, sql);
+    await runGroup("feed-material", 2, group2, sql);
+    await runGroup("comments-thread", 3, group3, sql);
+    await runGroup("auto-flag-rules", 4, group4, sql);
+    await runGroup("notifications", 5, group5, sql);
+    await runGroup("digest+unsubscribe", 6, group6, sql);
+    await runGroup("discovery", 7, group7, sql);
+    await runGroup("lists+reorder", 8, group8, sql);
+    await runGroup("profile-summary", 9, group9, sql);
+    await runGroup("admin-gate", 10, group10, sql);
   } finally {
     await sql.end({ timeout: 5 });
   }
