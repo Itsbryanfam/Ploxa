@@ -48,6 +48,10 @@ export type RecCard = {
   coverUrl: string | null;
   score: number;
   reason: string;
+  // Threaded so RecCard UI can render the platform picker (T15). DB returns
+  // `text[] | null`; the UI casts down to `Platform[]` since values come from
+  // the same `platform_kind` enum that powers the user-connections filter.
+  platforms: string[] | null;
   algorithm: "similarity" | "ai" | "hybrid";
 };
 
@@ -172,6 +176,7 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
         released: games.released,
         posterUrl: games.posterUrl,
         coverUrl: games.coverUrl,
+        platforms: games.platforms,
       })
       .from(games)
       .where(inArray(games.id, gameIds));
@@ -191,6 +196,7 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
           coverUrl: g.coverUrl,
           score: Number(c.score),
           reason: c.reason ?? "",
+          platforms: g.platforms,
           // Drizzle infers `c.algorithm` as the pgEnum union — assigns
           // directly to `RecCard.algorithm` which mirrors the same enum.
           algorithm: c.algorithm,
@@ -307,6 +313,7 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
         released: games.released,
         posterUrl: games.posterUrl,
         coverUrl: games.coverUrl,
+        platforms: games.platforms,
       })
       .from(games)
       .where(inArray(games.id, freshIds));
@@ -325,6 +332,7 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
           coverUrl: g.coverUrl,
           score: Number(c.score),
           reason: c.reason ?? "",
+          platforms: g.platforms,
           algorithm: c.algorithm,
         };
       })
@@ -512,6 +520,7 @@ async function metadataOnlyRecs(
       // top of the range for a typical 5-genre overlap on a power user.
       score: Math.min(1, g.similarityScore / 5),
       reason,
+      platforms: g.platforms,
       algorithm: "similarity" as const,
     };
   });

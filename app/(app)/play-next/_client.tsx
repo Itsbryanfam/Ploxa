@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
@@ -8,7 +9,7 @@ import { FilterChips } from "@/components/recs/filter-chips";
 import { MascotPrompt } from "@/components/recs/mascot-prompt";
 import { RecCard } from "@/components/recs/rec-card";
 import { MOODS, TIMES, type Mood, type TimeBudget } from "@/lib/recs/moods";
-import { getRecs, type RecResult } from "@/lib/recs/server-actions";
+import { getRecs, refillRecs, type RecResult } from "@/lib/recs/server-actions";
 
 type Platform = "steam" | "xbox" | "psn";
 type Step = "time" | "mood" | "platform" | "done";
@@ -68,16 +69,39 @@ export function PlayNextClient({
 
   const [recsState, setRecsState] = useState<RecResult | null>(null);
   const [pending, startTransition] = useTransition();
+  // Optimistic dismissal: the parent owns the set so RecCard can fire-and-
+  // forget — we drop the rec from `visibleRecs` synchronously, AnimatePresence
+  // runs the exit, and the underlying server action resolves in the background.
+  // Reset on refill so the freshly-rebuilt grid renders cleanly.
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   const loadRecs = useCallback(
     (t: TimeBudget, m: Mood[], p: Platform[]) => {
       startTransition(async () => {
         const result = await getRecs({ time: t, moods: m, platforms: p });
         setRecsState(result);
+        setDismissedIds(new Set());
       });
     },
     [],
   );
+
+  const onCardDismissed = useCallback((recId: string) => {
+    setDismissedIds((s) => {
+      const next = new Set(s);
+      next.add(recId);
+      return next;
+    });
+  }, []);
+
+  const onRefill = useCallback(() => {
+    if (!time || moods.length === 0 || platforms.length === 0) return;
+    startTransition(async () => {
+      const next = await refillRecs({ time, moods, platforms });
+      setRecsState(next);
+      setDismissedIds(new Set());
+    });
+  }, [time, moods, platforms]);
 
   // Auto-fetch on deep-link mount: when the user lands directly in `done`
   // (all three URL params present), kick the action once. The exhaustive
@@ -250,10 +274,42 @@ export function PlayNextClient({
             </p>
           </MascotPrompt>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
-            {recsState.recs.map((r) => (
-              <RecCard key={r.id} rec={r} />
-            ))}
+            <AnimatePresence mode="popLayout">
+              {recsState.recs
+                .filter((r) => !dismissedIds.has(r.id))
+                .map((r) => (
+                  <RecCard
+                    key={r.id}
+                    rec={r}
+                    connectedPlatforms={userConnectedPlatforms}
+                    // DB returns `string[] | null` for `games.platforms`. The
+                    // values come from the same `platform_kind` enum that
+                    // constrains `userConnectedPlatforms`, but TS can't see
+                    // that through Drizzle's `text[]` return type — narrow
+                    // here with a type predicate so anything that somehow
+                    // drifted out of the enum (legacy seed row, etc.) gets
+                    // dropped instead of crashing the picker downstream.
+                    gamePlatforms={(r.platforms ?? []).filter(
+                      (p): p is Platform =>
+                        p === "steam" || p === "xbox" || p === "psn",
+                    )}
+                    onDismissed={onCardDismissed}
+                  />
+                ))}
+            </AnimatePresence>
           </div>
+          {dismissedIds.size > 0 && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={onRefill}
+                disabled={pending}
+                className="rounded border border-emerald-700 px-4 py-2 font-mono text-sm text-emerald-300 hover:bg-emerald-950/30 disabled:opacity-50"
+              >
+                Show me more like these →
+              </button>
+            </div>
+          )}
         </>
       )}
       {!pending && recsState && !recsState.ok && (
