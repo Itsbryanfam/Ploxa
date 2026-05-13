@@ -70,8 +70,9 @@ export async function createComment(input: unknown): Promise<CommentResult> {
     parentAuthorId = parent.userId;
   }
 
-  // Auto-flag: rule-based pre-check (T15 implements rules.ts; until then
-  // checkSpamRules returns { isFlagged: false }).
+  // Auto-flag: rule-based pre-check. checkSpamRules is pure (no IO) and
+  // returns reason codes that the report row's `details` field surfaces
+  // for the mod queue (T24).
   const flagCheck = checkSpamRules(body);
 
   const inserted = await db
