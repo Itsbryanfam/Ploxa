@@ -93,7 +93,10 @@
     {
       "id": 10,
       "subject": "Task 10: buildFeedQuery — pull-on-read UNION ALL across logs + reviews + lists",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-13",
+      "completedSha": "4ec9f0e",
+      "completionNotes": "Ships at f6a2679 (impl) + 4ec9f0e (code-quality follow-ups). Two implementer adjustments matched codebase: (a) db.execute<T>() returns RowList directly not {rows}; used `unknown as Array<T>` cast matching lib/imports/server-actions.ts pattern; (b) no-await-in-loop eslint rule isn't configured, removed unused disable directive. Code-quality reviewer flagged 2 Important + 2 Suggestion, all fixed: (1) sql.raw UUID interpolation now has safety comment (postgres-js can't bind uuid[] across UNION branches; ::uuid cast rejects non-UUID; IDs from Supabase JWTs); (2) cursors.ts gained `import 'server-only'` (uses Buffer, T11 server action is sole caller — verified no client imports); (3) decodeCursor now guards against invalid Date via Number.isNaN(getTime()); (4) new test pins the invalid-date guard. 9 cursor tests pass.",
       "blockedBy": [2, 4],
       "description": "**Goal:** Feed core query. UNION ALL of 3 projections (logs material events, review publishes, list publishes) from followees, cursor predicate, ORDER BY event_at DESC LIMIT 50. Block filter post-hoc.\n\n**Files:** lib/social/_shared/cursors.ts, lib/social/feed/queries.ts, tests/unit/cursors.test.ts\n\n**Verify:** `pnpm test -- cursors && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/_shared/cursors.ts\",\"lib/social/feed/queries.ts\",\"tests/unit/cursors.test.ts\"],\"verifyCommand\":\"pnpm test -- cursors && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"encodeCursor/decodeCursor round-trips eventAt+kind+actorId triplet base64url\",\"compareFeedRows: eventAt DESC then kind ASC then actorId ASC\",\"buildFeedQuery returns FeedRow[] with kind+actorId+eventAt+eventType+targetId+payload\",\"Post-hoc isBlockedBetween filter\",\"Cursor predicate uses (event_at, kind, actor_id) < tuple\"]}\n```"
     },
@@ -231,5 +234,5 @@
       "description": "**Goal:** Close the phase. Run M1-M5 manual gate items, polish rough edges, update memory, tag phase-5-complete on main HEAD.\n\n**Files:** memory/MEMORY.md, memory/phase_5_complete.md\n\n**Verify:** `pnpm tsx scripts/verify-phase-5.ts` clean + all manual items signed off in memory\n\n```json:metadata\n{\"files\":[\"memory/MEMORY.md\",\"memory/phase_5_complete.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-5.ts\",\"acceptanceCriteria\":[\"M1 real digest email delivered + unsubscribe round-trip\",\"M2 visual rendering breakpoints (desktop + mobile)\",\"M3 @-mention autocomplete UX\",\"M4 drag-to-reorder touch + mouse\",\"M5 bell badge polling 2-tab\",\"verify-phase-5.ts runs green\",\"memory updated\",\"git tag phase-5-complete\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-13T00:45:00Z"
+  "lastUpdated": "2026-05-13T01:15:00Z"
 }
