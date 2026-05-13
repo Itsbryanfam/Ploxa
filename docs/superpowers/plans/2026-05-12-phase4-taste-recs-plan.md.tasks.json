@@ -94,7 +94,7 @@
     {
       "id": 14,
       "subject": "Task 14: Feedback server actions — dismiss/save/play/refill",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** Four server actions powering the 3-button feedback UI. Owner-only. saveRecForLater + playRec create logs via existing ensureLog (which fires triggerOnLogWrite).\n\n**Files:** lib/recs/server-actions.ts (add 4 actions), lib/logs/server-actions.ts (add ensureLog if absent)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"lib/logs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"dismissRec: owner-only; dismissed=true; no cache invalidation\",\"saveRecForLater: creates log(backlog) via ON CONFLICT DO NOTHING + dismisses rec\",\"playRec(recId, platform?): smart routing — connected→log+toast, multi→picker, none→redirect\",\"refillRecs: wipes cache for current key + calls getRecs (fresh rerank with cumulative dismissed history)\"]}\n```"
     },
