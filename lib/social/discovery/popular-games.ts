@@ -65,9 +65,12 @@ async function _getPopularGamesUncached(limit: number): Promise<PopularGame[]> {
 /**
  * Cached entry point for popular games discovery.
  *
- * The `limit` parameter is forwarded into the cache key via the keyParts array,
- * so callers using non-default limits get their own cache slot. The default
- * limit of 24 is sized for a 4-column × 6-row grid (matches the T26 UI spec).
+ * Cache key: unstable_cache automatically appends serialized runtime
+ * arguments to the keyParts array, so callers requesting distinct
+ * limits receive isolated cache entries. The "discovery" tag lets a
+ * single revalidateTag call bust this AND trending-reviews together.
+ * The default limit of 24 is sized for a 4-column × 6-row grid
+ * (matches the T26 UI spec).
  *
  * @param limit - Maximum number of games to return (default 24).
  * @returns Ranked list of `PopularGame` objects, highest log count first.

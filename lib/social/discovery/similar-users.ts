@@ -42,10 +42,10 @@ export type SimilarUser = {
  * social graph changes too frequently to make a 30-minute cache correct.
  *
  * Invariants:
- * - A similarity of 1.0 means the viewer's and candidate's vectors are
- *   perfectly aligned in all three dimensions.
- * - A similarity of 0.0 means maximally dissimilar (or one of the vectors is
- *   all-zeros, which `cosineSim` maps to 0 by convention).
+ * - Similarity is clamped to [0, 1] — drift can theoretically produce
+ *   values up to 2 (when cosine similarity hits -1 on an axis), but a
+ *   negative "similarity" has no UI meaning, so we floor at 0 for the
+ *   caller. 1.0 means identical, 0.0 means maximally dissimilar.
  * - `drift()` returns `Infinity` when the snapshot argument is null; that
  *   cannot occur here since all candidate rows have non-null jsonb vectors
  *   (Drizzle schema: `.notNull().default('{}'::jsonb)`).
@@ -108,6 +108,11 @@ export async function getSimilarUsers(
           (blocker_id = ${viewerId} AND blocked_id = tf.user_id) OR
           (blocker_id = tf.user_id AND blocked_id = ${viewerId})
       )
+    -- TODO: when user count crosses ~10k, revisit candidate ordering —
+    -- current ORDER BY vectors_generated_at biases toward recently-active
+    -- users; a high-similarity user with a stale fingerprint could sink
+    -- below the 500-row cap. Consider ORDER BY total_logs_at_generation
+    -- DESC or a hybrid score.
     ORDER BY tf.vectors_generated_at DESC
     LIMIT 500
   `);
@@ -130,12 +135,14 @@ export async function getSimilarUsers(
     displayName: c.display_name,
     avatarUrl: c.avatar_url,
     tierLogCount: c.total_logs_at_generation,
-    similarity:
+    similarity: Math.max(
+      0,
       1 -
-      drift(
-        { genre: fp.genre_vector, theme: fp.theme_vector, mechanic: fp.mechanic_vector },
-        { genre: c.genre_vector, theme: c.theme_vector, mechanic: c.mechanic_vector },
-      ),
+        drift(
+          { genre: fp.genre_vector, theme: fp.theme_vector, mechanic: fp.mechanic_vector },
+          { genre: c.genre_vector, theme: c.theme_vector, mechanic: c.mechanic_vector },
+        ),
+    ),
   }));
 
   return scored.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
