@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ReviewCard } from "@/components/reviews/review-card";
+import { CommentThread, type ThreadComment } from "@/components/comments/comment-thread";
 
 interface Props {
   params: Promise<{ username: string; slug: string }>;
@@ -99,8 +100,10 @@ export default async function CanonicalReviewPage({ params }: Props) {
   });
   if (!review) notFound();
 
-  // Stage 3: like count + viewer-liked — both depend on review.id, run in parallel.
-  const [countResult, viewerLikedRow] = await Promise.all([
+  // Stage 3: like count + viewer-liked + comments — all depend on review.id, run in parallel.
+  // Comment visibility predicate: flagged comments only visible to their author. We have
+  // no admin role yet (T24 will add it); for now: own + non-hidden.
+  const [countResult, viewerLikedRow, commentRows] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.likes)
@@ -111,24 +114,72 @@ export default async function CanonicalReviewPage({ params }: Props) {
           columns: { reviewId: true },
         })
       : Promise.resolve(undefined),
+    db
+      .select({
+        id: schema.comments.id,
+        body: schema.comments.body,
+        userId: schema.comments.userId,
+        parentId: schema.comments.parentId,
+        createdAt: schema.comments.createdAt,
+        editedAt: schema.comments.editedAt,
+        isHidden: schema.comments.isHidden,
+        authorUsername: schema.profiles.username,
+        authorDisplayName: schema.profiles.displayName,
+        authorAvatarUrl: schema.profiles.avatarUrl,
+      })
+      .from(schema.comments)
+      .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.comments.userId))
+      .where(
+        and(
+          eq(schema.comments.reviewId, review.id),
+          viewer
+            ? or(eq(schema.comments.isHidden, false), eq(schema.comments.userId, viewer.id))
+            : eq(schema.comments.isHidden, false),
+        ),
+      )
+      .orderBy(schema.comments.createdAt),
   ]);
   const count = countResult[0]?.count ?? 0;
   const viewerLiked = Boolean(viewerLikedRow);
 
+  const threadComments: ThreadComment[] = commentRows.map((r) => ({
+    id: r.id,
+    body: r.body,
+    userId: r.userId,
+    parentId: r.parentId,
+    createdAt: r.createdAt,
+    editedAt: r.editedAt,
+    isHidden: r.isHidden,
+    author: {
+      username: r.authorUsername,
+      displayName: r.authorDisplayName,
+      avatarUrl: r.authorAvatarUrl,
+    },
+  }));
+
   return (
-    <ReviewCard
-      review={{
-        id: review.id,
-        body: review.body,
-        rating: review.rating != null ? Number(review.rating) : null,
-        publishedAt: review.publishedAt!,
-      }}
-      game={game}
-      author={{ username: profile.username }}
-      isOwner={isOwner}
-      loggedOut={!viewer}
-      initialLiked={viewerLiked}
-      initialLikeCount={count}
-    />
+    <>
+      <ReviewCard
+        review={{
+          id: review.id,
+          body: review.body,
+          rating: review.rating != null ? Number(review.rating) : null,
+          publishedAt: review.publishedAt!,
+        }}
+        game={game}
+        author={{ username: profile.username }}
+        isOwner={isOwner}
+        loggedOut={!viewer}
+        initialLiked={viewerLiked}
+        initialLikeCount={count}
+      />
+      <div className="mx-auto max-w-3xl px-6 pb-12">
+        <CommentThread
+          reviewId={review.id}
+          comments={threadComments}
+          viewerId={viewer?.id ?? null}
+        />
+      </div>
+    </>
   );
 }

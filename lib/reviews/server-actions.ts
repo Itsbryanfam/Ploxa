@@ -650,67 +650,8 @@ export async function deleteReview(input: unknown): Promise<UpdateResult> {
   return { ok: true };
 }
 
-// ---------------------------------------------------------------------------
-// likeReview / unlikeReview
-// ---------------------------------------------------------------------------
-
-const likeInput = z.object({ reviewId: z.string().uuid() });
-
-export async function likeReview(input: unknown): Promise<UpdateResult> {
-  const parsed = likeInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid input" };
-  const user = await getCachedUser();
-  if (!user) return { ok: false, error: "Not signed in" };
-
-  await db
-    .insert(schema.likes)
-    .values({ userId: user.id, reviewId: parsed.data.reviewId })
-    .onConflictDoNothing();
-
-  const ctx = await reviewLookupForRevalidate(parsed.data.reviewId);
-  if (ctx) revalidatePath(`/u/${ctx.username}/reviews/${ctx.gameSlug}`);
-  return { ok: true };
-}
-
-export async function unlikeReview(input: unknown): Promise<UpdateResult> {
-  const parsed = likeInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid input" };
-  const user = await getCachedUser();
-  if (!user) return { ok: false, error: "Not signed in" };
-
-  await db
-    .delete(schema.likes)
-    .where(
-      and(eq(schema.likes.userId, user.id), eq(schema.likes.reviewId, parsed.data.reviewId)),
-    );
-
-  const ctx = await reviewLookupForRevalidate(parsed.data.reviewId);
-  if (ctx) revalidatePath(`/u/${ctx.username}/reviews/${ctx.gameSlug}`);
-  return { ok: true };
-}
-
-// ---------------------------------------------------------------------------
-// reviewLookupForRevalidate (internal helper)
-// ---------------------------------------------------------------------------
-
-async function reviewLookupForRevalidate(
-  reviewId: string,
-): Promise<{ username: string; gameSlug: string } | null> {
-  const r = await db.query.reviews.findFirst({
-    where: eq(schema.reviews.id, reviewId),
-    columns: { userId: true, gameId: true },
-  });
-  if (!r) return null;
-  const [profile, game] = await Promise.all([
-    db.query.profiles.findFirst({
-      where: eq(schema.profiles.userId, r.userId),
-      columns: { username: true },
-    }),
-    db.query.games.findFirst({
-      where: eq(schema.games.id, r.gameId),
-      columns: { slug: true },
-    }),
-  ]);
-  if (!profile || !game) return null;
-  return { username: profile.username, gameSlug: game.slug };
-}
+// likeReview / unlikeReview moved to lib/social/reactions/server-actions.ts in
+// Phase 5 (T16). The new path adds block-check, self-like silent-success, and
+// emit() notification side-effects. The pre-Phase-5 stub here was unused by
+// any UI that wasn't also being migrated; it lived only to satisfy the
+// LikeButton's import. Deleted with T17.
