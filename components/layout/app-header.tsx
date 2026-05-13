@@ -2,6 +2,7 @@ import Link from "next/link";
 import { NavTabs } from "./nav-tabs";
 import { MobileMenu } from "./mobile-menu";
 import { ProfileDropdown } from "./profile-dropdown";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import type { HeaderUser } from "@/lib/profile/server-actions";
 
 interface Props {
@@ -24,12 +25,14 @@ export function AppHeader({ user, searchSlot }: Props) {
           <NavTabs profileHref={profileHref} />
           <div className="ml-auto flex items-center gap-3">
             {searchSlot}
+            <NotificationBell />
             <ProfileDropdown user={user} />
           </div>
         </div>
-        {/* Mobile: search · hamburger */}
+        {/* Mobile: search · bell · hamburger */}
         <div className="flex md:hidden items-center gap-2 ml-auto">
           {searchSlot}
+          <NotificationBell />
           <MobileMenu user={user} profileHref={profileHref} />
         </div>
       </div>
