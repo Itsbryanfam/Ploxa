@@ -395,9 +395,13 @@ export async function regenerateSection(input: unknown): Promise<RegenerateSecti
       eq(schema.reviews.id, parsed.data.reviewId),
       eq(schema.reviews.userId, user.id),
     ),
-    columns: { id: true, body: true, gameId: true },
+    // updatedAt is snapshotted here and used as an optimistic-lock token
+    // on the final UPDATE — without it, a concurrent manual edit between
+    // this read and the AI-stream completion would be clobbered.
+    columns: { id: true, body: true, gameId: true, updatedAt: true },
   });
   if (!review) return { ok: false, error: "Review not found" };
+  const lockToken = review.updatedAt;
 
   const game = await db.query.games.findFirst({
     where: eq(schema.games.id, review.gameId),
@@ -445,10 +449,27 @@ export async function regenerateSection(input: unknown): Promise<RegenerateSecti
       while (sections.length < 4) sections.push("");
       sections[parsed.data.sectionIndex] = acc.trim();
       const newBody = sections.join("\n\n");
-      await db
+      // Optimistic lock: only write if updatedAt hasn't moved. A concurrent
+      // manual edit advances updatedAt; in that case we discard the AI
+      // output rather than overwrite the user's edits. The client streams
+      // the AI output through `streamable` already so the user can copy it
+      // by hand if they want it.
+      const updated = await db
         .update(schema.reviews)
         .set({ body: newBody, updatedAt: new Date() })
-        .where(eq(schema.reviews.id, review.id));
+        .where(
+          and(
+            eq(schema.reviews.id, review.id),
+            eq(schema.reviews.updatedAt, lockToken),
+          ),
+        )
+        .returning({ id: schema.reviews.id });
+      if (updated.length === 0) {
+        // Lost the race; complete the stream so the UI doesn't hang, but
+        // don't persist. Caller can detect this via the missing DB change.
+        streamable.done(acc);
+        return;
+      }
       streamable.done(acc);
     } catch (err) {
       const message =
@@ -468,7 +489,14 @@ export async function regenerateSection(input: unknown): Promise<RegenerateSecti
 
 const publishInput = z.object({
   reviewId: z.string().uuid(),
-  rating: z.number().min(0).max(10),
+  // Rating in [0, 10] in 0.5 steps — matches the half-heart UI control and
+  // the numeric(3,1) DB column. Without the step refine, the action would
+  // accept e.g. 7.3 and store it, breaking heart-rating render alignment.
+  rating: z
+    .number()
+    .min(0)
+    .max(10)
+    .refine((v) => v * 2 === Math.round(v * 2), "Rating must be in 0.5 steps"),
   isPublic: z.boolean(),
 });
 

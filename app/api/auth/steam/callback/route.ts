@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { after } from "next/server";
 import { RelyingParty, type VerifyResult } from "openid";
 
 import { getCachedUser } from "@/lib/supabase/auth-cache";
@@ -79,15 +80,19 @@ export async function GET(req: NextRequest) {
     })
     .returning({ id: imports.id });
 
-  // Fire-and-forget — do not await; failure is non-fatal
-  fetch(`${requireEnv("SUPABASE_FUNCTIONS_URL")}/import-platform`, {
-    method: "POST",
-    headers: {
-      apikey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ importId: importRow.id }),
-  }).catch((err: unknown) => console.error("Edge Function trigger failed:", err));
+  // Trigger via after() so the fetch survives the redirect — bare
+  // fire-and-forget had a race where Next could terminate the request
+  // handler before the trigger fetch completed.
+  after(() =>
+    fetch(`${requireEnv("SUPABASE_FUNCTIONS_URL")}/import-platform`, {
+      method: "POST",
+      headers: {
+        apikey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ importId: importRow.id }),
+    }).catch((err: unknown) => console.error("Edge Function trigger failed:", err)),
+  );
 
   return NextResponse.redirect(`${realm}/library/import/${importRow.id}`);
 }

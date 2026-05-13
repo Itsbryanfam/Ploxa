@@ -1,56 +1,61 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
-// TODO Phase 2: mobile bottom-sheet variant.
-// Spec called for `<md` to render as a bottom sheet (y-axis animation +
-// rounded-t-2xl + partial height). Phase 1 ships a full-width side panel on
-// all viewports — usable, but not the spec'd mobile UX. Also deferred:
-// focus trap and body-scroll lock.
-
+// Refactored from the bare Framer Motion overlay+panel pair (audit #24/#25):
+// the previous component was missing focus trap, body-scroll lock, and
+// prefers-reduced-motion handling — its own TODO comment noted the gap.
+// Sheet (Radix Dialog under the hood) gives us all three:
+//   - focus trap + restore via Radix Dialog Portal
+//   - body-scroll lock via Radix Dialog Portal
+//   - tw-animate-css slide animations honor prefers-reduced-motion in v4
+//   - accessible Close button + Escape handling
+// Visual structure (right-side max-w-2xl sliding panel) is preserved.
 export function GameDetailPanel({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") router.back();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [router]);
+  // We start open and ride the route stack to control unmount. When the
+  // user closes via Escape / overlay click / Close button, Sheet fires
+  // onOpenChange(false); we flip our local state so the close animation
+  // plays, then trigger router.back() so the underlying page renders.
+  const [open, setOpen] = useState(true);
 
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.15 }}
-        onClick={() => router.back()}
-        className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-      />
-      <motion.div
-        initial={{ x: "100%" }}
-        animate={{ x: 0 }}
-        transition={{ type: "spring", damping: 32, stiffness: 280 }}
-        className="fixed right-0 top-0 z-50 h-full w-full max-w-2xl overflow-y-auto bg-[var(--bg)] shadow-[var(--shadow-elev)] md:border-l md:border-[var(--border)]"
-        onClick={(e) => e.stopPropagation()}
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (next) return;
+        setOpen(false);
+        router.back();
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="w-full max-w-2xl overflow-y-auto p-0 sm:max-w-2xl"
       >
-        <div className="sticky top-0 z-10 flex justify-between items-center px-6 py-3 border-b border-[var(--border-soft)] bg-[var(--bg)]/80 backdrop-blur">
-          <span className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
+        {/* Radix requires a DialogTitle for a11y. The visible "Game detail"
+            caption below is decorative (uppercase, faint); we expose the
+            same string to screen readers via an sr-only SheetTitle. */}
+        <SheetTitle className="sr-only">Game detail</SheetTitle>
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border-soft)] bg-[var(--bg)]/80 px-6 py-3 backdrop-blur"
+        >
+          <span
+            aria-hidden
+            className="text-xs uppercase tracking-wide text-[var(--text-faint)]"
+          >
             Game detail
           </span>
-          <button
-            onClick={() => router.back()}
-            className="text-[var(--text-dim)] hover:text-[var(--text)] text-2xl leading-none"
-            aria-label="Close panel"
-          >
-            ×
-          </button>
+          {/* Sheet renders its own Close (X) button via the Sheet primitive
+              — see components/ui/sheet.tsx. No manual close button here. */}
         </div>
         <div className="px-6 py-6">{children}</div>
-      </motion.div>
-    </>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -211,9 +211,19 @@ export async function listConnections(): Promise<ConnectionSummary[]> {
 /**
  * Marks the listed import rows as surfaced.
  * Called by ImportToast on mount after rendering the delta toast.
+ *
+ * Input bounded: max 50 UUIDs per call. The current caller passes only the
+ * just-rendered toast IDs (typically 1-3), so 50 is generous but caps an
+ * unbounded `inArray` parameter list — important since this is reachable
+ * from any authenticated client and the action's input isn't otherwise
+ * validated.
  */
+const markImportsSurfacedInput = z.array(z.string().uuid()).max(50);
+
 export async function markImportsSurfaced(importIds: string[]): Promise<void> {
   if (importIds.length === 0) return;
+  const parsed = markImportsSurfacedInput.safeParse(importIds);
+  if (!parsed.success) return;
   const user = await requireUser();
   // Drizzle's `sql` tagged template binds an array as a single string param,
   // producing `= ANY($n)` against a stringified value — postgres then rejects
@@ -222,5 +232,5 @@ export async function markImportsSurfaced(importIds: string[]): Promise<void> {
   await db
     .update(imports)
     .set({ surfaced: true })
-    .where(and(eq(imports.userId, user.id), inArray(imports.id, importIds)));
+    .where(and(eq(imports.userId, user.id), inArray(imports.id, parsed.data)));
 }

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { db } from "@/lib/db";
@@ -24,11 +25,17 @@ export async function GET(
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { importId } = await params;
+  // The column is uuid — feeding a non-uuid string into the WHERE causes a
+  // 500 inside drizzle. Validate upfront and 404 cleanly.
+  const parsedId = z.string().uuid().safeParse(importId);
+  if (!parsedId.success) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
 
   const [row] = await db
     .select()
     .from(imports)
-    .where(and(eq(imports.id, importId), eq(imports.userId, user.id)))
+    .where(and(eq(imports.id, parsedId.data), eq(imports.userId, user.id)))
     .limit(1);
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
 

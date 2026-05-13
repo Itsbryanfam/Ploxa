@@ -63,7 +63,10 @@ export type RecResult =
       algorithm: "similarity" | "ai" | "hybrid";
       banner?: string;
     }
-  | { ok: false; reason: "unauthorized" | "empty-tier" | "no-candidates" };
+  | {
+      ok: false;
+      reason: "unauthorized" | "empty-tier" | "no-candidates" | "invalid-filters";
+    };
 
 /** Map a TimeBudget to a [minHours, maxHours] window for filtering candidates. */
 function timeWindow(time: TimeBudget): [number, number] {
@@ -107,7 +110,13 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
 
   // Re-validate at the boundary — the action receives raw deserialized
   // values from the wire and the TS signature alone is not a barrier.
-  const filters = filterSchema.parse(rawFilters);
+  // safeParse so a malformed client payload returns a clean reason instead
+  // of a 500 from the server-action error boundary.
+  const filtersResult = filterSchema.safeParse(rawFilters);
+  if (!filtersResult.success) {
+    return { ok: false, reason: "invalid-filters" };
+  }
+  const filters = filtersResult.data;
   const fp = await getFingerprint(me.id);
 
   if (fp.tier === "empty") return { ok: false, reason: "empty-tier" };
