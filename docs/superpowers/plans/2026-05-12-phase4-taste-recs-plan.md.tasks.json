@@ -101,7 +101,7 @@
     {
       "id": 15,
       "subject": "Task 15: Wire 3 buttons + refill CTA into RecCard with optimistic dismiss",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [14],
       "description": "**Goal:** End-of-W5 demo. RecCard buttons fire server actions; dismissed cards slide out; 'Show me more like these →' CTA appears after first dismissal. Toast feedback throughout.\n\n**Files:** components/recs/rec-card.tsx (full rewrite), app/(app)/play-next/_client.tsx (refill wiring + threaded gamePlatforms), lib/recs/server-actions.ts (thread games.platforms into RecResult)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual button walkthrough\n\n```json:metadata\n{\"files\":[\"components/recs/rec-card.tsx\",\"app/(app)/play-next/_client.tsx\",\"lib/recs/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"Play this button: 0 overlap → redirect; 1 → direct; 2+ → platform-picker dropdown\",\"Save for later: log(backlog) created, toast, optimistic slide-out\",\"Not for me: dismissed=true, slide-out via framer-motion exit\",\"Show me more like these → CTA visible after first dismissal; calls refillRecs\",\"toasts on every action\"]}\n```"
     },
