@@ -89,6 +89,72 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   return { ok: true, logId: inserted.id, gameSlug: game.slug };
 }
 
+/**
+ * Lower-level idempotent log writer used by paths that already have a
+ * resolved `gameId` (the rec-feedback actions in `lib/recs/server-actions.ts`)
+ * — they don't need `createLog`'s RAWG round-trip, friendly error envelope, or
+ * Zod-validated `formData` shape. Caller is responsible for auth + owner checks
+ * before invoking. Always fires `triggerOnLogWrite` so the taste pipeline picks
+ * up new logs regardless of which code path inserted them.
+ *
+ * Two upsert paths under the `(userId, gameId, isReplay=false)` unique index:
+ *   - `status: "playing"` — overwrite existing row's status to "playing" and
+ *     overwrite `platforms` when supplied. Touches `updatedAt`. The realistic
+ *     case is backlog → playing; reaching this path with an existing
+ *     "completed" or "dropped" row would technically downgrade, but T14's
+ *     only `playing` caller is `playRec`, which only ever fires from a
+ *     recommendation, and `candidatePool` already excludes games the user
+ *     has logged. So the upgrade-only invariant holds in practice.
+ *   - `status: "backlog"` (and other future statuses) — DO NOTHING on conflict.
+ *     "User already has this in their library" is the steady state; we don't
+ *     downgrade or churn `updatedAt` just because the rec system wanted to
+ *     bump it to backlog.
+ *
+ * No return value — current callers only need the side effect.
+ */
+export async function ensureLog(input: {
+  userId: string;
+  gameId: number;
+  status: LogStatus;
+  platforms?: string[];
+}): Promise<void> {
+  if (input.status === "playing") {
+    await db
+      .insert(schema.logs)
+      .values({
+        userId: input.userId,
+        gameId: input.gameId,
+        status: "playing",
+        platforms: input.platforms,
+      })
+      .onConflictDoUpdate({
+        target: [schema.logs.userId, schema.logs.gameId, schema.logs.isReplay],
+        set: {
+          status: "playing",
+          // Preserve existing platforms when the caller didn't supply a new
+          // array. `?? schema.logs.platforms` resolves to the column itself;
+          // Drizzle emits `SET "platforms" = "logs"."platforms"` (a no-op in
+          // Postgres ON CONFLICT DO UPDATE — keeps the row's prior value).
+          platforms: input.platforms ?? schema.logs.platforms,
+          updatedAt: new Date(),
+        },
+      });
+  } else {
+    await db
+      .insert(schema.logs)
+      .values({
+        userId: input.userId,
+        gameId: input.gameId,
+        status: input.status,
+        platforms: input.platforms,
+      })
+      .onConflictDoNothing({
+        target: [schema.logs.userId, schema.logs.gameId, schema.logs.isReplay],
+      });
+  }
+  await triggerOnLogWrite(input.userId);
+}
+
 export type SortKey = "rating-desc" | "rating-asc" | "recent" | "title-asc" | "released-desc";
 
 export interface GetLibraryArgs {

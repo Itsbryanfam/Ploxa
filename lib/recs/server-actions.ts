@@ -4,10 +4,18 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { revalidatePath } from "next/cache";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { games, logs, recommendations, tasteFingerprints } from "@/lib/db/schema";
+import {
+  games,
+  logs,
+  platformConnections,
+  recommendations,
+  tasteFingerprints,
+} from "@/lib/db/schema";
+import { ensureLog } from "@/lib/logs/server-actions";
 import { cacheKey } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
@@ -536,4 +544,198 @@ async function metadataOnlyRecs(
         ? "Your taste is still sharpening — these picks use genre matching only."
         : undefined,
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// T14: Feedback server actions
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Owner-only dismissal. Sets `dismissed=true` so the row drops out of the
+ * cache-hit window for future getRecs calls and feeds the rerank prompt's
+ * negative-context SELECT. Deliberately does NOT delete the row.
+ *
+ * No cache invalidation: the four remaining non-dismissed rows for the
+ * current cache key continue to serve. The /play-next page revalidates so a
+ * follow-up navigation re-renders without the dismissed card.
+ */
+export async function dismissRec(
+  recId: string,
+): Promise<{ ok: true } | { ok: false; reason: "unauthorized" | "not-found" }> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const [row] = await db
+    .select({ id: recommendations.id, userId: recommendations.userId })
+    .from(recommendations)
+    .where(eq(recommendations.id, recId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
+
+  await db
+    .update(recommendations)
+    .set({ dismissed: true })
+    .where(eq(recommendations.id, recId));
+
+  revalidatePath("/play-next");
+  return { ok: true };
+}
+
+/**
+ * "Save for later" — creates a `backlog` log via `ensureLog` (which fires
+ * `triggerOnLogWrite` → vector recompute + maybe milestone narrative refresh)
+ * and dismisses the rec so it doesn't reappear in the current grid.
+ */
+export async function saveRecForLater(
+  recId: string,
+): Promise<
+  | { ok: true; message: string }
+  | { ok: false; reason: "unauthorized" | "not-found" }
+> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const [row] = await db
+    .select({
+      id: recommendations.id,
+      userId: recommendations.userId,
+      gameId: recommendations.gameId,
+    })
+    .from(recommendations)
+    .where(eq(recommendations.id, recId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
+
+  await ensureLog({ userId: me.id, gameId: row.gameId, status: "backlog" });
+
+  await db
+    .update(recommendations)
+    .set({ dismissed: true })
+    .where(eq(recommendations.id, recId));
+
+  revalidatePath("/play-next");
+  revalidatePath("/library");
+  return { ok: true, message: "Added to your backlog." };
+}
+
+/**
+ * "Play this" — smart-routes based on whether a platform hint was supplied,
+ * whether the user has that platform connection, and whether the game
+ * actually exists on that platform.
+ *
+ *   - No platform hint            → redirect=true (caller pushes /games/{slug})
+ *   - Platform not connected      → ok=false, "platform-not-connected"
+ *   - Game lacks the platform     → redirect=true (caller falls back to slug)
+ *   - All green                   → ensureLog(playing, [platform]) + dismiss
+ *                                   + toast message
+ *
+ * Mirrors the three-button RecCard UI from T15: the platform picker is only
+ * shown when the user has 2+ matching connections; the single-platform case
+ * passes through here without a UI prompt.
+ */
+export async function playRec(
+  recId: string,
+  platform?: "steam" | "xbox" | "psn",
+): Promise<
+  | { ok: true; redirect: false; message: string }
+  | { ok: true; redirect: true; slug: string }
+  | {
+      ok: false;
+      reason: "unauthorized" | "not-found" | "platform-not-connected";
+    }
+> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const [row] = await db
+    .select({
+      id: recommendations.id,
+      userId: recommendations.userId,
+      gameId: recommendations.gameId,
+    })
+    .from(recommendations)
+    .where(eq(recommendations.id, recId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
+
+  const [game] = await db
+    .select({ slug: games.slug, platforms: games.platforms })
+    .from(games)
+    .where(eq(games.id, row.gameId))
+    .limit(1);
+  if (!game) return { ok: false, reason: "not-found" };
+
+  if (!platform) {
+    return { ok: true, redirect: true, slug: game.slug };
+  }
+
+  // Confirm the user actually has an active connection for this platform.
+  const [conn] = await db
+    .select({ id: platformConnections.id })
+    .from(platformConnections)
+    .where(
+      and(
+        eq(platformConnections.userId, me.id),
+        eq(platformConnections.platform, platform),
+        eq(platformConnections.isActive, true),
+      ),
+    )
+    .limit(1);
+  if (!conn) return { ok: false, reason: "platform-not-connected" };
+
+  // Confirm the game has this platform — catalog drift means a game that
+  // looked Steam-only at filter time may have lost the tag, etc. Fall back
+  // to slug navigation rather than asserting a platform we can't verify.
+  if (!(game.platforms ?? []).includes(platform)) {
+    return { ok: true, redirect: true, slug: game.slug };
+  }
+
+  await ensureLog({
+    userId: me.id,
+    gameId: row.gameId,
+    status: "playing",
+    platforms: [platform],
+  });
+  await db
+    .update(recommendations)
+    .set({ dismissed: true })
+    .where(eq(recommendations.id, recId));
+
+  revalidatePath("/play-next");
+  revalidatePath("/library");
+  return { ok: true, redirect: false, message: `Marked as playing on ${platform}.` };
+}
+
+/**
+ * "Show me more like these" — wipes the non-dismissed rows for the current
+ * `(userId, cacheKey)` so the next `getRecs` re-runs the rerank with the
+ * cumulative dismissed history feeding the negative-context section of the
+ * prompt. Historically-dismissed rows are preserved for that purpose.
+ */
+export async function refillRecs(rawFilters: FilterParams): Promise<RecResult> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const filters = filterSchema.parse(rawFilters);
+  const key = cacheKey({
+    userId: me.id,
+    moods: filters.moods,
+    time: filters.time,
+    platforms: filters.platforms,
+  });
+
+  await db
+    .delete(recommendations)
+    .where(
+      and(
+        eq(recommendations.userId, me.id),
+        eq(recommendations.cacheKey, key),
+        eq(recommendations.dismissed, false),
+      ),
+    );
+
+  return getRecs(filters);
 }
