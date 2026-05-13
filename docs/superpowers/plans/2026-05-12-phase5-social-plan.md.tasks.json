@@ -277,7 +277,10 @@
     {
       "id": 24,
       "subject": "Task 24: Lists UI — card, detail, editor (with @dnd-kit), add-to-list modal",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-13",
+      "completedSha": "815a453",
+      "completionNotes": "Ships at aa730df (impl) + 815a453 (code-quality follow-ups). Controller pre-corrected 5 plan bugs in implementer prompt: (1) phantom CSS tokens --bg-elevated/--bg-elevated-2/--accent-fg replaced with --bg-card + text-white; (2) emoji glyphs ⋮⋮/✕ replaced with lucide GripVertical/X (project memory: no emojis in product UI); (3) raw <img> with eslint-disable for cover URLs (RAWG/Supabase not in remotePatterns); (4) Playwright getByLabel('Email') + getByRole login pattern instead of broken input[name]; (5) drag-reorder e2e deferred to T29 M4 (Playwright dragAndDrop doesn't trigger @dnd-kit pointer sensors). Implementer noted 3 DONE_WITH_CONCERNS: drag-reorder e2e deferred (accepted), AddToListModal mounted below GameDetail instead of inside it (accepted; component doesn't accept list props), or(...listIds.map()) pattern instead of inArray() with TODO (fixed in code-quality follow-up). Spec compliance review clean (all 13 verification points + 5 plan corrections satisfied). Code-quality review found 0 Critical + 5 Important + 4 Minor — all 5 Important fixes applied: (a) inArray() replaces or-chains in lists page (matches established convention); (b) updateList revalidates /u/{username}/lists + canonical detail when publishedAt !== null (was a stale-cache bug for edited published lists); (c) ListEditor onRemove + onDragEnd call router.refresh() on result.ok=false to re-sync from authoritative state (was silent desync); (d) AddToListModal create-then-add: setLists immediately after createList succeeds, surface error message when addItemToList fails on the new list (was orphan-list UX); (e) DndContext gains KeyboardSensor + sortableKeyboardCoordinates so keyboard users can reorder (a11y baseline). 4 minor items deferred (SEED_GAME_ID void in spec cleanup, AddToListModal mount UX polish, save-on-blur debouncing, locale-pinned dates in ListDetail). typecheck+lint+build clean throughout.",
       "blockedBy": [
         23
       ],
