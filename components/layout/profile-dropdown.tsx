@@ -43,6 +43,9 @@ export function ProfileDropdown({ user }: Props) {
         <DropdownMenuItem asChild>
           <Link href="/settings">Settings</Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/settings/blocked">Blocked users</Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() =>
