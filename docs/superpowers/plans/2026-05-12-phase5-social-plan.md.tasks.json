@@ -33,7 +33,10 @@
     {
       "id": 4,
       "subject": "Task 4: withBlockedFilter + isBlockedBetween chokepoint",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-12",
+      "completedSha": "b72bb53",
+      "completionNotes": "Block-filter chokepoint shipped. 133/133 tests pass. Self-reviewed: visibility.ts byte-identical to spec. Implementer's only adjustment was casting `db` to `any` in test mocks (TypeScript saw real Drizzle type which lacks top-level .limit; cast acceptable in mock-structure tests).",
       "blockedBy": [2],
       "description": "**Goal:** Block-filter chokepoint that every social read passes through. Forgetting it = leak; Vitest guards.\n\n**Files:** lib/social/_shared/visibility.ts, tests/unit/visibility.test.ts\n\n**Verify:** `pnpm test -- visibility && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/_shared/visibility.ts\",\"tests/unit/visibility.test.ts\"],\"verifyCommand\":\"pnpm test -- visibility && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"withBlockedFilter<Q>(viewerId, query, authorIdColumn) returns query w/ bidirectional notExists\",\"viewerId=null short-circuits unchanged\",\"isBlockedBetween(a, b) post-hoc predicate w/ OR clause both directions\",\"Vitest covers: logged-out exception, bidirectional composition, predicate form\"]}\n```"
     },
