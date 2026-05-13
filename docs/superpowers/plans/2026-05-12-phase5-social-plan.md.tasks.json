@@ -73,7 +73,10 @@
     {
       "id": 8,
       "subject": "Task 8: Profile overview hub redesign + follower/following routes + follow button",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-05-12",
+      "completedSha": "73ed1d0",
+      "completionNotes": "Ships at 0b0c0b7 (impl) + 73ed1d0 (code-quality follow-ups). 10 files, 580+ insertions. Implementer flagged 2 small plan-vs-reality notes: (a) plan said 'pnpm test:e2e -- follow-and-feed' but actual script is 'pnpm e2e' (used real script); (b) implementer added avatarColorFor() fallback for users without avatars mirroring components/ui/avatar.tsx — counts as filling a UX gap, accepted. Code-quality reviewer flagged 1 BLOCKING + 6 Important + 1 Suggestion, all fixed: dialog aria-labelledby via useId, --bg-elevated→--bg-card (token was genuinely undefined; reviewer reality check confirmed), focus return to trigger on dialog close, auth-expired redirect on follow failure, revalidatePath on follow/unfollow (PK lookup → revalidate /u/{username}), Playwright selectors switched to getByLabel/getByRole with 'Log in' (not 'Sign in'), aria-label 'Profile menu'→'More options', dead targetUsername prop removed. Playwright follow test passes in 11.2s; T12 feed assertion is test.fixme placeholder.",
       "blockedBy": [5, 6, 7],
       "description": "**Goal:** Rebuild /u/[username]/page.tsx into the overview hub. Add /followers + /following routes. Ship FollowButton + BlockAction + ProfileOverviewHeader + FollowersGrid. Playwright covers two-account follow flow.\n\n**Files:** app/(app)/u/[username]/page.tsx, app/(app)/u/[username]/followers/page.tsx, app/(app)/u/[username]/following/page.tsx, components/social/profile-overview-header.tsx, components/social/follow-button.tsx, components/social/block-action.tsx, components/social/followers-grid.tsx, tests/fixtures/test-base.ts, tests/fixtures/seed-test-users.ts, tests/e2e/follow-and-feed.spec.ts\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build && pnpm test:e2e -- follow-and-feed`\n\n```json:metadata\n{\"files\":[\"app/(app)/u/[username]/page.tsx\",\"app/(app)/u/[username]/followers/page.tsx\",\"app/(app)/u/[username]/following/page.tsx\",\"components/social/profile-overview-header.tsx\",\"components/social/follow-button.tsx\",\"components/social/block-action.tsx\",\"components/social/followers-grid.tsx\",\"tests/fixtures/test-base.ts\",\"tests/fixtures/seed-test-users.ts\",\"tests/e2e/follow-and-feed.spec.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build && pnpm test:e2e -- follow-and-feed\",\"acceptanceCriteria\":[\"/u/[username] renders 6 sections via getProfileSummary\",\"Each section has See all link\",\"FollowButton optimistic toggle + idempotent rollback\",\"BlockAction overflow + confirm dialog\",\"Two-account Playwright spec passes follow flow\"]}\n```"
     },
@@ -225,5 +228,5 @@
       "description": "**Goal:** Close the phase. Run M1-M5 manual gate items, polish rough edges, update memory, tag phase-5-complete on main HEAD.\n\n**Files:** memory/MEMORY.md, memory/phase_5_complete.md\n\n**Verify:** `pnpm tsx scripts/verify-phase-5.ts` clean + all manual items signed off in memory\n\n```json:metadata\n{\"files\":[\"memory/MEMORY.md\",\"memory/phase_5_complete.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-5.ts\",\"acceptanceCriteria\":[\"M1 real digest email delivered + unsubscribe round-trip\",\"M2 visual rendering breakpoints (desktop + mobile)\",\"M3 @-mention autocomplete UX\",\"M4 drag-to-reorder touch + mouse\",\"M5 bell badge polling 2-tab\",\"verify-phase-5.ts runs green\",\"memory updated\",\"git tag phase-5-complete\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-12T23:30:00Z"
+  "lastUpdated": "2026-05-13T00:30:00Z"
 }
