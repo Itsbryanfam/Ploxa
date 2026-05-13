@@ -1,0 +1,208 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-12-phase5-social-plan.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Migration 0008 — schema additions + RLS-ready primitives",
+      "status": "pending",
+      "description": "**Goal:** Hand-written migration 0008_phase5_social.sql lands all Phase 5 schema changes (3 new tables, 3 new enums, 7 column adds, 9 new indexes, 1 enum extension, 1 dedupe unique index for the notification chokepoint). Applied to live dev DB via Supabase MCP.\n\n**Files:** lib/db/migrations/0008_phase5_social.sql, lib/db/migrations/meta/_journal.json\n\n**Verify:** `pnpm drizzle-kit check` clean + advisor check via MCP\n\n```json:metadata\n{\"files\":[\"lib/db/migrations/0008_phase5_social.sql\",\"lib/db/migrations/meta/_journal.json\"],\"verifyCommand\":\"pnpm drizzle-kit check\",\"acceptanceCriteria\":[\"3 new tables: blocks, list_likes, reports\",\"3 new enum types: report_target_type, report_status, email_digest_cadence\",\"Column adds: lists.slug+published_at, logs.last_event_at+last_event_type, comments.is_hidden, profiles.email_digest_cadence+last_digest_sent_at\",\"9 new indexes including notifications_dedupe_uniq\",\"notification_type enum gains comment_replied\",\"Backfills run for lists.slug and logs.last_event_at\",\"blocks_no_self CHECK enforced\",\"Applied via Supabase MCP\",\"Advisors clean\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Drizzle schema.ts mirror",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Update lib/db/schema.ts to mirror migration 0008 changes. Drizzle enums reference existing PG types via pgEnum(). New tables exported as schema.blocks, schema.listLikes, schema.reports.\n\n**Files:** lib/db/schema.ts\n\n**Verify:** `pnpm drizzle-kit check && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/db/schema.ts\"],\"verifyCommand\":\"pnpm drizzle-kit check && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"notificationTypeEnum has 6 values including comment_replied\",\"reportTargetTypeEnum + reportStatusEnum + emailDigestCadenceEnum defined\",\"blocks, listLikes, reports tables exported\",\"profiles has emailDigestCadence + lastDigestSentAt\",\"logs has lastEventAt + lastEventType + userEventIdx partial index\",\"comments has isHidden + reviewCreatedIdx\",\"lists has slug + publishedAt + userSlugUniq + userPublishedIdx\",\"notifications has dedupeUniq\",\"drizzle-kit check reports no drift\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Defense-in-depth RLS policies (0003_phase5_prep.sql)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** RLS policies on blocks, list_likes, reports — defense-in-depth same pattern as 0002_phase5_prep.sql from the Codex audit fix.\n\n**Files:** lib/db/policies/0003_phase5_prep.sql\n\n**Verify:** Apply via MCP + advisor check\n\n```json:metadata\n{\"files\":[\"lib/db/policies/0003_phase5_prep.sql\"],\"verifyCommand\":\"Supabase MCP advisor check\",\"acceptanceCriteria\":[\"blocks: own rows only (auth.uid() = blocker_id)\",\"list_likes: SELECT all, INSERT/DELETE own\",\"reports: INSERT auth, SELECT own\",\"RLS enabled on all 3 tables\",\"Applied via MCP\",\"Advisors clean\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: withBlockedFilter + isBlockedBetween chokepoint",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Block-filter chokepoint that every social read passes through. Forgetting it = leak; Vitest guards.\n\n**Files:** lib/social/_shared/visibility.ts, tests/unit/visibility.test.ts\n\n**Verify:** `pnpm test -- visibility && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/_shared/visibility.ts\",\"tests/unit/visibility.test.ts\"],\"verifyCommand\":\"pnpm test -- visibility && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"withBlockedFilter<Q>(viewerId, query, authorIdColumn) returns query w/ bidirectional notExists\",\"viewerId=null short-circuits unchanged\",\"isBlockedBetween(a, b) post-hoc predicate w/ OR clause both directions\",\"Vitest covers: logged-out exception, bidirectional composition, predicate form\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: getProfileSummary overview hub data shape",
+      "status": "pending",
+      "blockedBy": [2, 4],
+      "description": "**Goal:** Single helper loading everything the redesigned /u/[username] page renders — header + stats + taste card + top 3 lists + recent 3 reviews + library truncated. Parallel internal fetches.\n\n**Files:** lib/social/_shared/profile-summary.ts, tests/unit/profile-summary.test.ts\n\n**Verify:** `pnpm test -- profile-summary && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/_shared/profile-summary.ts\",\"tests/unit/profile-summary.test.ts\"],\"verifyCommand\":\"pnpm test -- profile-summary && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"getProfileSummary returns ProfileSummary | null\",\"null on not-found, private+non-owner, blocked+non-owner (404 contract)\",\"7 parallel Promise.all fetches\",\"Owner sees own private profile\",\"Vitest covers 5 cases\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Follow/unfollow server actions + onFollow notification",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** follow/unfollow/getFollowers/getFollowing server actions. Emit new_follower via stub (T18 ships real emit). Block-filter on follower/following reads.\n\n**Files:** lib/social/follows/server-actions.ts, lib/social/follows/triggers.ts, lib/social/notifications/emit.ts (stub)\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/follows/server-actions.ts\",\"lib/social/follows/triggers.ts\",\"lib/social/notifications/emit.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"follow() rejects self-follow + blocked pair + INSERT ON CONFLICT DO NOTHING\",\"unfollow() DELETE idempotent\",\"emit signature locked (drop-in replace in T18)\",\"onFollow emits new_follower on fresh insert only\",\"getFollowers/getFollowing apply withBlockedFilter\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Block/unblock + cascade side effects",
+      "status": "pending",
+      "blockedBy": [4, 6],
+      "description": "**Goal:** block/unblock/getBlocked server actions. cascadeBlock strips mutual follows + bidirectional review/list likes + blocked's comments on blocker's reviews.\n\n**Files:** lib/social/blocks/server-actions.ts, lib/social/blocks/side-effects.ts\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/blocks/server-actions.ts\",\"lib/social/blocks/side-effects.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"block() rejects self-block + INSERT ON CONFLICT DO NOTHING\",\"cascadeBlock: drops mutual follows + bidirectional review+list likes + blocked's comments\",\"Not transactional; re-block re-runs cascade\",\"unblock() drops block row only\",\"getBlocked returns blocked profile list\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Profile overview hub redesign + follower/following routes + follow button",
+      "status": "pending",
+      "blockedBy": [5, 6, 7],
+      "description": "**Goal:** Rebuild /u/[username]/page.tsx into the overview hub. Add /followers + /following routes. Ship FollowButton + BlockAction + ProfileOverviewHeader + FollowersGrid. Playwright covers two-account follow flow.\n\n**Files:** app/(app)/u/[username]/page.tsx, app/(app)/u/[username]/followers/page.tsx, app/(app)/u/[username]/following/page.tsx, components/social/profile-overview-header.tsx, components/social/follow-button.tsx, components/social/block-action.tsx, components/social/followers-grid.tsx, tests/fixtures/test-base.ts, tests/fixtures/seed-test-users.ts, tests/e2e/follow-and-feed.spec.ts\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build && pnpm test:e2e -- follow-and-feed`\n\n```json:metadata\n{\"files\":[\"app/(app)/u/[username]/page.tsx\",\"app/(app)/u/[username]/followers/page.tsx\",\"app/(app)/u/[username]/following/page.tsx\",\"components/social/profile-overview-header.tsx\",\"components/social/follow-button.tsx\",\"components/social/block-action.tsx\",\"components/social/followers-grid.tsx\",\"tests/fixtures/test-base.ts\",\"tests/fixtures/seed-test-users.ts\",\"tests/e2e/follow-and-feed.spec.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build && pnpm test:e2e -- follow-and-feed\",\"acceptanceCriteria\":[\"/u/[username] renders 6 sections via getProfileSummary\",\"Each section has See all link\",\"FollowButton optimistic toggle + idempotent rollback\",\"BlockAction overflow + confirm dialog\",\"Two-account Playwright spec passes follow flow\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: /settings/blocked page + unblock UI",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "**Goal:** Settings page showing blocked users + Unblock button per row. Profile dropdown gains link.\n\n**Files:** app/(app)/settings/blocked/page.tsx, components/layout/profile-dropdown.tsx\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/(app)/settings/blocked/page.tsx\",\"components/layout/profile-dropdown.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"/settings/blocked shows blocked list w/ Unblock button\",\"Empty state w/ pixel mascot\",\"Unblock calls server action + revalidates\",\"Profile dropdown link added\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: buildFeedQuery — pull-on-read UNION ALL across logs + reviews + lists",
+      "status": "pending",
+      "blockedBy": [2, 4],
+      "description": "**Goal:** Feed core query. UNION ALL of 3 projections (logs material events, review publishes, list publishes) from followees, cursor predicate, ORDER BY event_at DESC LIMIT 50. Block filter post-hoc.\n\n**Files:** lib/social/_shared/cursors.ts, lib/social/feed/queries.ts, tests/unit/cursors.test.ts\n\n**Verify:** `pnpm test -- cursors && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/_shared/cursors.ts\",\"lib/social/feed/queries.ts\",\"tests/unit/cursors.test.ts\"],\"verifyCommand\":\"pnpm test -- cursors && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"encodeCursor/decodeCursor round-trips eventAt+kind+actorId triplet base64url\",\"compareFeedRows: eventAt DESC then kind ASC then actorId ASC\",\"buildFeedQuery returns FeedRow[] with kind+actorId+eventAt+eventType+targetId+payload\",\"Post-hoc isBlockedBetween filter\",\"Cursor predicate uses (event_at, kind, actor_id) < tuple\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: getFeed server action + followee lookup",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Server-action wrapper around buildFeedQuery. Followee IDs fetched once, blocked followees stripped before query, returns { items, nextCursor }.\n\n**Files:** lib/social/feed/server-actions.ts\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/feed/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"getFeed returns { items, nextCursor }\",\"Empty followees short-circuits to empty result\",\"Blocked followees stripped\",\"nextCursor encoded only when items.length === limit\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: /home/feed page + feed components + feed-visibility Playwright assertion",
+      "status": "pending",
+      "blockedBy": [11, 13],
+      "description": "**Goal:** Wire /home/feed page, 3 item type renderers (log/review/list), empty state w/ mascot, sidebar nav entry, Playwright assertion that follower sees followee review-publish.\n\n**Files:** app/(app)/home/feed/page.tsx, components/feed/feed-list.tsx, components/feed/feed-item-log.tsx, components/feed/feed-item-review.tsx, components/feed/feed-item-list.tsx, components/feed/feed-empty-state.tsx, components/layout/nav-tabs.tsx, tests/e2e/follow-and-feed.spec.ts\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build && pnpm test:e2e -- follow-and-feed`\n\n```json:metadata\n{\"files\":[\"app/(app)/home/feed/page.tsx\",\"components/feed/feed-list.tsx\",\"components/feed/feed-item-log.tsx\",\"components/feed/feed-item-review.tsx\",\"components/feed/feed-item-list.tsx\",\"components/feed/feed-empty-state.tsx\",\"components/layout/nav-tabs.tsx\",\"tests/e2e/follow-and-feed.spec.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build && pnpm test:e2e -- follow-and-feed\",\"acceptanceCriteria\":[\"3 item type renderers hydrate game covers + actor avatars\",\"Empty state distinguishes no-followees vs no-more cursor\",\"Sidebar gains Feed entry between Home and Library\",\"Playwright: follower sees followee's review publish\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: logs.last_event_at population — wire into existing log mutation paths",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Every existing log mutation path sets lastEventAt + lastEventType correctly. Steam/Xbox imports leave NULL. materialEventFromMutation centralizes the rule. Vitest pins truth table.\n\n**Files:** lib/logs/server-actions.ts, lib/imports/merge.ts, tests/unit/last-event-tracking.test.ts\n\n**Verify:** `pnpm test && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/logs/server-actions.ts\",\"lib/imports/merge.ts\",\"tests/unit/last-event-tracking.test.ts\"],\"verifyCommand\":\"pnpm test && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"materialEventFromMutation: status change (not to backlog/wishlist) OR rating set/changed (not cleared)\",\"createLog + updateLog set lastEventAt on material mutations\",\"Imports leave lastEventAt NULL on backlog inserts\",\"Vitest pins 16+ cases\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: Comments CRUD + mentions parsing",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** createComment/editComment/softDeleteComment server actions + parseMentions + resolveMentionedUserIds + onComment trigger. Comments use T6's emit stub.\n\n**Files:** lib/social/comments/server-actions.ts, lib/social/comments/mentions.ts, lib/social/comments/triggers.ts, tests/unit/mentions.test.ts\n\n**Verify:** `pnpm test -- mentions && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/comments/server-actions.ts\",\"lib/social/comments/mentions.ts\",\"lib/social/comments/triggers.ts\",\"tests/unit/mentions.test.ts\"],\"verifyCommand\":\"pnpm test -- mentions && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"createComment: block check, T15-stubbed auto-flag, INSERT, onComment\",\"editComment + softDeleteComment with author-only WHERE\",\"parseMentions strips code fences, handles \\\\@, dedupes, 3-20 char range\",\"onComment emits review_commented OR comment_replied + mention pings\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: Spam rules + integration into createComment",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** Replace T14 stub with rule-based checkSpamRules. Pure function <1ms. Vitest pins truth-table boundaries.\n\n**Files:** lib/social/moderation/rules.ts, tests/unit/spam-rules.test.ts\n\n**Verify:** `pnpm test -- spam-rules && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/moderation/rules.ts\",\"tests/unit/spam-rules.test.ts\"],\"verifyCommand\":\"pnpm test -- spam-rules && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"4 rules: link_density (3+ URLs), all_caps (30 chars + 70% caps), repeat_chars (7+ same), blocklist substring\",\"Vitest pins boundaries 2/3 URLs, 29/30 chars, 70/71% caps, 6/7 repeats\",\"Realistic harsh review NOT flagged\",\"Composite multi-rule firing\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: Reactions (likeReview, unlikeReview, likeList, unlikeList)",
+      "status": "pending",
+      "blockedBy": [4, 6],
+      "description": "**Goal:** 4 reaction mutations. Each fires emit() on fresh insert; dedupe via notifications_dedupe_uniq from 0008. Block check + self-like silently no-op.\n\n**Files:** lib/social/reactions/server-actions.ts\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/reactions/server-actions.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"INSERT ON CONFLICT DO NOTHING (idempotent re-like)\",\"emit on fresh insert; collapsed via dedupe index\",\"Self-like + blocked-pair silently no-op\",\"Cannot like unpublished list\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: Comments UI (thread + card + composer w/ @-mention autocomplete) + reaction buttons on review page",
+      "status": "pending",
+      "blockedBy": [14, 15, 16],
+      "description": "**Goal:** Indented one-level thread + composer + flagged badge + LikeButton (review+list flavors). Wire into canonical review page. Playwright covers thread lifecycle + auto-flag hide.\n\n**Files:** components/comments/comment-thread.tsx, components/comments/comment-card.tsx, components/comments/comment-composer.tsx, components/comments/flagged-badge.tsx, components/social/like-button.tsx, app/(app)/u/[username]/reviews/[slug]/page.tsx, tests/e2e/comment-thread.spec.ts, tests/e2e/auto-flag.spec.ts\n\n**Verify:** `pnpm test:e2e -- comment-thread auto-flag && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"components/comments/comment-thread.tsx\",\"components/comments/comment-card.tsx\",\"components/comments/comment-composer.tsx\",\"components/comments/flagged-badge.tsx\",\"components/social/like-button.tsx\",\"app/(app)/u/[username]/reviews/[slug]/page.tsx\",\"tests/e2e/comment-thread.spec.ts\",\"tests/e2e/auto-flag.spec.ts\"],\"verifyCommand\":\"pnpm test:e2e -- comment-thread auto-flag && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"CommentThread renders indented one-level + soft-delete preserves structure\",\"Read predicate: is_hidden=false OR viewer=author\",\"LikeButton optimistic toggle review/list\",\"Playwright: comment + reply + edit + soft-delete; auto-flag hidden from non-author\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 18: emit() chokepoint — replace stub with ON CONFLICT dedupe",
+      "status": "pending",
+      "blockedBy": [2, 4, 6],
+      "description": "**Goal:** Replace T6 stub with real impl: self-notify silence, blocked-pair silence, ON CONFLICT (user_id, type, target_id, actor_id) DO UPDATE bumps created_at + clears read_at.\n\n**Files:** lib/social/notifications/emit.ts, tests/unit/emit-dedupe.test.ts\n\n**Verify:** `pnpm test -- emit-dedupe && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/notifications/emit.ts\",\"tests/unit/emit-dedupe.test.ts\"],\"verifyCommand\":\"pnpm test -- emit-dedupe && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"Self-notify silenced (recipient === actor)\",\"Blocked-pair silenced\",\"INSERT ... ON CONFLICT DO UPDATE SET created_at=excluded, read_at=null\",\"Vitest covers 3 paths\",\"All T6-T17 callers unchanged\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 19: Inbox server actions + /notifications page + bell badge polling",
+      "status": "pending",
+      "blockedBy": [18],
+      "description": "**Goal:** getInbox/getUnreadCount/markRead/markAllRead + /notifications page (unread-first, filter chips, mark-all-read) + NotificationBell (60s polling). Playwright: action → row + bell increment.\n\n**Files:** lib/social/notifications/server-actions.ts, app/(app)/notifications/page.tsx, components/notifications/notification-row.tsx, components/notifications/notification-bell.tsx, components/layout/nav-tabs.tsx, tests/e2e/notifications-inbox.spec.ts\n\n**Verify:** `pnpm test:e2e -- notifications-inbox && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/notifications/server-actions.ts\",\"app/(app)/notifications/page.tsx\",\"components/notifications/notification-row.tsx\",\"components/notifications/notification-bell.tsx\",\"components/layout/nav-tabs.tsx\",\"tests/e2e/notifications-inbox.spec.ts\"],\"verifyCommand\":\"pnpm test:e2e -- notifications-inbox && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"Inbox: unread-first via (read_at IS NULL) DESC then created_at DESC\",\"Filter chips: all/follows/reactions/comments/wishlist\",\"NotificationBell 60s polling for unread count\",\"Playwright: 1 action → 1 row, mark-all-read → 0\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 20: buildDigest(userId) — pure payload builder",
+      "status": "pending",
+      "blockedBy": [2, 18],
+      "description": "**Goal:** Pure function returning DigestPayload | null with 5 sections (newFollowers, reactions, comments, wishlistTriggers, yourWeek). Respects last_digest_sent_at window + cadence.\n\n**Files:** lib/social/notifications/digest.ts, tests/unit/digest-builder.test.ts\n\n**Verify:** `pnpm test -- digest-builder && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/notifications/digest.ts\",\"tests/unit/digest-builder.test.ts\"],\"verifyCommand\":\"pnpm test -- digest-builder && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"Returns null on cadence=off OR no items OR profile-not-found\",\"Each section capped at SECTION_CAP (10)\",\"Cadence window: 24h daily / 7d weekly\",\"Batched IN-array hydration of target titles\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 21: React Email digest template + unsubscribe JWT helpers",
+      "status": "pending",
+      "blockedBy": [20],
+      "description": "**Goal:** React Email template (DigestEmail), plain-text fallback, signUnsubscribeToken + verifyUnsubscribeToken (jose, no expiry). Add deps resend + @react-email/components + @react-email/render + jose.\n\n**Files:** lib/email/digest-template.tsx, lib/email/unsubscribe-token.ts, lib/env.ts, package.json, public/mascot-pixel-24.png\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/email/digest-template.tsx\",\"lib/email/unsubscribe-token.ts\",\"lib/env.ts\",\"package.json\",\"public/mascot-pixel-24.png\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"DigestEmail renders 5 sections conditionally\",\"renderDigestPlainText for multipart fallback\",\"JWT signed w/ UNSUBSCRIBE_SECRET (HS256, no expiry)\",\"UNSUBSCRIBE_SECRET + RESEND_DIGEST_FROM_ADDRESS in env schema\",\"24px mascot pixel sprite in email header\"]}\n```"
+    },
+    {
+      "id": 22,
+      "subject": "Task 22: Digest cron via Vercel API route + /unsubscribe route",
+      "status": "pending",
+      "blockedBy": [21],
+      "description": "**Goal:** Pivot from Deno Edge Function to Vercel API route /api/internal/digest/run (header-secret gated) invoked by pg_cron. Plus /unsubscribe JWT-gated route + confirmed/invalid pages.\n\n**Files:** app/api/internal/digest/run/route.ts, lib/env.ts, supabase/migrations/20260512_0002_phase5_digest_cron.sql, app/unsubscribe/route.ts, app/unsubscribe/confirmed/page.tsx, app/unsubscribe/invalid/page.tsx\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build` + manual delivery test\n\n```json:metadata\n{\"files\":[\"app/api/internal/digest/run/route.ts\",\"lib/env.ts\",\"supabase/migrations/20260512_0002_phase5_digest_cron.sql\",\"app/unsubscribe/route.ts\",\"app/unsubscribe/confirmed/page.tsx\",\"app/unsubscribe/invalid/page.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build + manual delivery\",\"acceptanceCriteria\":[\"/api/internal/digest/run header-secret gated; 404 without\",\"Concurrency=5 worker pool for Resend send\",\"last_digest_sent_at updated post-send\",\"pg_cron POSTs daily 12:00 UTC w/ X-Cron-Secret\",\"/unsubscribe verifies JWT, sets cadence=off\",\"Invalid token routes to /unsubscribe/invalid\"]}\n```"
+    },
+    {
+      "id": 23,
+      "subject": "Task 23: Lists CRUD + slug + publish + reorder server actions",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** createList/updateList/publishList/deleteList/addItem/removeItem/reorder + slugifyTitle + uniqueSlugForUser. Slug regenerated only on title change AND unpublished.\n\n**Files:** lib/social/lists/slug.ts, lib/social/lists/server-actions.ts, lib/social/lists/triggers.ts, tests/unit/slug.test.ts\n\n**Verify:** `pnpm test -- slug && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/lists/slug.ts\",\"lib/social/lists/server-actions.ts\",\"lib/social/lists/triggers.ts\",\"tests/unit/slug.test.ts\"],\"verifyCommand\":\"pnpm test -- slug && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"slugifyTitle: alphanumeric+dashes, 60-char cap, 'untitled' fallback\",\"uniqueSlugForUser appends -2 -3 on collision\",\"Published lists keep slug forever\",\"publishList sets published_at once\",\"reorderListItems bulk UPDATE in transaction\",\"removeItem renumbers remaining positions\"]}\n```"
+    },
+    {
+      "id": 24,
+      "subject": "Task 24: Lists UI — card, detail, editor (with @dnd-kit), add-to-list modal",
+      "status": "pending",
+      "blockedBy": [23],
+      "description": "**Goal:** ListCard + ListDetail + ListEditor (@dnd-kit reorder) + AddToListModal. 4 new routes. Playwright covers full lifecycle.\n\n**Files:** package.json, components/lists/list-card.tsx, components/lists/list-detail.tsx, components/lists/list-editor.tsx, components/lists/add-to-list-modal.tsx, app/(app)/lists/new/page.tsx, app/(app)/lists/[id]/edit/page.tsx, app/(app)/u/[username]/lists/page.tsx, app/(app)/u/[username]/lists/[listSlug]/page.tsx, app/(app)/games/[slug]/page.tsx, tests/e2e/lists-flow.spec.ts\n\n**Verify:** `pnpm test:e2e -- lists-flow && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"package.json\",\"components/lists/list-card.tsx\",\"components/lists/list-detail.tsx\",\"components/lists/list-editor.tsx\",\"components/lists/add-to-list-modal.tsx\",\"app/(app)/lists/new/page.tsx\",\"app/(app)/lists/[id]/edit/page.tsx\",\"app/(app)/u/[username]/lists/page.tsx\",\"app/(app)/u/[username]/lists/[listSlug]/page.tsx\",\"app/(app)/games/[slug]/page.tsx\",\"tests/e2e/lists-flow.spec.ts\"],\"verifyCommand\":\"pnpm test:e2e -- lists-flow && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"ListEditor uses @dnd-kit vertical reorder\",\"AddToListModal mounted on game detail page\",\"4 new routes: /lists/new, /lists/[id]/edit, /u/[name]/lists, /u/[name]/lists/[slug]\",\"Playwright covers full lifecycle\"]}\n```"
+    },
+    {
+      "id": 25,
+      "subject": "Task 25: Discovery query helpers — popular games, trending reviews, similar users",
+      "status": "pending",
+      "blockedBy": [2, 4],
+      "description": "**Goal:** 3 query helpers powering /discover/*. Popular+Trending cached 30min via unstable_cache; similar-users on-demand cosine via Phase 4 drift().\n\n**Files:** lib/social/discovery/popular-games.ts, lib/social/discovery/trending-reviews.ts, lib/social/discovery/similar-users.ts\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/discovery/popular-games.ts\",\"lib/social/discovery/trending-reviews.ts\",\"lib/social/discovery/similar-users.ts\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"getPopularGames: unstable_cache 1800s TTL\",\"getTrendingReviews: cached unfiltered, block-filter post-cache per viewer\",\"getSimilarUsers: empty-tier short-circuit, 500-row candidate pool, top-N by similarity\"]}\n```"
+    },
+    {
+      "id": 26,
+      "subject": "Task 26: Discovery routes + components",
+      "status": "pending",
+      "blockedBy": [25],
+      "description": "**Goal:** /discover landing + 3 sub-pages + 3 components. Discover entry in sidebar.\n\n**Files:** app/(app)/discover/page.tsx, app/(app)/discover/games/page.tsx, app/(app)/discover/reviews/page.tsx, app/(app)/discover/people/page.tsx, components/discovery/popular-games-grid.tsx, components/discovery/trending-reviews-list.tsx, components/discovery/similar-users-row.tsx, components/layout/nav-tabs.tsx\n\n**Verify:** `pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/(app)/discover/page.tsx\",\"app/(app)/discover/games/page.tsx\",\"app/(app)/discover/reviews/page.tsx\",\"app/(app)/discover/people/page.tsx\",\"components/discovery/popular-games-grid.tsx\",\"components/discovery/trending-reviews-list.tsx\",\"components/discovery/similar-users-row.tsx\",\"components/layout/nav-tabs.tsx\"],\"verifyCommand\":\"pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"/discover landing previews top 4 of each section\",\"3 sub-pages with correct ordering + SEO meta\",\"/discover/people noindex (auth-gated)\",\"Sidebar Discover entry\"]}\n```"
+    },
+    {
+      "id": 27,
+      "subject": "Task 27: Moderation — reports, admin queue, report modal",
+      "status": "pending",
+      "blockedBy": [15, 17, 24],
+      "description": "**Goal:** ReportModal on review/comment/list overflow. createReport (rate-limited 10/hr) + resolveReport (admin only). /admin/reports queue env-gated via ADMIN_USER_IDS. Playwright covers env gate + admin resolve.\n\n**Files:** lib/social/moderation/admin.ts, lib/social/moderation/server-actions.ts, components/moderation/report-modal.tsx, components/moderation/reports-queue.tsx, components/moderation/moderation-actions.tsx, app/(app)/admin/reports/page.tsx, app/(app)/u/[username]/reviews/[slug]/page.tsx, app/(app)/u/[username]/lists/[listSlug]/page.tsx, lib/env.ts, tests/e2e/admin-gate.spec.ts\n\n**Verify:** `pnpm test:e2e -- admin-gate && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/social/moderation/admin.ts\",\"lib/social/moderation/server-actions.ts\",\"components/moderation/report-modal.tsx\",\"components/moderation/reports-queue.tsx\",\"components/moderation/moderation-actions.tsx\",\"app/(app)/admin/reports/page.tsx\",\"app/(app)/u/[username]/reviews/[slug]/page.tsx\",\"app/(app)/u/[username]/lists/[listSlug]/page.tsx\",\"lib/env.ts\",\"tests/e2e/admin-gate.spec.ts\"],\"verifyCommand\":\"pnpm test:e2e -- admin-gate && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"createReport rate-limited 10/hr/user\",\"resolveReport: hide → comments.is_hidden=true OR keep → resolved_no_action\",\"isAdmin checks ADMIN_USER_IDS env (comma-separated UUIDs)\",\"/admin/reports notFound() for non-admin\",\"Playwright: non-admin 404\"]}\n```"
+    },
+    {
+      "id": 28,
+      "subject": "Task 28: scripts/verify-phase-5.ts — automated verification pass",
+      "status": "pending",
+      "blockedBy": [3, 5, 8, 9, 12, 13, 17, 19, 22, 24, 26, 27],
+      "description": "**Goal:** Mirror verify-phase-4.ts shape. 10 automated groups matching the verify-gate criteria + 5 manual items printed for operator.\n\n**Files:** scripts/verify-phase-5.ts\n\n**Verify:** `pnpm tsx scripts/verify-phase-5.ts && pnpm typecheck && pnpm lint && pnpm build`\n\n```json:metadata\n{\"files\":[\"scripts/verify-phase-5.ts\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-5.ts && pnpm typecheck && pnpm lint && pnpm build\",\"acceptanceCriteria\":[\"10 groups corresponding to verify-gate criteria\",\"Each check has unique ID (G1.1, G1.2, ...)\",\"Exit code 0 only if all PASS or explicit SKIP\",\"M1-M5 manual items printed at end\",\"Runs in <30s\"]}\n```"
+    },
+    {
+      "id": 29,
+      "subject": "Task 29: Manual gate verification + final polish + tag phase-5-complete",
+      "status": "pending",
+      "blockedBy": [28],
+      "description": "**Goal:** Close the phase. Run M1-M5 manual gate items, polish rough edges, update memory, tag phase-5-complete on main HEAD.\n\n**Files:** memory/MEMORY.md, memory/phase_5_complete.md\n\n**Verify:** `pnpm tsx scripts/verify-phase-5.ts` clean + all manual items signed off in memory\n\n```json:metadata\n{\"files\":[\"memory/MEMORY.md\",\"memory/phase_5_complete.md\"],\"verifyCommand\":\"pnpm tsx scripts/verify-phase-5.ts\",\"acceptanceCriteria\":[\"M1 real digest email delivered + unsubscribe round-trip\",\"M2 visual rendering breakpoints (desktop + mobile)\",\"M3 @-mention autocomplete UX\",\"M4 drag-to-reorder touch + mouse\",\"M5 bell badge polling 2-tab\",\"verify-phase-5.ts runs green\",\"memory updated\",\"git tag phase-5-complete\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-12"
+}
