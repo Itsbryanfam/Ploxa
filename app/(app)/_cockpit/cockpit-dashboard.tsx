@@ -8,6 +8,7 @@ import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Mascot } from "@/components/mascot/mascot";
+import { ScoreBar } from "@/components/taste/score-bar";
 import { copy, type GreetingContext } from "@/lib/mascot/copy";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
@@ -82,27 +83,90 @@ export async function CockpitDashboard() {
     );
   }
 
-  // Show the rec card only when there's enough signal to recommend against.
-  // `empty` tier means no logs in the fingerprint pipeline; the early return
-  // above already covers library.length === 0, so this gate catches the in-
-  // between case where logs exist but the fingerprint row hasn't been
-  // populated yet.
+  // Show the discovery surface only when there's a fingerprint row to read
+  // against. `empty` tier means logs exist (library.length > 0, gated above)
+  // but not enough to compute a fingerprint — render the "Log your first
+  // game" CTA instead of the 2-up cards. The early library-empty return
+  // covers 0 logs; this branch covers the 1–9-log empty-tier case.
   const showRecsCard = fp != null && fp.tier !== "empty";
+  const showEmptyTierCta = fp != null && fp.tier === "empty";
+
+  // Top 3 genre vectors by |value| for the cockpit mini-bars. Computed here
+  // so the JSX stays declarative; falls back to an empty array when fp is
+  // null or tier=empty (those branches don't render bars).
+  const topGenres =
+    fp && fp.tier !== "empty"
+      ? Object.entries(fp.vectors.genre)
+          .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+          .slice(0, 3)
+      : [];
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 space-y-10">
       <MascotGreeting context={greetingCtx} />
       <StatsStrip stats={stats} />
       {showRecsCard && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Link
+            href="/me/taste"
+            className="group rounded-lg border border-[var(--border-soft)] bg-[var(--bg-card)] p-4 transition-colors hover:border-[var(--accent-soft)]"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="font-mono text-sm text-[var(--text)]">Your taste</h3>
+              <span className="font-mono text-xs text-[var(--text-faint)]">{fp.tier}</span>
+            </div>
+            {fp.narrative ? (
+              <p className="mb-3 line-clamp-1 text-xs text-[var(--text-faint)]">
+                {fp.narrative}
+              </p>
+            ) : (
+              <p className="mb-3 text-xs italic text-[var(--text-faint)]">
+                Generating your read…
+              </p>
+            )}
+            <div className="space-y-1">
+              {topGenres.map(([k, v]) => (
+                <ScoreBar key={k} value={v} label={k} />
+              ))}
+            </div>
+            <span
+              aria-hidden
+              className="mt-3 block font-mono text-xs text-emerald-400 transition-transform group-hover:translate-x-1"
+            >
+              View →
+            </span>
+          </Link>
+
+          <Link
+            href="/play-next"
+            className="group flex items-center gap-4 rounded-lg border border-[var(--border-soft)] bg-[var(--bg-card)] p-4 transition-colors hover:border-[var(--accent-soft)]"
+          >
+            <Mascot mood="pointing" size="md" silent />
+            <div className="flex-1">
+              <h3 className="font-mono text-sm text-[var(--text)]">What should I play?</h3>
+              <p className="mt-1 text-xs text-[var(--text-faint)]">
+                Pick a time and mood — I&apos;ll suggest five.
+              </p>
+            </div>
+            <span
+              aria-hidden
+              className="font-mono text-emerald-400 transition-transform group-hover:translate-x-1"
+            >
+              →
+            </span>
+          </Link>
+        </div>
+      )}
+      {showEmptyTierCta && (
         <Link
-          href="/play-next"
+          href="/games"
           className="group flex items-center gap-4 rounded-lg border border-[var(--border-soft)] bg-[var(--bg-card)] p-4 transition-colors hover:border-[var(--accent-soft)]"
         >
-          <Mascot mood="pointing" size="md" silent />
+          <Mascot mood="celebrating" size="md" silent />
           <div className="flex-1">
-            <h3 className="font-mono text-sm text-[var(--text)]">What should I play?</h3>
+            <h3 className="font-mono text-sm text-[var(--text)]">Log your first game</h3>
             <p className="mt-1 text-xs text-[var(--text-faint)]">
-              Pick a time and mood — I&apos;ll suggest five.
+              I&apos;ll start reading your taste as soon as you do.
             </p>
           </div>
           <span

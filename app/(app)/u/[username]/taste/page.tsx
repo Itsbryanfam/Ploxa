@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
+import { MilestoneToast } from "@/components/taste/milestone-toast";
 import { TierEmpty } from "@/components/taste/tier-empty";
 import { TierNarrative } from "@/components/taste/tier-narrative";
 import { TierSparse } from "@/components/taste/tier-sparse";
@@ -81,6 +82,14 @@ export default async function UserTastePage({
           isPublic={profile.isPublic}
           username={username}
           origin={await resolveOrigin()}
+        />
+      )}
+
+      {isOwner && (
+        <MilestoneToast
+          userId={profile.userId}
+          narrative={fp.narrative}
+          narrativeGeneratedAt={fp.narrativeGeneratedAt}
         />
       )}
     </main>
