@@ -1,5 +1,5 @@
 "use server";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
 import { buildFeedQuery, type FeedRow } from "./queries";
@@ -8,12 +8,19 @@ import { decodeCursor, encodeCursor } from "@/lib/social/_shared/cursors";
 const { follows, blocks } = schema;
 
 /**
- * Server action returning a feed page + next cursor.
+ * Returns a cursor-paginated feed page for `viewerId`.
  *
- * Followee IDs are computed once per call (not cached across calls — the
- * follow graph changes frequently enough that we don't memoize). Blocked-
- * followee stripping happens at this layer so buildFeedQuery doesn't need
- * to know about the blocks graph for the followee-set scope.
+ * NOTE: Identity is caller-supplied (not derived from session). Callers must
+ * resolve the viewer from the session before calling; passing an empty string
+ * or a wrong UUID produces an empty feed, not an error.
+ *
+ * Two DB round-trips: one for followee IDs, one for the bidirectional block
+ * check. The block check uses `inArray` so both the blocks PK and the reverse
+ * index from migration 0008 are used efficiently.
+ *
+ * `nextCursor` is non-null only when `items.length === limit`, which is the
+ * standard "there may be more" heuristic. An exact match on `limit` doesn't
+ * guarantee another page exists, but false-positives here are harmless.
  */
 export async function getFeed(args: {
   viewerId: string;
@@ -42,18 +49,16 @@ export async function getFeed(args: {
     .from(blocks)
     .where(
       or(
-        and(
-          eq(blocks.blockerId, viewerId),
-          or(...followeeIds.map((id) => eq(blocks.blockedId, id))),
-        ),
-        and(
-          eq(blocks.blockedId, viewerId),
-          or(...followeeIds.map((id) => eq(blocks.blockerId, id))),
-        ),
+        and(eq(blocks.blockerId, viewerId), inArray(blocks.blockedId, followeeIds)),
+        and(eq(blocks.blockedId, viewerId), inArray(blocks.blockerId, followeeIds)),
       ),
     );
-  const blockedSet = new Set(blockedRows.flatMap((r) => [r.a, r.b]));
-  const visibleFolloweeIds = followeeIds.filter((id) => !blockedSet.has(id));
+  const blockedFolloweeIds = new Set(
+    blockedRows.map((r) => (r.a === viewerId ? r.b : r.a)),
+  );
+  const visibleFolloweeIds = followeeIds.filter(
+    (id) => !blockedFolloweeIds.has(id),
+  );
 
   if (visibleFolloweeIds.length === 0) {
     return { items: [], nextCursor: null };
