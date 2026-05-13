@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { TierEmpty } from "@/components/taste/tier-empty";
@@ -11,6 +12,20 @@ import { getFingerprint } from "@/lib/taste/server-actions";
 // cached page output would mask the new narrative. Mark dynamic so RSC
 // always re-runs `getFingerprint` against the latest DB snapshot.
 export const dynamic = "force-dynamic";
+
+/**
+ * Build an absolute origin (proto + host) from request headers for use in
+ * the ShareModal's profile URL + OG preview src. Relies on the standard
+ * `x-forwarded-proto` / `host` headers Vercel + most reverse proxies set.
+ * Falls back to `http://localhost:3000` for local dev where the proxy
+ * header may not be present.
+ */
+async function resolveOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  return `${proto}://${host}`;
+}
 
 export default async function UserTastePage({
   params,
@@ -64,6 +79,8 @@ export default async function UserTastePage({
           lengthPreference={fp.lengthPreference}
           isOwner={isOwner}
           isPublic={profile.isPublic}
+          username={username}
+          origin={await resolveOrigin()}
         />
       )}
     </main>

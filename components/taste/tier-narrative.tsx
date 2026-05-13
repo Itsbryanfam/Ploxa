@@ -3,6 +3,7 @@ import type { TasteTier } from "@/lib/taste/tier";
 
 import { ChartGrid } from "./chart-grid";
 import { RefreshButton } from "./refresh-button";
+import { ShareModal } from "./share-modal";
 
 /**
  * Shared render for the two AI-narrative-eligible tiers (sharpening + full).
@@ -20,6 +21,8 @@ export function TierNarrative({
   lengthPreference,
   isOwner,
   isPublic,
+  username,
+  origin,
 }: {
   tier: Exclude<TasteTier, "empty" | "sparse">;
   narrative: string | null;
@@ -32,6 +35,8 @@ export function TierNarrative({
   lengthPreference: Record<string, number>;
   isOwner: boolean;
   isPublic: boolean;
+  username: string;
+  origin: string;
 }) {
   return (
     <>
@@ -46,7 +51,22 @@ export function TierNarrative({
           {isOwner && (
             <div className="mt-3 flex gap-2">
               <RefreshButton />
-              <ShareButton disabled={!isPublic} />
+              {isPublic ? (
+                <ShareModal
+                  username={username}
+                  narrativeGeneratedAt={narrativeGeneratedAt}
+                  origin={origin}
+                />
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  title="Make your profile public to share your taste card."
+                  className="rounded border border-zinc-800 px-3 py-1 text-xs disabled:cursor-not-allowed disabled:text-zinc-600"
+                >
+                  Share →
+                </button>
+              )}
             </div>
           )}
           {narrativeGeneratedAt && (
@@ -69,28 +89,5 @@ export function TierNarrative({
 
       <ChartGrid vectors={vectors} lengthPreference={lengthPreference} />
     </>
-  );
-}
-
-/**
- * Stub — T17 swaps this for the real share modal. Kept inline so the
- * narrative tier renders the disabled-state UX (and tooltip messaging
- * around the public/private gate) without needing a temporary import.
- */
-// TODO(T17): swap stub for share modal (components/taste/share-modal.tsx)
-function ShareButton({ disabled }: { disabled: boolean }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      title={
-        disabled
-          ? "Make your profile public to share your taste card."
-          : "Share your taste card"
-      }
-      className="rounded border border-zinc-800 px-3 py-1 text-xs hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600"
-    >
-      Share →
-    </button>
   );
 }
