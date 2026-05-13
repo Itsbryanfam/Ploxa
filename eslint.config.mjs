@@ -32,6 +32,17 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // Playwright fixtures take a callback called `use(value)` — that's the
+  // fixture API contract, not React 19's `use()` hook. ESLint's
+  // react-hooks/rules-of-hooks can't distinguish the two and false-flags
+  // every fixture. Disable the rule under tests/fixtures/ since no React
+  // hooks live there.
+  {
+    files: ["tests/fixtures/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -12,6 +12,11 @@
 
 # testing
 /coverage
+# Playwright artifacts — traces, videos, error contexts. Regenerated per
+# run; only the source specs in tests/e2e/ are versioned.
+/test-results
+/playwright-report
+/playwright/.cache
 
 # next.js
 /.next/

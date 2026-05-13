@@ -84,11 +84,35 @@ pnpm dev              # Start dev server
 pnpm build            # Production build
 pnpm typecheck        # TypeScript check
 pnpm lint             # ESLint
+pnpm test             # Vitest unit + integration suite (fast, ~300ms)
+pnpm test:watch       # Vitest in watch mode
+pnpm test:coverage    # Vitest with v8 coverage reporter
+pnpm e2e              # Playwright E2E suite (auto-starts dev server)
+pnpm e2e:ui           # Playwright UI mode (interactive debugger)
 pnpm db:push          # Push schema changes to Supabase
 pnpm db:generate      # Generate migration from schema
 pnpm db:migrate       # Apply migrations
 pnpm db:studio        # Open Drizzle Studio (DB browser)
 ```
+
+## Testing
+
+Three layers:
+
+- **Unit** (`tests/unit/`) — pure-function tests, no mocks. Cover `lib/ai/cost`,
+  `lib/imports/merge`, `lib/reviews/prompts` (audit #18 prompt-injection
+  boundary regression), `lib/profile/username-schema`, `lib/taste/aggregate`,
+  `lib/taste/tier`.
+- **Integration** (`tests/integration/`) — server helpers against in-memory
+  mocks. Cover `lib/ai/rate-limit` (audit #14 atomic-cap regression) via
+  `tests/helpers/mock-redis.ts`.
+- **E2E** (`tests/e2e/`) — Playwright + Chromium, auto-spawns `pnpm dev`.
+  Test users created via Supabase admin API with the `pw_test_` prefix
+  and torn down per test. Covers `/og/review/[id]` privacy gate (audit #1).
+
+Vitest excludes `tests/e2e/**`; Playwright only runs `tests/e2e/**`.
+The `server-only` package is stubbed in vitest.config.ts so server-side
+modules can be imported in tests (the real package throws outside RSC).
 
 ## Verification (Phase 0 done when…)
 
