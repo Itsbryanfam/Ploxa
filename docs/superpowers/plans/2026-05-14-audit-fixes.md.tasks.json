@@ -1,0 +1,31 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-14-audit-fixes.md",
+  "tasks": [
+    { "id": 1,  "subject": "T01: Lock down server-action RPC surface",       "status": "pending" },
+    { "id": 2,  "subject": "T02: PII leak sweep — data export + avatar",     "status": "pending" },
+    { "id": 3,  "subject": "T03: Soft-delete + block-filter coverage sweep", "status": "pending" },
+    { "id": 4,  "subject": "T04: Defensive small wins",                       "status": "pending" },
+    { "id": 5,  "subject": "T05: Notification routing + keyboard semantics",  "status": "pending" },
+    { "id": 6,  "subject": "T06: Avatar column sweep",                        "status": "pending" },
+    { "id": 7,  "subject": "T07: CSS tokens sweep",                           "status": "pending" },
+    { "id": 8,  "subject": "T08: Discovery follow-state",                     "status": "pending" },
+    { "id": 9,  "subject": "T09: Error + loading boundaries",                 "status": "pending" },
+    { "id": 10, "subject": "T10: Reports queue UX",                           "status": "pending" },
+    { "id": 11, "subject": "T11: Recs perf — candidatePool prefilter + indexes", "status": "pending" },
+    { "id": 12, "subject": "T12: Feed perf — batch isBlockedBetween + bounds", "status": "pending" },
+    { "id": 13, "subject": "T13: Profile-summary perf",                       "status": "pending" },
+    { "id": 14, "subject": "T14: Sequential-await sweep + cache wraps + bulk ops", "status": "pending" },
+    { "id": 15, "subject": "T15: Client-island reductions",                   "status": "pending" },
+    { "id": 16, "subject": "T16: Add missing DB indexes",                     "status": "pending" },
+    { "id": 17, "subject": "T17: Drizzle snapshot drift fix + CI gate",       "status": "pending" },
+    { "id": 18, "subject": "T18: Env var hygiene",                            "status": "pending" },
+    { "id": 19, "subject": "T19: Dead code sweep",                            "status": "pending" },
+    { "id": 20, "subject": "T20: Recs file hygiene — extract hydrateRecs",    "status": "pending" },
+    { "id": 21, "subject": "T21: Form accessibility sweep",                   "status": "pending" },
+    { "id": 22, "subject": "T22: Destructive-flow polish + dialog A11y",      "status": "pending" },
+    { "id": 23, "subject": "T23: Metadata + OG cards for shareable surfaces", "status": "pending" },
+    { "id": 24, "subject": "T24: Lists social affordances — like/comment/share", "status": "pending" },
+    { "id": 25, "subject": "T25: Internal-link + marketing/SEO polish",       "status": "pending" }
+  ],
+  "lastUpdated": "2026-05-14T00:00:00Z"
+}
