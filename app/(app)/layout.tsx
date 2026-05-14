@@ -1,7 +1,9 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { env } from "@/lib/env";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
+import { isAccountSoftDeleted } from "@/lib/settings/account-deletion-actions";
 
 import { AppHeader } from "@/components/layout/app-header";
 import { CommandPaletteMount } from "@/components/palette/command-palette-mount";
@@ -27,6 +29,18 @@ export default async function AppLayout({
   const authUser = await getCachedUser();
   if (!authUser) {
     redirect("/login");
+  }
+
+  // Soft-delete guard: if the user is in the 30-day grace window, redirect
+  // every (app) path to /cancel-deletion EXCEPT /cancel-deletion itself
+  // (to avoid an infinite redirect). Middleware sets the x-pathname header
+  // on every request so we can do the path check here in a Server Component.
+  const deletedAt = await isAccountSoftDeleted(authUser.id);
+  if (deletedAt) {
+    const pathname = (await headers()).get("x-pathname") ?? "";
+    if (!pathname.startsWith("/cancel-deletion")) {
+      redirect("/cancel-deletion");
+    }
   }
 
   const headerUser = await getHeaderUser(authUser);

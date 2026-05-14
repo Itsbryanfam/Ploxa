@@ -4,7 +4,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  // Propagate the current pathname as a request header so RSC layouts can
+  // read it via `headers().get("x-pathname")` without relying on client-side
+  // hooks (which aren't available in Server Components). Used by the (app)
+  // layout's soft-delete guard to skip the redirect when already on
+  // /cancel-deletion.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+
+  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
 
   // Graceful degradation: if Supabase env vars aren't set yet (e.g. fresh
   // clone before .env.local is filled in), skip auth entirely and let the
@@ -24,7 +32,10 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
+          // Re-create the response with the augmented requestHeaders so the
+          // x-pathname header survives even when Supabase refreshes the session
+          // cookie and rebuilds supabaseResponse.
+          supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           );

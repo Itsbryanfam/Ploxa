@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 
 export type DataExport = {

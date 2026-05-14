@@ -4,6 +4,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ensureMyProfile } from "@/lib/profile/server-actions";
 import { UsernameCollisionError } from "@/lib/profile/errors";
 import { safeRedirectPath } from "@/lib/auth/safe-next";
+import {
+  isAccountSoftDeleted,
+  DELETION_GRACE_MS,
+} from "@/lib/settings/account-deletion-actions";
 
 /**
  * OAuth + magic link callback handler.
@@ -48,6 +52,25 @@ export async function GET(request: NextRequest) {
           throw err;
         }
       }
+      // Soft-delete grace-window check: if the user soft-deleted their account
+      // (profiles.deleted_at IS NOT NULL) and is within the 30-day window,
+      // send them to the cancel-deletion page instead of wherever they were going.
+      // This suppresses any ?next= override — a soft-deleted user should not
+      // silently slip back into the app without acknowledging the pending deletion.
+      if (user) {
+        const deletedAt = await isAccountSoftDeleted(user.id);
+        if (deletedAt) {
+          const ageMs = Date.now() - deletedAt.getTime();
+          if (ageMs < DELETION_GRACE_MS) {
+            // Within grace window — surface the cancel UI.
+            return NextResponse.redirect(new URL("/cancel-deletion", request.url));
+          }
+          // Past grace window: purge cron should have removed the auth.users row
+          // before this point, but handle the race gracefully.
+          return NextResponse.redirect(new URL("/account-deleted", request.url));
+        }
+      }
+
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
