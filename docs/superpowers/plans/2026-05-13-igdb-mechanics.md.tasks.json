@@ -1,0 +1,96 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-13-igdb-mechanics.md",
+  "lastUpdated": "2026-05-13T00:00:00Z",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Drizzle migration 0008_igdb_facets",
+      "status": "pending",
+      "description": "Add steam_appid + game_modes + player_perspectives + igdb_id + igdb_resolved_at columns to games. Add app_secrets table for Twitch token cache. Apply via mcp__supabase__apply_migration.\n\n```json:metadata\n{\"files\": [\"lib/db/schema.ts\", \"lib/db/migrations/0008_*_igdb_facets.sql\", \"lib/db/migrations/meta/0008_snapshot.json\"], \"verifyCommand\": \"mcp__supabase__list_tables\", \"acceptanceCriteria\": [\"games has 5 new nullable columns\", \"app_secrets table exists\", \"games_steam_appid_idx partial index exists\", \"migration applied to live project\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Twitch OAuth helper",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "lib/igdb/twitch-oauth.ts exports getAppAccessToken(): refreshes from Twitch when within 5min of expiry, caches in app_secrets table, throws TwitchTokenUnavailableError after one retry on 5xx.\n\n```json:metadata\n{\"files\": [\"lib/igdb/twitch-oauth.ts\", \"tests/unit/igdb-twitch-oauth.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/igdb-twitch-oauth.test.ts\", \"acceptanceCriteria\": [\"4 tests pass\", \"cache hit returns immediately without fetching\", \"5xx retried once before throwing\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: IGDB HTTPS client",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "lib/igdb/client.ts exports igdbQuery(endpoint, body): POSTs to api.igdb.com/v4/<endpoint> with Client-ID + bearer headers from getAppAccessToken; throws IgdbApiError on non-2xx.\n\n```json:metadata\n{\"files\": [\"lib/igdb/client.ts\", \"tests/unit/igdb-client.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/igdb-client.test.ts\", \"acceptanceCriteria\": [\"3 tests pass\", \"correct headers sent\", \"non-2xx throws IgdbApiError\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Vocabulary refresh script + hand-curated vocabulary.ts",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "scripts/refresh-igdb-vocab.ts pulls IGDB /game_modes /player_perspectives /themes /keywords; writes lib/igdb/vocabulary.ts. User reviews keyword candidates and hand-curates to ~150 entries before commit.\n\n```json:metadata\n{\"files\": [\"scripts/refresh-igdb-vocab.ts\", \"lib/igdb/vocabulary.ts\"], \"verifyCommand\": \"pnpm tsx --env-file=.env scripts/refresh-igdb-vocab.ts --print-only\", \"acceptanceCriteria\": [\"4 ReadonlySet exports\", \"~150 mechanics entries after hand-curation\", \"header comment with date + source script\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Normalize layer",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "lib/igdb/normalize.ts exports normalizeFacets(raw): filters each facet through allow-list, dedups case-insensitively (preserves canonical case), caps at 20.\n\n```json:metadata\n{\"files\": [\"lib/igdb/normalize.ts\", \"tests/unit/igdb-normalize.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/igdb-normalize.test.ts\", \"acceptanceCriteria\": [\"4 tests pass\", \"non-allow-list values dropped\", \"case-insensitive dedup with canonical case preserved\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: RAWG → IGDB resolver",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "lib/igdb/resolver.ts exports resolveIgdbIds(games): Steam-appid bucket via single /external_games call; non-Steam bucket via per-game /games name+year query at concurrency 4. Returns Map<rawgId, {igdbId, steamAppid}>.\n\n```json:metadata\n{\"files\": [\"lib/igdb/resolver.ts\", \"tests/unit/igdb-resolver.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/igdb-resolver.test.ts\", \"acceptanceCriteria\": [\"3 tests pass\", \"Steam-appid bucket resolves in one batched call\", \"name+year fallback for non-Steam games\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: IGDB backfill script (build + run)",
+      "status": "pending",
+      "blockedBy": [5, 6],
+      "description": "scripts/backfill-igdb.ts: select games where igdb_resolved_at IS NULL, batch 500/request, resolve via resolver.ts, fetch all 4 facets in one /games call, normalize, write to columns + side-effect-fill steam_appid. Honors BACKFILL_LIMIT/DRY_RUN. Run dry-run smoke then full backfill (~25min).\n\n```json:metadata\n{\"files\": [\"scripts/backfill-igdb.ts\"], \"verifyCommand\": \"BACKFILL_LIMIT=5 BACKFILL_DRY_RUN=1 pnpm tsx --env-file=.env scripts/backfill-igdb.ts\", \"acceptanceCriteria\": [\"smoke run on 5 games passes\", \"full backfill achieves >=90% mechanics coverage\", \"unresolved games marked with igdb_resolved_at=NOW(), igdb_id=NULL\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: AI fallback backfill (build + run)",
+      "status": "pending",
+      "blockedBy": [4, 7],
+      "description": "scripts/backfill-mechanics-ai.ts: select games where igdb_resolved_at IS NOT NULL AND igdb_id IS NULL AND mechanics empty. Build constrained-vocabulary prompt, callRouter, parse, validate against allow-list, write. Concurrency=5. ~5min runtime.\n\n```json:metadata\n{\"files\": [\"scripts/backfill-mechanics-ai.ts\"], \"verifyCommand\": \"pnpm tsx --env-file=.env scripts/backfill-mechanics-ai.ts\", \"acceptanceCriteria\": [\"final coverage with_mechanics >= 4750 (~94%)\", \"AI output filtered through same allow-list\", \"telemetry rows in ai_calls\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Extend taste pipeline (aggregate + getFingerprint + Edge mirror)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "Extend AggregateInputRow + aggregateFingerprint with gameModes/playerPerspectives. Mirror in supabase/functions/_shared/taste-engine.ts. Update VectorBundle. Update getFingerprint SELECT + return shape. Extend taste-aggregate tests.\n\n```json:metadata\n{\"files\": [\"lib/taste/aggregate.ts\", \"lib/taste/vectors.ts\", \"lib/taste/server-actions.ts\", \"supabase/functions/_shared/taste-engine.ts\", \"tests/unit/taste-aggregate.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/taste-aggregate.test.ts tests/unit/taste-vectors.test.ts\", \"acceptanceCriteria\": [\"VectorBundle has 5 keys\", \"existing tests pass with extended row() helper\", \"new tests cover gameMode + playerPerspective vectors\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Extend taste prompts (NARRATIVE_PROMPT_VERSION → v2)",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "buildNarrativePrompt user block adds Game Modes + Player Perspectives sections. NARRATIVE_PROMPT_VERSION bumps v1 → v2 (drift cron will re-narrate). Mirror in Edge prompts.ts.\n\n```json:metadata\n{\"files\": [\"lib/taste/prompts.ts\", \"supabase/functions/_shared/prompts.ts\", \"tests/unit/prompts.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/prompts.test.ts\", \"acceptanceCriteria\": [\"NARRATIVE_PROMPT_VERSION = 'v2' in both files\", \"user prompt contains Game Modes: and Player Perspectives: blocks\", \"prompt tests pass\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: chart-grid.tsx 3x2 layout",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "ChartGrid extended to 5-vector bundle. 6 cards in 3-col grid: Genres, Themes, Mechanics, Game Modes, Player Perspectives, Session Length. tier-narrative + tier-sparse vectors prop extended.\n\n```json:metadata\n{\"files\": [\"components/taste/chart-grid.tsx\", \"components/taste/tier-narrative.tsx\", \"components/taste/tier-sparse.tsx\"], \"verifyCommand\": \"pnpm tsc --noEmit\", \"acceptanceCriteria\": [\"6 cards render\", \"3-column grid on lg breakpoint, single column on mobile\", \"empty cards still render 'No signal yet.'\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: Edge igdb-engine.ts mirror + import-engine hook + redeploy import-platform v11",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "supabase/functions/_shared/igdb-engine.ts vendors lib/igdb/{client,twitch-oauth,resolver,normalize,vocabulary} for Deno. supabase/functions/_shared/import-engine.ts processGame calls enrichWithIgdb after the log UPSERT for Steam-platform imports only. Redeploy import-platform via mcp__supabase__deploy_edge_function — emerges as version 11.\n\n```json:metadata\n{\"files\": [\"supabase/functions/_shared/igdb-engine.ts\", \"supabase/functions/_shared/import-engine.ts\"], \"verifyCommand\": \"mcp__supabase__list_edge_functions\", \"acceptanceCriteria\": [\"igdb-engine.ts exports enrichWithIgdb\", \"processGame calls it on platform=='steam'\", \"import-platform shows version 11 ACTIVE\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: End-to-end verification + final commit",
+      "status": "pending",
+      "blockedBy": [8, 10, 11, 12],
+      "description": "Run final coverage SQL queries (catalog + user-scoped). User reloads /u/itsbryanfam/taste, clicks Refresh fingerprint, confirms 6 cards render with non-empty mechanics/modes/perspectives, narrative references at least one mechanic term. Update memory entry. Branch ready for merge to main.\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"manual\", \"acceptanceCriteria\": [\"with_mechanics >= 4750\", \"with_modes >= 4750\", \"with_perspectives >= 4750\", \"narrative references at least one mechanic\"]}\n```"
+    }
+  ]
+}
