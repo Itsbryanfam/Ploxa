@@ -1,5 +1,7 @@
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
 import { LibraryShelf } from "@/components/library/library-shelf";
 import { ShelfFrame } from "@/components/pixel/shelf-frame";
@@ -7,6 +9,22 @@ import { StatsStrip } from "@/components/dashboard/stats-strip";
 import { ProfileOverviewHeader } from "@/components/social/profile-overview-header";
 import { getProfileSummary } from "@/lib/social/_shared/profile-summary";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
+
+/**
+ * Shared (user, summary) loader wrapped in React's cache() so generateMetadata
+ * and the page body collapse to one set of queries per request instead of two
+ * parallel-but-duplicated chains. Same pattern as the canonical review page.
+ *
+ * Returns null for the same conditions getProfileSummary returns null for —
+ * profile missing, private + non-owner, blocked-pair + non-owner — so both
+ * callers can map null to "minimal fallback" / notFound() identically.
+ */
+const getProfilePageData = cache(async (username: string) => {
+  const viewer = await getCachedUser();
+  const summary = await getProfileSummary(username, viewer?.id ?? null);
+  if (!summary) return null;
+  return { viewer, summary };
+});
 
 /**
  * Profile overview hub. Replaces the Phase 1 manual-query baseline with a
@@ -19,15 +37,52 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
  * non-owner / blocked-pair viewers. Don't reorder these branches without
  * re-verifying the privacy invariants the loader's tests pin.
  */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
+  const { username } = await params;
+  const data = await getProfilePageData(username);
+  // Privacy fallback: getProfilePageData returns null for not-found + private +
+  // blocked-pair non-owners (matches the page's notFound() branch). Return the
+  // root template's bare title so unfurlers can't even tell the username
+  // exists — same "indistinguishable 404" contract the page body honors.
+  if (!data) return { title: "Letterboxd for Games" };
+  const { summary } = data;
+  const { profile, stats } = summary;
+  const subject = profile.displayName ?? profile.username;
+  const title = subject;
+  const description = `${subject}'s gaming profile — ${stats.byStatus.completed} completed, ${stats.byStatus.playing} playing, ${stats.byStatus.backlog} in backlog`;
+  const ogImage = `/og/profile/${profile.username}`;
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: [ogImage],
+      type: "profile",
+      url: `/u/${profile.username}`,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
+
 export default async function ProfilePage({
   params,
 }: {
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const user = await getCachedUser();
-  const summary = await getProfileSummary(username, user?.id ?? null);
-  if (!summary) notFound();
+  const data = await getProfilePageData(username);
+  if (!data) notFound();
+  const { viewer: user, summary } = data;
 
   const {
     profile,

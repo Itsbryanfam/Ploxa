@@ -169,3 +169,47 @@ export async function seedFollow(args: {
     throw new Error(`seedFollow failed: ${error.message}`);
   }
 }
+
+export interface SeedListOptions {
+  userId: string;
+  /** Defaults to a random pw_test_-style title. */
+  title?: string;
+  /** Slug — must be unique per user. Defaults to a random hash. */
+  slug?: string;
+  isPublic: boolean;
+  /** When true, sets published_at to now. Required for non-owner OG visibility. */
+  published: boolean;
+  description?: string;
+}
+
+export interface SeededList {
+  listId: string;
+  slug: string;
+}
+
+/**
+ * Insert a list row directly via service-role. Used by privacy tests for
+ * /og/list/[id] — keeps the test surface narrow (skips the "create list →
+ * edit → publish" UI flow).
+ */
+export async function seedList(opts: SeedListOptions): Promise<SeededList> {
+  const admin = adminClient();
+  const slug = opts.slug ?? `pw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const title = opts.title ?? `Test list ${slug}`;
+  const { data: inserted, error } = await admin
+    .from("lists")
+    .insert({
+      user_id: opts.userId,
+      title,
+      slug,
+      description: opts.description ?? null,
+      is_public: opts.isPublic,
+      published_at: opts.published ? new Date().toISOString() : null,
+    })
+    .select("id")
+    .single();
+  if (error || !inserted) {
+    throw new Error(`list insert failed: ${error?.message ?? "no row returned"}`);
+  }
+  return { listId: inserted.id, slug };
+}

@@ -1,5 +1,7 @@
+import { cache } from "react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
 import { MilestoneToast } from "@/components/taste/milestone-toast";
 import { TierEmpty } from "@/components/taste/tier-empty";
@@ -15,6 +17,41 @@ import { getFingerprint } from "@/lib/taste/server-actions";
 export const dynamic = "force-dynamic";
 
 /**
+ * Shared (profile, viewer, fingerprint) loader wrapped in React's cache() so
+ * generateMetadata and the page body collapse to one set of queries per
+ * request instead of two parallel-but-duplicated chains. Same pattern as the
+ * canonical review page.
+ *
+ * Returns null for the same conditions the page-body 404s on:
+ *   - profile not found
+ *   - profile is private + viewer is not owner
+ *   - fingerprint visibility check fails (mirrors getFingerprint's own gate)
+ *   - tier is empty + viewer is not owner
+ * Both metadata and the page body see null and fall back identically.
+ */
+const getTastePageData = cache(async (username: string) => {
+  const profile = await getProfileByUsername(username);
+  if (!profile) return null;
+
+  const viewer = await getCachedUser();
+  const isOwner = viewer?.id === profile.userId;
+
+  // Page-level privacy gate (matches the page body).
+  if (!profile.isPublic && !isOwner) return null;
+
+  // getFingerprint also runs its own owner-or-public visibility check; the
+  // null return below covers TOCTOU privacy flips.
+  const fp = await getFingerprint(profile.userId);
+  if (!fp) return null;
+
+  // Empty-tier page is owner-only — same gate the page body honors so we
+  // don't leak "user has no logs" via metadata to strangers.
+  if (fp.tier === "empty" && !isOwner) return null;
+
+  return { profile, viewer, isOwner, fp };
+});
+
+/**
  * Build an absolute origin (proto + host) from request headers for use in
  * the ShareModal's profile URL + OG preview src. Relies on the standard
  * `x-forwarded-proto` / `host` headers Vercel + most reverse proxies set.
@@ -28,31 +65,77 @@ async function resolveOrigin(): Promise<string> {
   return `${proto}://${host}`;
 }
 
+/**
+ * Pick the most prominent label from a vector record (genre / mechanic /
+ * theme). Used by generateMetadata to surface a meaningful description hint
+ * — "RPG-leaning taste profile" reads better in unfurls than "RPG vector 4.2".
+ */
+function topLabel(vec: Record<string, number>): string | null {
+  let best: string | null = null;
+  let bestScore = -Infinity;
+  for (const [k, v] of Object.entries(vec)) {
+    if (v > bestScore) {
+      best = k;
+      bestScore = v;
+    }
+  }
+  return best;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
+  const { username } = await params;
+  const data = await getTastePageData(username);
+  if (!data) return { title: "Letterboxd for Games" };
+  const { profile, fp } = data;
+  const subject = profile.displayName ?? profile.username;
+  const title = `${subject}'s taste`;
+  // Description preference order: narrative excerpt (richest signal) →
+  // top genre fallback (works for sparse tier with no narrative) → tier-only.
+  const narrativeSnippet = fp.narrative?.trim().length
+    ? fp.narrative.trim().slice(0, 200)
+    : null;
+  const top = topLabel(fp.vectors.genre);
+  const description = narrativeSnippet
+    ? `${fp.tier} taste profile — ${narrativeSnippet}`
+    : top
+      ? `${fp.tier} taste profile — ${top}-leaning, ${fp.logCount} log${fp.logCount === 1 ? "" : "s"}`
+      : `${fp.tier} taste profile — ${fp.logCount} log${fp.logCount === 1 ? "" : "s"}`;
+  // Reuse the existing /api/og/taste/[username] card built by an earlier task —
+  // it renders narrative + top-genre + playstyle in the trading-card style and
+  // already gates on profile.isPublic. No new OG route needed for taste.
+  const ogImage = `/api/og/taste/${profile.username}`;
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: [ogImage],
+      type: "profile",
+      url: `/u/${profile.username}/taste`,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
+
 export default async function UserTastePage({
   params,
 }: {
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const profile = await getProfileByUsername(username);
-  if (!profile) notFound();
-
-  const me = await getCachedUser();
-  const isOwner = me?.id === profile.userId;
-
-  // Privacy gate: 404 when profile is private and viewer isn't owner.
-  if (!profile.isPublic && !isOwner) notFound();
-
-  // getFingerprint also runs its own owner-or-public visibility check
-  // against the same profile row (defense in depth — it's a "use server"
-  // RPC). Returning null here would only happen on a TOCTOU race with a
-  // privacy flip; treat it the same as the page-level gate above.
-  const fp = await getFingerprint(profile.userId);
-  if (!fp) notFound();
-
-  // Empty-tier page is owner-only — non-owners 404 so we don't leak the
-  // "user has no logs" state to strangers browsing a public profile.
-  if (fp.tier === "empty" && !isOwner) notFound();
+  const data = await getTastePageData(username);
+  if (!data) notFound();
+  const { profile, fp, isOwner } = data;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
