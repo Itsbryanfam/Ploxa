@@ -15,16 +15,18 @@ export default async function ProfileSettingsPage() {
   }
   const user = await getHeaderUser(authUser);
 
-  // Pull discord_username separately — it's only edited from this page.
+  // Pull editable profile fields not included in HeaderUser.
   const profileExtras = await db.query.profiles.findFirst({
     where: eq(schema.profiles.userId, authUser.id),
-    columns: { discordUsername: true },
+    columns: { discordUsername: true, displayName: true, bio: true },
   });
 
   return (
     <ProfileForm
       user={user}
       discordUsername={profileExtras?.discordUsername ?? null}
+      initialDisplayName={profileExtras?.displayName ?? null}
+      initialBio={profileExtras?.bio ?? null}
     />
   );
 }

@@ -6,6 +6,8 @@ import { AvatarUploader } from "@/components/settings/avatar-uploader";
 import { uploadAvatar } from "@/lib/profile/avatar-actions";
 import {
   updateDiscordUsername,
+  updateDisplayName,
+  updateBio,
   updateUsername,
   type HeaderUser,
 } from "@/lib/profile/server-actions";
@@ -21,9 +23,16 @@ import { Button } from "@/components/ui/button";
 interface Props {
   user: HeaderUser;
   discordUsername: string | null;
+  initialDisplayName?: string | null;
+  initialBio?: string | null;
 }
 
-export function ProfileForm({ user, discordUsername }: Props) {
+export function ProfileForm({
+  user,
+  discordUsername,
+  initialDisplayName,
+  initialBio,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +87,54 @@ export function ProfileForm({ user, discordUsername }: Props) {
     // when re-opened); flagging it as valid keeps state consistent.
     setUsernameDraft({ value: user.username ?? "", valid: true });
     setUsernameError(null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Display name (saves on blur)
+  // ---------------------------------------------------------------------------
+  const [displayNameDraft, setDisplayNameDraft] = useState(initialDisplayName ?? "");
+  const [displayNameSaved, setDisplayNameSaved] = useState<string>(initialDisplayName ?? "");
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [savingDisplayName, startDisplayNameTransition] = useTransition();
+
+  function saveDisplayNameOnBlur() {
+    const next = displayNameDraft.trim();
+    const current = displayNameSaved.trim();
+    if (next === current) return;
+    setDisplayNameError(null);
+    startDisplayNameTransition(async () => {
+      const res = await updateDisplayName(displayNameDraft);
+      if (res.ok) {
+        setDisplayNameSaved(displayNameDraft.trim());
+        setDisplayNameDraft(displayNameDraft.trim());
+      } else {
+        setDisplayNameError(res.error);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bio (saves on blur)
+  // ---------------------------------------------------------------------------
+  const [bioDraft, setBioDraft] = useState(initialBio ?? "");
+  const [bioSaved, setBioSaved] = useState<string>(initialBio ?? "");
+  const [bioError, setBioError] = useState<string | null>(null);
+  const [savingBio, startBioTransition] = useTransition();
+
+  function saveBioOnBlur() {
+    const next = bioDraft.trim();
+    const current = bioSaved.trim();
+    if (next === current) return;
+    setBioError(null);
+    startBioTransition(async () => {
+      const res = await updateBio(bioDraft);
+      if (res.ok) {
+        setBioSaved(bioDraft.trim());
+        setBioDraft(bioDraft.trim());
+      } else {
+        setBioError(res.error);
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -166,6 +223,83 @@ export function ProfileForm({ user, discordUsername }: Props) {
                 </p>
               )}
             </div>
+          )}
+        </div>
+        <div>
+          <label
+            htmlFor="display-name"
+            className="text-sm text-[var(--text-dim)] mb-1 block"
+          >
+            Display name{" "}
+            <span className="text-xs text-[var(--text-faint)]">
+              (shown instead of your username where space allows)
+            </span>
+          </label>
+          <input
+            id="display-name"
+            type="text"
+            inputMode="text"
+            value={displayNameDraft}
+            onChange={(e) => setDisplayNameDraft(e.target.value)}
+            onBlur={saveDisplayNameOnBlur}
+            placeholder="Your name"
+            maxLength={64}
+            aria-describedby="display-name-status"
+            className="w-full max-w-xs rounded border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm focus:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          />
+          <p
+            id="display-name-status"
+            className="text-xs text-[var(--text-dim)] mt-1 h-4"
+            aria-live="polite"
+          >
+            {savingDisplayName
+              ? "Saving…"
+              : displayNameError
+                ? ""
+                : `${displayNameDraft.length} / 64`}
+          </p>
+          {displayNameError && (
+            <p className="text-sm text-red-500" role="alert">
+              {displayNameError}
+            </p>
+          )}
+        </div>
+        <div>
+          <label
+            htmlFor="bio"
+            className="text-sm text-[var(--text-dim)] mb-1 block"
+          >
+            Bio{" "}
+            <span className="text-xs text-[var(--text-faint)]">
+              (shown on your public profile)
+            </span>
+          </label>
+          <textarea
+            id="bio"
+            value={bioDraft}
+            onChange={(e) => setBioDraft(e.target.value)}
+            onBlur={saveBioOnBlur}
+            placeholder="Tell people a bit about yourself"
+            maxLength={500}
+            rows={3}
+            aria-describedby="bio-status"
+            className="w-full max-w-xs rounded border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm focus:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] resize-none"
+          />
+          <p
+            id="bio-status"
+            className="text-xs text-[var(--text-dim)] mt-1 h-4"
+            aria-live="polite"
+          >
+            {savingBio
+              ? "Saving…"
+              : bioError
+                ? ""
+                : `${bioDraft.length} / 500`}
+          </p>
+          {bioError && (
+            <p className="text-sm text-red-500" role="alert">
+              {bioError}
+            </p>
           )}
         </div>
         <div>
