@@ -80,6 +80,12 @@ vi.mock("@/lib/auth/user-has-password", () => ({
 vi.mock("@/lib/auth/reauth-actions", () => ({
   verifyCurrentPassword: verifyCurrentPasswordMock,
   verifyReauthOtp: verifyReauthOtpMock,
+}));
+
+// Mock the errors module to substitute the stub class so production code's
+// `instanceof ReauthFailedError` check resolves against the same class
+// instance the test throws via verifyCurrentPasswordMock.mockRejectedValue.
+vi.mock("@/lib/auth/reauth-errors", () => ({
   ReauthFailedError: StubReauthFailedError,
 }));
 

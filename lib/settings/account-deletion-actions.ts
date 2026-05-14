@@ -8,11 +8,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getProfileByUserId } from "@/lib/profile/server-actions";
 import { userHasPassword } from "@/lib/auth/user-has-password";
-import {
-  verifyCurrentPassword,
-  verifyReauthOtp,
-  ReauthFailedError,
-} from "@/lib/auth/reauth-actions";
+import { verifyCurrentPassword, verifyReauthOtp } from "@/lib/auth/reauth-actions";
+// ReauthFailedError lives in @/lib/auth/reauth-errors (not reauth-actions)
+// because Next.js 16's `"use server"` directive only allows async-function
+// exports from a server-actions file.
+import { ReauthFailedError } from "@/lib/auth/reauth-errors";
 import {
   enforceRateLimit,
   RateLimitedError,
@@ -21,16 +21,10 @@ import {
 export type SoftDeleteResult = { ok: true } | { ok: false; error: string };
 export type CancelDeletionResult = { ok: true } | { ok: false; error: string };
 
-/**
- * Single source of truth for the soft-delete grace window. Used by:
- *   - softDeleteAccount (no direct use, but documented in the JSDoc)
- *   - app/auth/callback/route.ts (within-grace → /cancel-deletion)
- *   - app/(app)/cancel-deletion/page.tsx (compute restoreBy = deletedAt + grace)
- *   - app/account-deleted/page.tsx (estimate restoreBy from now())
- *   - supabase/functions/account-purge/index.ts (uses INTERVAL '30 days' literal —
- *     keep that in lock-step if this constant ever changes)
- */
-export const DELETION_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
+// DELETION_GRACE_MS lives in @/lib/settings/account-deletion-constants
+// (not this file) because Next.js 16's `"use server"` directive only
+// allows async-function exports — non-function const exports are stripped
+// and break the module.
 
 /**
  * Soft-deletes the current user's account. Sets profiles.deleted_at = NOW(),

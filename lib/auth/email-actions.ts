@@ -5,11 +5,8 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { userHasPassword } from "./user-has-password";
-import {
-  verifyCurrentPassword,
-  verifyReauthOtp,
-  ReauthFailedError,
-} from "./reauth-actions";
+import { verifyCurrentPassword, verifyReauthOtp } from "./reauth-actions";
+import { ReauthFailedError } from "./reauth-errors";
 import { getAdminClient } from "./admin-client";
 
 const emailSchema = z.string().email();

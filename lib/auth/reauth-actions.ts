@@ -4,22 +4,11 @@ import "server-only";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { enforceRateLimit, RateLimitedError } from "@/lib/security/rate-limit";
-
-/**
- * Single error type all three reauth paths throw on rejection. Consumers
- * (T7's <ReauthChallenge /> component, T10's change-password form, T11's
- * change-email form, T13's delete-account flow) catch this and surface
- * "That password / code didn't match — try again."
- *
- * Rate-limit hits are also rewrapped as ReauthFailedError (with the retry
- * hint in the message) so callers only have to catch one type.
- */
-export class ReauthFailedError extends Error {
-  constructor(message = "Reauthentication failed") {
-    super(message);
-    this.name = "ReauthFailedError";
-  }
-}
+// ReauthFailedError lives in a separate module — Next.js 16's `"use server"`
+// directive only allows async-function exports. The class is imported here
+// for use in the catch / rethrow flow, and consumers import it directly
+// from `@/lib/auth/reauth-errors`.
+import { ReauthFailedError } from "./reauth-errors";
 
 async function currentEmail(): Promise<string> {
   // Unreachable in practice — (app)/layout.tsx redirects unauthenticated

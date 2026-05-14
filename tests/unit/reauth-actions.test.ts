@@ -68,19 +68,22 @@ describe("verifyCurrentPassword", () => {
 
   it("throws ReauthFailedError when password is wrong", async () => {
     signInWithPasswordMock.mockResolvedValueOnce({ data: null, error: { message: "Invalid login credentials" } });
-    const { verifyCurrentPassword, ReauthFailedError } = await import("@/lib/auth/reauth-actions");
+    const { verifyCurrentPassword } = await import("@/lib/auth/reauth-actions");
+    const { ReauthFailedError } = await import("@/lib/auth/reauth-errors");
     await expect(verifyCurrentPassword("wrong")).rejects.toBeInstanceOf(ReauthFailedError);
   });
 
   it("throws ReauthFailedError when user is not signed in", async () => {
     getCachedUserMock.mockResolvedValueOnce(null);
-    const { verifyCurrentPassword, ReauthFailedError } = await import("@/lib/auth/reauth-actions");
+    const { verifyCurrentPassword } = await import("@/lib/auth/reauth-actions");
+    const { ReauthFailedError } = await import("@/lib/auth/reauth-errors");
     await expect(verifyCurrentPassword("anything")).rejects.toBeInstanceOf(ReauthFailedError);
   });
 
   it("rewraps RateLimitedError as ReauthFailedError with retry hint", async () => {
     enforceRateLimitMock.mockRejectedValueOnce(new RateLimitedError("reauth:pwd", 42));
-    const { verifyCurrentPassword, ReauthFailedError } = await import("@/lib/auth/reauth-actions");
+    const { verifyCurrentPassword } = await import("@/lib/auth/reauth-actions");
+    const { ReauthFailedError } = await import("@/lib/auth/reauth-errors");
     await expect(verifyCurrentPassword("anything")).rejects.toMatchObject({
       name: "ReauthFailedError",
       message: expect.stringContaining("42s"),
@@ -105,7 +108,8 @@ describe("sendReauthOtp", () => {
 
   it("throws ReauthFailedError when send errors", async () => {
     signInWithOtpMock.mockResolvedValueOnce({ data: null, error: { message: "smtp down" } });
-    const { sendReauthOtp, ReauthFailedError } = await import("@/lib/auth/reauth-actions");
+    const { sendReauthOtp } = await import("@/lib/auth/reauth-actions");
+    const { ReauthFailedError } = await import("@/lib/auth/reauth-errors");
     await expect(sendReauthOtp()).rejects.toBeInstanceOf(ReauthFailedError);
   });
 });
@@ -119,7 +123,8 @@ describe("verifyReauthOtp", () => {
 
   it("throws ReauthFailedError on wrong/expired code", async () => {
     verifyOtpMock.mockResolvedValueOnce({ data: null, error: { message: "Token has expired" } });
-    const { verifyReauthOtp, ReauthFailedError } = await import("@/lib/auth/reauth-actions");
+    const { verifyReauthOtp } = await import("@/lib/auth/reauth-actions");
+    const { ReauthFailedError } = await import("@/lib/auth/reauth-errors");
     await expect(verifyReauthOtp("000000")).rejects.toBeInstanceOf(ReauthFailedError);
   });
 });

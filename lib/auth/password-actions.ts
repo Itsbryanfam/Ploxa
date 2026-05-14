@@ -4,11 +4,8 @@ import "server-only";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { userHasPassword } from "./user-has-password";
-import {
-  verifyCurrentPassword,
-  verifyReauthOtp,
-  ReauthFailedError,
-} from "./reauth-actions";
+import { verifyCurrentPassword, verifyReauthOtp } from "./reauth-actions";
+import { ReauthFailedError } from "./reauth-errors";
 
 /**
  * Client-validated minimum. Must match (or be stricter than) the

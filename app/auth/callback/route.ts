@@ -4,10 +4,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ensureMyProfile } from "@/lib/profile/server-actions";
 import { UsernameCollisionError } from "@/lib/profile/errors";
 import { safeRedirectPath } from "@/lib/auth/safe-next";
-import {
-  isAccountSoftDeleted,
-  DELETION_GRACE_MS,
-} from "@/lib/settings/account-deletion-actions";
+import { isAccountSoftDeleted } from "@/lib/settings/account-deletion-actions";
+import { DELETION_GRACE_MS } from "@/lib/settings/account-deletion-constants";
 
 /**
  * OAuth + magic link callback handler.

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DELETION_GRACE_MS } from "@/lib/settings/account-deletion-actions";
+import { DELETION_GRACE_MS } from "@/lib/settings/account-deletion-constants";
 
 /**
  * Public landing page — shown after a successful soft-delete and global

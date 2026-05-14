@@ -3,8 +3,8 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 import {
   isAccountSoftDeleted,
   cancelDeletion,
-  DELETION_GRACE_MS,
 } from "@/lib/settings/account-deletion-actions";
+import { DELETION_GRACE_MS } from "@/lib/settings/account-deletion-constants";
 
 /**
  * Grace-window recovery page for soft-deleted accounts.
