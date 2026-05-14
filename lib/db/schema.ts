@@ -158,6 +158,25 @@ export const games = pgTable("games", {
   metacriticScore: integer("metacritic_score"),
   rawgRating: numeric("rawg_rating", { precision: 3, scale: 2 }),
   cachedAt: timestamp("cached_at", { withTimezone: true }).notNull().defaultNow(),
+  // ─── IGDB integration (added 2026-05-13) ───────────────────
+  // Steam appid for the IGDB external_games bridge. Filled as a
+  // side-effect of Phase 1 backfill (read from IGDB's external_games
+  // category=1) and directly from the import externalId for new
+  // post-v11 imports. Nullable — Xbox/manual imports stay null.
+  steamAppid: integer("steam_appid"),
+  // IGDB's game_modes facet (~6 canonical values: Single player,
+  // Multiplayer, Co-operative, Split screen, MMO, Battle Royale).
+  // Separate column rather than appended to mechanics so future code
+  // can weigh modes vs mechanics differently in prompts.
+  gameModes: text("game_modes").array(),
+  // IGDB's player_perspectives facet (~7 values: First person, Third
+  // person, Bird view / Isometric, Side view, Text, Auditory, VR).
+  playerPerspectives: text("player_perspectives").array(),
+  // Cached IGDB id; null = either unresolved OR resolved-and-not-found.
+  // Disambiguate via igdbResolvedAt: null = never tried; non-null with
+  // igdbId null = AI-fallback eligible.
+  igdbId: integer("igdb_id"),
+  igdbResolvedAt: timestamp("igdb_resolved_at", { withTimezone: true }),
 });
 
 export const gameAliases = pgTable(
@@ -173,6 +192,19 @@ export const gameAliases = pgTable(
     aliasGameIdx: uniqueIndex("game_aliases_alias_game_uniq").on(table.gameId, table.alias),
   }),
 );
+
+// ─────────────────────────────────────────────────────────────
+// App-level secret cache (Twitch OAuth tokens, etc.)
+// ─────────────────────────────────────────────────────────────
+// Service-role-only; never exposed via PostgREST. RLS not enabled
+// because the table is touched only by lib/igdb/twitch-oauth.ts
+// and the Edge mirror via DATABASE_URL (service-role connection).
+export const appSecrets = pgTable("app_secrets", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  value: text("value").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ─────────────────────────────────────────────────────────────
 // Logs (the core "I played this" record)

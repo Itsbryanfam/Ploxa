@@ -85,6 +85,13 @@
       "when": 1779062400000,
       "tag": "0011_backfill_cleanup_last_event_at",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778717587795,
+      "tag": "0012_igdb_facets",
+      "breakpoints": true
     }
   ]
 }
