@@ -10,7 +10,7 @@ import {
 import { NotificationRow } from "@/components/notifications/notification-row";
 import { Mascot } from "@/components/mascot/mascot";
 
-export const metadata = { title: "Notifications — Letterboxd for Games" };
+export const metadata = { title: "Notifications" };
 
 const FILTERS: Array<{ value: InboxFilter; label: string }> = [
   { value: "all", label: "All" },

@@ -89,7 +89,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { username } = await params;
   const data = await getTastePageData(username);
-  if (!data) return { title: "Letterboxd for Games" };
+  if (!data) return { title: "Ploxa" };
   const { profile, fp } = data;
   const subject = profile.displayName ?? profile.username;
   const title = `${subject}'s taste`;

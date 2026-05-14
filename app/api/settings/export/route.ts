@@ -56,7 +56,7 @@ export async function GET() {
   const blob = Buffer.from(zipBytes);
 
   const today = new Date().toISOString().slice(0, 10);
-  const filename = `letterboxd-for-games-${username}-${today}.zip`;
+  const filename = `ploxa-${username}-${today}.zip`;
 
   return new NextResponse(blob, {
     headers: {

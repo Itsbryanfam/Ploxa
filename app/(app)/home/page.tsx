@@ -7,7 +7,7 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { db } from "@/lib/db";
 import { logs, platformConnections } from "@/lib/db/schema";
 
-export const metadata = { title: "Home — Letterboxd for Games" };
+export const metadata = { title: "Home" };
 
 export default async function HomeRoute() {
   const user = await getCachedUser();

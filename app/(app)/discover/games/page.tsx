@@ -2,7 +2,7 @@ import { getPopularGames } from "@/lib/social/discovery/popular-games";
 import { PopularGamesGrid } from "@/components/discovery/popular-games-grid";
 
 export const metadata = {
-  title: "Popular games this week — Letterboxd for Games",
+  title: "Popular games this week",
   description: "Games being logged most this week.",
 };
 

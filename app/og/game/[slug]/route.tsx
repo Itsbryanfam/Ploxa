@@ -95,7 +95,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
                 display: "flex",
               }}
             >
-              Letterboxd for Games
+              Ploxa
             </div>
           </div>
           <div style={{ fontSize: 56, fontWeight: 700, lineHeight: 1.1, display: "flex" }}>

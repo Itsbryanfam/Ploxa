@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { NavTabs } from "./nav-tabs";
 import { MobileMenu } from "./mobile-menu";
@@ -16,9 +17,15 @@ export function AppHeader({ user, searchSlot }: Props) {
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--bg)]/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-        <Link href="/home" className="flex items-center gap-2 text-sm font-semibold whitespace-nowrap shrink-0">
-          <span className="font-mono text-xs tracking-[0.2em] text-[var(--pixel)]">▓ L4G ▓</span>
-          <span className="hidden sm:inline text-[var(--text-dim)]">Letterboxd for Games</span>
+        <Link href="/home" className="flex items-center shrink-0" aria-label="Ploxa home">
+          <Image
+            src="/logo/logo.png"
+            alt="Ploxa"
+            width={120}
+            height={36}
+            priority
+            className="pixelated h-9 w-auto"
+          />
         </Link>
         {/* Desktop: tabs · search · profile dropdown */}
         <div className="hidden md:flex items-center gap-6 flex-1">

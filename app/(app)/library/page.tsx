@@ -4,7 +4,7 @@ import { getUserLibrary, type SortKey } from "@/lib/logs/server-actions";
 import { LibraryViewSwitcher } from "@/components/library/library-view-switcher";
 import type { LogStatus } from "@/lib/db/schema-types";
 
-export const metadata = { title: "Library — Letterboxd for Games" };
+export const metadata = { title: "Library" };
 
 const VALID_FILTERS = ["all", "backlog", "playing", "completed", "dropped", "on_hold", "wishlist"] as const;
 const VALID_SORTS = ["recent", "rating-desc", "rating-asc", "title-asc", "released-desc"] as const;

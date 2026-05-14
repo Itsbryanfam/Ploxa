@@ -76,7 +76,7 @@ export function DigestEmail(props: {
   return (
     <Html>
       <Head />
-      <Preview>Your recap from Letterboxd for Games</Preview>
+      <Preview>Your recap from Ploxa</Preview>
       <Body style={bodyStyle}>
         <Container style={containerStyle}>
           <Section>

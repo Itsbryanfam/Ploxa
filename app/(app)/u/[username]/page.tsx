@@ -49,7 +49,7 @@ export async function generateMetadata({
   // blocked-pair non-owners (matches the page's notFound() branch). Return the
   // root template's bare title so unfurlers can't even tell the username
   // exists — same "indistinguishable 404" contract the page body honors.
-  if (!data) return { title: "Letterboxd for Games" };
+  if (!data) return { title: "Ploxa" };
   const { summary } = data;
   const { profile, stats } = summary;
   const subject = profile.displayName ?? profile.username;

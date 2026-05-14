@@ -52,7 +52,7 @@ export async function generateMetadata({
   // Fresh slugs not yet in the catalog → fall back to the root title. The
   // page body's getGameDetailBySlug() will RAWG-on-miss insert the row, but
   // metadata runs first and we don't want to gate metadata on the slow path.
-  if (!game) return { title: "Letterboxd for Games" };
+  if (!game) return { title: "Ploxa" };
   const releaseYear = game.released ? game.released.getFullYear() : null;
   const subject = releaseYear ? `${game.title} (${releaseYear})` : game.title;
   const title = subject;
@@ -62,8 +62,8 @@ export async function generateMetadata({
   const description = descSrc?.length
     ? descSrc.slice(0, 200)
     : game.genres?.length
-      ? `${game.title} — ${game.genres.slice(0, 3).join(", ")} on Letterboxd for Games`
-      : `${game.title} on Letterboxd for Games`;
+      ? `${game.title} — ${game.genres.slice(0, 3).join(", ")} on Ploxa`
+      : `${game.title} on Ploxa`;
   const ogImage = `/og/game/${game.slug}`;
   return {
     title,

@@ -7,7 +7,7 @@ import { FeedEmptyState } from "@/components/feed/feed-empty-state";
 import { db, schema } from "@/lib/db";
 import { inArray } from "drizzle-orm";
 
-export const metadata = { title: "Feed — Letterboxd for Games" };
+export const metadata = { title: "Feed" };
 
 export default async function FeedPage({
   searchParams,

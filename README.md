@@ -1,4 +1,4 @@
-# Letterboxd for Games
+# Ploxa
 
 An AI-first game tracker with a pixel-art mascot. Premium UI inspired by Raycast, social features inspired by Letterboxd, AI-driven taste fingerprints + reviews + year-in-review retrospectives.
 
