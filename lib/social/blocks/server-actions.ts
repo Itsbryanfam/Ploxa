@@ -31,7 +31,7 @@ export async function block(targetUserId: string): Promise<BlockResult> {
   }
 
   revalidatePath("/home/feed");
-  revalidatePath("/settings/blocked");
+  revalidatePath("/settings/privacy");
   return { ok: true };
 }
 
@@ -44,7 +44,7 @@ export async function unblock(targetUserId: string): Promise<BlockResult> {
       and(eq(blocks.blockerId, user.id), eq(blocks.blockedId, targetUserId)),
     );
   revalidatePath("/home/feed");
-  revalidatePath("/settings/blocked");
+  revalidatePath("/settings/privacy");
   return { ok: true };
 }
 

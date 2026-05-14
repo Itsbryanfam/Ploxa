@@ -1,4 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
+import { redirect } from "next/navigation";
 
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { db } from "@/lib/db";
@@ -14,7 +15,7 @@ export const metadata = { title: "Connections — Settings" };
 
 export default async function ConnectionsSettingsPage() {
   const user = await getCachedUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
 
   const connections = await listConnections();
   const byPlatform = Object.fromEntries(connections.map((c) => [c.platform, c]));

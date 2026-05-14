@@ -67,7 +67,7 @@ export function LibraryShelf({ items, filter }: Props) {
         action={
           filter === "all" ? (
             <Link
-              href="/settings#connections"
+              href="/settings/connections"
               className="text-xs text-[var(--text-muted)] underline"
             >
               Or connect Steam →

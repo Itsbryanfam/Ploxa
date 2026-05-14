@@ -78,7 +78,7 @@ export async function triggerImport(platform: Platform): Promise<{ importId: str
   // the prior `void fireImportEdge(...)` which could be killed mid-flight
   // when the serverless instance froze immediately after returning.
   after(() => fireImportEdge(row.id));
-  revalidatePath("/settings");
+  revalidatePath("/settings/connections");
   return { importId: row.id };
 }
 
@@ -112,7 +112,7 @@ export async function disconnectPlatform(platform: Platform): Promise<void> {
     .set({ isActive: false, accessTokenEncrypted: null })
     .where(eq(platformConnections.id, conn.id));
 
-  revalidatePath("/settings");
+  revalidatePath("/settings/connections");
 }
 
 export interface ConnectionSummary {

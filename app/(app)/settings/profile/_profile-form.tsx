@@ -39,6 +39,9 @@ export function ProfileForm({ user, discordUsername }: Props) {
       if (!res.ok) {
         setError(res.error);
       }
+      // No setState for the avatar URL: revalidatePath('/', 'layout') in
+      // the action refreshes the RSC tree, so the parent will re-render
+      // ProfileSection with the new `user` prop.
     });
   };
 
@@ -71,12 +74,14 @@ export function ProfileForm({ user, discordUsername }: Props) {
 
   function cancelUsernameEdit() {
     setEditingUsername(false);
+    // The user's current name is valid by definition (matches treatInitialAsValid
+    // when re-opened); flagging it as valid keeps state consistent.
     setUsernameDraft({ value: user.username ?? "", valid: true });
     setUsernameError(null);
   }
 
   // ---------------------------------------------------------------------------
-  // Discord handle (saves on blur)
+  // Discord handle (saves on blur; null = no pill rendered on profile page)
   // ---------------------------------------------------------------------------
   const [discordDraft, setDiscordDraft] = useState(discordUsername ?? "");
   const [discordSaved, setDiscordSaved] = useState<string | null>(discordUsername);
@@ -92,6 +97,7 @@ export function ProfileForm({ user, discordUsername }: Props) {
       const res = await updateDiscordUsername(discordDraft);
       if (res.ok) {
         setDiscordSaved(res.discordUsername);
+        // Re-sync the input with the canonical normalized value (leading @ stripped).
         setDiscordDraft(res.discordUsername ?? "");
       } else {
         setDiscordError(res.error);
