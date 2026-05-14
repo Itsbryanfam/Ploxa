@@ -210,31 +210,36 @@ export async function getUserLibrary(args: GetLibraryArgs = {}): Promise<Library
     }
   })();
 
-  const rows = await db
-    .select(LOG_GAME_SELECT)
-    .from(schema.logs)
-    .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
-    .where(
-      and(
-        eq(schema.logs.userId, user.id),
-        args.status && args.status !== "all" ? eq(schema.logs.status, args.status) : undefined,
-      ),
-    )
-    .orderBy(orderBy);
-
-  const items = rows.map((r) => mapRowToLibraryItem(r.log, r.game));
-
+  // Library rows + published-review map are independent (both keyed on
+  // user.id, no inter-dependency). Promise.all halves round-trip latency
+  // on the /library hot path.
+  //
   // Only attach existingReviewId for *published* reviews. Unpublished drafts
   // (orphans from a failed prior interview) should NOT make the log card show
   // "Edit review" — the user needs to restart the interview; generateDraft
   // will overwrite the stale draft on the way through.
-  const userReviews = await db.query.reviews.findMany({
-    where: and(
-      eq(schema.reviews.userId, user.id),
-      isNotNull(schema.reviews.publishedAt),
-    ),
-    columns: { id: true, gameId: true },
-  });
+  const [rows, userReviews] = await Promise.all([
+    db
+      .select(LOG_GAME_SELECT)
+      .from(schema.logs)
+      .innerJoin(schema.games, eq(schema.logs.gameId, schema.games.id))
+      .where(
+        and(
+          eq(schema.logs.userId, user.id),
+          args.status && args.status !== "all" ? eq(schema.logs.status, args.status) : undefined,
+        ),
+      )
+      .orderBy(orderBy),
+    db.query.reviews.findMany({
+      where: and(
+        eq(schema.reviews.userId, user.id),
+        isNotNull(schema.reviews.publishedAt),
+      ),
+      columns: { id: true, gameId: true },
+    }),
+  ]);
+
+  const items = rows.map((r) => mapRowToLibraryItem(r.log, r.game));
   const reviewByGameId = new Map(userReviews.map((r) => [r.gameId, r.id]));
   return items.map((item) => ({
     ...item,

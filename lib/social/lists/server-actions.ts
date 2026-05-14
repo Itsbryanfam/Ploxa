@@ -301,22 +301,22 @@ export async function reorderListItems(
   });
   if (!list) return { ok: false };
 
-  // Bulk UPDATE in a transaction. Row-by-row update is fine at the 500-cap
-  // budget; if reorderable lists ever grow larger, refactor to a single
-  // UPDATE FROM VALUES.
-  await db.transaction(async (tx) => {
-    for (let i = 0; i < parsed.data.orderedGameIds.length; i++) {
-      await tx
-        .update(listItems)
-        .set({ position: i + 1 })
-        .where(
-          and(
-            eq(listItems.listId, parsed.data.listId),
-            eq(listItems.gameId, parsed.data.orderedGameIds[i]),
-          ),
-        );
-    }
-  });
+  // Bulk UPDATE — single statement that replaces a per-item UPDATE loop.
+  // unnest() pairs the two parallel arrays (gameIds, positions) into a
+  // derived table that we JOIN against list_items on (list_id, game_id).
+  // 500 individual round-trips collapse into one regardless of list size.
+  if (parsed.data.orderedGameIds.length === 0) return { ok: true };
+  const positions = parsed.data.orderedGameIds.map((_, i) => i + 1);
+  await db.execute(sql`
+    UPDATE list_items
+    SET position = data.position
+    FROM unnest(
+      ${parsed.data.orderedGameIds}::int[],
+      ${positions}::int[]
+    ) AS data(game_id, position)
+    WHERE list_items.list_id = ${parsed.data.listId}::uuid
+      AND list_items.game_id = data.game_id
+  `);
 
   return { ok: true };
 }

@@ -79,36 +79,61 @@ Deno.serve(async (req) => {
   const sql = postgres(databaseUrl, { prepare: false });
 
   try {
-    // 1. Pull fingerprint (narrative + vectors). `fp` may be undefined for
-    //    users who haven't run refresh-fingerprint yet — we still proceed
-    //    with null narrative + empty vectors; the prompt handles that.
-    const [fp] = await sql<
-      Array<{
-        narrative: string | null;
-        genre: Record<string, number>;
-        theme: Record<string, number>;
-        mechanic: Record<string, number>;
-      }>
-    >`
-      SELECT
-        narrative_summary AS narrative,
-        genre_vector AS genre,
-        theme_vector AS theme,
-        mechanic_vector AS mechanic
-      FROM taste_fingerprints
-      WHERE user_id = ${userId}
-      LIMIT 1
-    `;
-
-    // 2. Pull candidate metadata for the 50 (or however many) ids passed in.
-    const candidates = await sql<CandidateRow[]>`
-      SELECT
-        id, title, genres, themes, mechanics,
-        playtime_avg_hours::float AS playtime_avg_hours,
-        description
-      FROM games
-      WHERE id = ANY(${candidateIds}::int[])
-    `;
+    // 1-3. Pull fingerprint, candidate metadata, negative + exclusion
+    //      context in parallel. Each query depends only on already-resolved
+    //      request inputs (userId, candidateIds) — no inter-query
+    //      dependencies — so we cut the prompt-prep latency by ~4x.
+    //
+    //      `fp` may be undefined for users who haven't run
+    //      refresh-fingerprint yet — we still proceed with null narrative +
+    //      empty vectors; the prompt handles that.
+    //
+    //      `dismissed` and `playing` are bounded by LIMIT to keep the
+    //      prompt size predictable across very-active users.
+    const [fpRows, candidates, dismissed, playing] = await Promise.all([
+      sql<
+        Array<{
+          narrative: string | null;
+          genre: Record<string, number>;
+          theme: Record<string, number>;
+          mechanic: Record<string, number>;
+        }>
+      >`
+        SELECT
+          narrative_summary AS narrative,
+          genre_vector AS genre,
+          theme_vector AS theme,
+          mechanic_vector AS mechanic
+        FROM taste_fingerprints
+        WHERE user_id = ${userId}
+        LIMIT 1
+      `,
+      sql<CandidateRow[]>`
+        SELECT
+          id, title, genres, themes, mechanics,
+          playtime_avg_hours::float AS playtime_avg_hours,
+          description
+        FROM games
+        WHERE id = ANY(${candidateIds}::int[])
+      `,
+      sql<Array<{ title: string; genres: string[] | null }>>`
+        SELECT g.title, g.genres
+        FROM recommendations r
+        JOIN games g ON g.id = r.game_id
+        WHERE r.user_id = ${userId} AND r.dismissed = true
+        ORDER BY r.generated_at DESC
+        LIMIT 20
+      `,
+      sql<Array<{ title: string }>>`
+        SELECT g.title
+        FROM logs l
+        JOIN games g ON g.id = l.game_id
+        WHERE l.user_id = ${userId} AND l.status = 'playing'
+        ORDER BY l.updated_at DESC
+        LIMIT 5
+      `,
+    ]);
+    const fp = fpRows[0];
 
     if (candidates.length === 0) {
       return Response.json(
@@ -116,26 +141,6 @@ Deno.serve(async (req) => {
         { status: 400 },
       );
     }
-
-    // 3. Pull negative + exclusion context: last 20 dismissed recs,
-    //    last 5 currently-playing logs. Both bounded by LIMIT to keep
-    //    the prompt size predictable across very-active users.
-    const dismissed = await sql<Array<{ title: string; genres: string[] | null }>>`
-      SELECT g.title, g.genres
-      FROM recommendations r
-      JOIN games g ON g.id = r.game_id
-      WHERE r.user_id = ${userId} AND r.dismissed = true
-      ORDER BY r.generated_at DESC
-      LIMIT 20
-    `;
-    const playing = await sql<Array<{ title: string }>>`
-      SELECT g.title
-      FROM logs l
-      JOIN games g ON g.id = l.game_id
-      WHERE l.user_id = ${userId} AND l.status = 'playing'
-      ORDER BY l.updated_at DESC
-      LIMIT 5
-    `;
 
     // 4. Render the prompt + call the AI router.
     const { system, user } = buildRerankPrompt({
@@ -226,6 +231,19 @@ Deno.serve(async (req) => {
     //    Algorithm value is 'ai' to match the DB rec_algorithm enum
     //    [similarity, ai, hybrid] — earlier plan drafts wrote 'ai_rerank',
     //    which would fail the enum check.
+    //
+    //    Bulk INSERT via postgres-js's tx(rows, ...keys) helper — replaces a
+    //    per-row INSERT loop with a single statement (one network round-trip
+    //    for up to 5 rows). `generated_at` and `dismissed` rely on their
+    //    DB defaults (NOW() and false) so we omit them from the column list.
+    const rowsToInsert = cleaned.map((r) => ({
+      user_id: userId,
+      game_id: r.gameId,
+      score: r.score.toFixed(4),
+      reason: r.reason,
+      algorithm: "ai",
+      cache_key: cacheKey,
+    }));
     await sql.begin(async (tx) => {
       await tx`
         DELETE FROM recommendations
@@ -233,14 +251,11 @@ Deno.serve(async (req) => {
           AND cache_key = ${cacheKey}
           AND dismissed = false
       `;
-      for (const r of cleaned) {
-        await tx`
-          INSERT INTO recommendations
-            (user_id, game_id, score, reason, algorithm, cache_key, generated_at, dismissed)
-          VALUES
-            (${userId}, ${r.gameId}, ${r.score.toFixed(4)}, ${r.reason}, 'ai', ${cacheKey}, NOW(), false)
-        `;
-      }
+      await tx`
+        INSERT INTO recommendations ${
+          tx(rowsToInsert, "user_id", "game_id", "score", "reason", "algorithm", "cache_key")
+        }
+      `;
     });
 
     const modelVersion = `${aiResult.provider}-${aiResult.model}/rerank-${RERANK_PROMPT_VERSION}`;

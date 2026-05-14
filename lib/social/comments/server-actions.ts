@@ -16,20 +16,20 @@ const { comments, reviews, profiles } = schema;
  * of a given review. Called by createComment, editComment, and softDeleteComment
  * so all three mutations invalidate the server cache symmetrically.
  * Fire-and-forget style — revalidation failures do not surface to callers.
+ *
+ * Single JOIN: fetches the review's author username in one round-trip rather
+ * than two (reviews.findFirst → profiles.findFirst). Orphaned reviews (author
+ * deleted) skip silently via inner-join semantics.
  */
 async function revalidateAuthorReviewListing(reviewId: string): Promise<void> {
-  const review = await db.query.reviews.findFirst({
-    where: eq(reviews.id, reviewId),
-    columns: { userId: true },
-  });
-  if (!review) return;
-  const authorProfile = await db.query.profiles.findFirst({
-    where: eq(profiles.userId, review.userId),
-    columns: { username: true },
-  });
-  if (authorProfile) {
-    revalidatePath(`/u/${authorProfile.username}/reviews`);
-  }
+  const rows = await db
+    .select({ username: profiles.username })
+    .from(reviews)
+    .innerJoin(profiles, eq(profiles.userId, reviews.userId))
+    .where(eq(reviews.id, reviewId))
+    .limit(1);
+  const username = rows[0]?.username;
+  if (username) revalidatePath(`/u/${username}/reviews`);
 }
 
 const createSchema = z.object({

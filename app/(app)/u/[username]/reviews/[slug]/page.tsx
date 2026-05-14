@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
@@ -11,28 +12,46 @@ interface Props {
   params: Promise<{ username: string; slug: string }>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { username, slug } = await params;
-  const profile = await db.query.profiles.findFirst({
-    where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
-    // isPublic mirrors the page-body gate below; without this, share unfurlers
-    // would receive the review's hook + OG image URL for a private profile
-    // even though the page itself 404s.
-    columns: { userId: true, username: true, isPublic: true },
-  });
-  if (!profile) return { title: "Review not found" };
-  // Owner-on-own-URL exception: a logged-in private user looking at their own
-  // canonical review page should still see real metadata in the browser tab.
-  // Unfurlers send no cookies, so getCachedUser() returns null for them and
-  // the !isPublic branch fires correctly.
-  const viewer = await getCachedUser();
+/**
+ * Shared (profile, game, viewer, review, isOwner) fetch wrapped in React's
+ * cache() so generateMetadata and the page body collapse to ONE set of
+ * queries per request instead of two parallel-but-duplicated chains.
+ *
+ * Stage 1 parallelizes profile + game + viewer (all keyed on URL params),
+ * then Stage 2 fetches the review (depends on Stage 1's profile.userId +
+ * game.id). The visibility gate matches the page-body 404 rules:
+ *   - profile must exist and not be soft-deleted
+ *   - private profiles only render for their owner
+ *   - non-public reviews only render for their owner
+ * Both metadata and page-body callers see `null` and 404 / fall back to
+ * "Review not found" identically.
+ */
+const getReviewPageData = cache(async (username: string, slug: string) => {
+  const [profile, game, viewer] = await Promise.all([
+    db.query.profiles.findFirst({
+      where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
+      // isPublic mirrors the page-body gate; without this, share unfurlers
+      // would receive the review's hook + OG image URL for a private profile
+      // even though the page itself 404s.
+      columns: { userId: true, username: true, isPublic: true },
+    }),
+    db.query.games.findFirst({
+      where: eq(schema.games.slug, slug),
+      // Page body needs cover + poster + title; metadata only needs title.
+      // One shape covers both so cache() can dedupe.
+      columns: { id: true, slug: true, title: true, coverUrl: true, posterUrl: true },
+    }),
+    // Owner-on-own-URL exception: a logged-in private user looking at their own
+    // canonical review page still sees real metadata in the browser tab.
+    // Unfurlers send no cookies, so getCachedUser() returns null for them and
+    // the !isPublic branch fires correctly.
+    getCachedUser(),
+  ]);
+
+  if (!profile || !game) return null;
   const isOwner = viewer?.id === profile.userId;
-  if (!profile.isPublic && !isOwner) return { title: "Review not found" };
-  const game = await db.query.games.findFirst({
-    where: eq(schema.games.slug, slug),
-    columns: { id: true, title: true },
-  });
-  if (!game) return { title: "Review not found" };
+  if (!profile.isPublic && !isOwner) return null;
+
   const review = await db.query.reviews.findFirst({
     where: and(
       eq(schema.reviews.userId, profile.userId),
@@ -41,9 +60,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       // Owners can see their own unpublished/private review metadata.
       isOwner ? undefined : eq(schema.reviews.isPublic, true),
     ),
-    columns: { id: true, body: true },
+    columns: { id: true, body: true, rating: true, publishedAt: true },
   });
-  if (!review) return { title: "Review not found" };
+  if (!review) return null;
+
+  return { profile, game, viewer, review, isOwner };
+});
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { username, slug } = await params;
+  const data = await getReviewPageData(username, slug);
+  if (!data) return { title: "Review not found" };
+  const { profile, game, review } = data;
 
   const hook = (review.body ?? "").split("\n\n")[0] ?? "";
   const description = hook.length > 180 ? `${hook.slice(0, 180).trimEnd()}…` : hook;
@@ -69,37 +97,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function CanonicalReviewPage({ params }: Props) {
   const { username, slug } = await params;
 
-  // Stage 1: profile, game, viewer — all independent, fire in parallel.
-  // (Previously serialized into 3 sequential round-trips on the share-link
-  // load path; this page is the canonical OG/unfurl destination.)
-  const [profile, game, viewer] = await Promise.all([
-    db.query.profiles.findFirst({
-      where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
-      columns: { userId: true, username: true, isPublic: true },
-    }),
-    db.query.games.findFirst({
-      where: eq(schema.games.slug, slug),
-      columns: { id: true, slug: true, title: true, coverUrl: true, posterUrl: true },
-    }),
-    getCachedUser(),
-  ]);
-  if (!profile) notFound();
-  if (!game) notFound();
-
-  const isOwner = viewer?.id === profile.userId;
-  if (!profile.isPublic && !isOwner) notFound();
-
-  // Stage 2: review row depends on profile.userId + game.id.
-  const review = await db.query.reviews.findFirst({
-    where: and(
-      eq(schema.reviews.userId, profile.userId),
-      eq(schema.reviews.gameId, game.id),
-      isNotNull(schema.reviews.publishedAt),
-      isOwner ? undefined : eq(schema.reviews.isPublic, true),
-    ),
-    columns: { id: true, body: true, rating: true, publishedAt: true },
-  });
-  if (!review) notFound();
+  // Shared data fetch — generateMetadata already ran getReviewPageData() for
+  // this same (username, slug), so cache() returns the memoized result.
+  const data = await getReviewPageData(username, slug);
+  if (!data) notFound();
+  const { profile, game, viewer, review, isOwner } = data;
 
   // Stage 3: like count + viewer-liked + comments — all depend on review.id, run in parallel.
   // Comment visibility predicate: flagged comments only visible to their author. We have

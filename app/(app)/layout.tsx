@@ -35,15 +35,21 @@ export default async function AppLayout({
   // every (app) path to /cancel-deletion EXCEPT /cancel-deletion itself
   // (to avoid an infinite redirect). Middleware sets the x-pathname header
   // on every request so we can do the path check here in a Server Component.
-  const deletedAt = await isAccountSoftDeleted(authUser.id);
+  //
+  // Both `isAccountSoftDeleted` and `getHeaderUser` depend only on the
+  // already-resolved `authUser`, so fire them in parallel. The redirect path
+  // wastes the headerUser fetch only for the rare soft-deleted-on-non-cancel
+  // route case — the steady-state (no deletion) saves one round-trip.
+  const [deletedAt, headerUser] = await Promise.all([
+    isAccountSoftDeleted(authUser.id),
+    getHeaderUser(authUser),
+  ]);
   if (deletedAt) {
     const pathname = (await headers()).get("x-pathname") ?? "";
     if (!pathname.startsWith("/cancel-deletion")) {
       redirect("/cancel-deletion");
     }
   }
-
-  const headerUser = await getHeaderUser(authUser);
 
   return (
     <div className="flex min-h-screen flex-col">

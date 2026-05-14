@@ -51,17 +51,23 @@ export async function onComment(args: {
   // Mention notifications. Dedupe is T22's job via emit's ON CONFLICT
   // (user, type, target, actor) — a mentioned user who is also the review
   // author will receive only one row.
+  //
+  // Each emit() does an independent block-check + INSERT; fan them out
+  // in parallel so M mentions cost one round-trip per mention, not M.
   const mentions = parseMentions(args.body);
   if (mentions.length > 0) {
     const userMap = await resolveMentionedUserIds(mentions);
-    for (const userId of userMap.values()) {
-      if (userId === args.commenterId) continue; // never self-notify
-      await emit({
-        type: "review_commented",
-        recipientUserId: userId,
-        actorUserId: args.commenterId,
-        targetId: args.reviewId,
-      });
-    }
+    await Promise.all(
+      Array.from(userMap.values())
+        .filter((userId) => userId !== args.commenterId) // never self-notify
+        .map((userId) =>
+          emit({
+            type: "review_commented",
+            recipientUserId: userId,
+            actorUserId: args.commenterId,
+            targetId: args.reviewId,
+          }),
+        ),
+    );
   }
 }

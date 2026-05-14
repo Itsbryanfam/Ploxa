@@ -49,6 +49,20 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve();
       },
     }),
+    // T14 revalidateAuthorReviewListing now uses a single
+    // db.select().from(reviews).innerJoin(profiles).where().limit() instead of
+    // two findFirst calls. Stub returns the joined { username } row so the
+    // revalidate tail succeeds without affecting the spam-report assertions
+    // these tests target.
+    select: () => ({
+      from: () => ({
+        innerJoin: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([{ username: "victim" }]),
+          }),
+        }),
+      }),
+    }),
     query: {
       reports: {
         findFirst: (...args: unknown[]) => reportsFindFirstMock(...args),
@@ -56,6 +70,9 @@ vi.mock("@/lib/db", () => ({
       comments: {
         findFirst: (...args: unknown[]) => commentsFindFirstMock(...args),
       },
+      // reviews/profiles findFirst kept for forward-compat with other tests
+      // that import this mock shape; revalidateAuthorReviewListing no longer
+      // calls them after T14's JOIN refactor.
       reviews: {
         findFirst: (...args: unknown[]) => reviewsFindFirstMock(...args),
       },

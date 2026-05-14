@@ -100,25 +100,29 @@ Deno.serve(async (req) => {
     }
 
     // 3. Build narrative-prompt inputs (sharpening/full tier).
-    const recentLiked = await sql<
-      Array<{ title: string; genres: string[]; rating: number }>
-    >`
+    //    Both queries are independent — single Promise.all halves round-trip
+    //    latency on this Edge function's hot path.
+    const [recentLiked, recentDisliked] = await Promise.all([
+      sql<
+        Array<{ title: string; genres: string[]; rating: number }>
+      >`
       SELECT g.title, g.genres, l.rating::float AS rating
       FROM logs l JOIN games g ON g.id = l.game_id
       WHERE l.user_id = ${userId} AND l.rating IS NOT NULL AND l.rating >= 7
       ORDER BY l.updated_at DESC
       LIMIT 5
-    `;
-    const recentDisliked = await sql<
-      Array<{ title: string; genres: string[]; status: string; rating: number | null }>
-    >`
+    `,
+      sql<
+        Array<{ title: string; genres: string[]; status: string; rating: number | null }>
+      >`
       SELECT g.title, g.genres, l.status, l.rating::float AS rating
       FROM logs l JOIN games g ON g.id = l.game_id
       WHERE l.user_id = ${userId}
         AND ((l.rating IS NOT NULL AND l.rating <= 3) OR l.status = 'dropped')
       ORDER BY l.updated_at DESC
       LIMIT 3
-    `;
+    `,
+    ]);
 
     // 4. Call AI router. Wrapped in try/catch so a router throw
     //    (AIProvidersExhaustedError when no provider is configured, or
