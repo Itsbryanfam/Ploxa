@@ -7,6 +7,8 @@ export type VectorBundle = {
   genre: SparseVector;
   theme: SparseVector;
   mechanic: SparseVector;
+  game_mode: SparseVector;
+  player_perspective: SparseVector;
 };
 export type TasteTier = "empty" | "sparse" | "sharpening" | "full";
 

@@ -16,6 +16,8 @@ function row(overrides: Partial<AggregateInputRow> = {}): AggregateInputRow {
     genres: [],
     themes: [],
     mechanics: [],
+    gameModes: [],
+    playerPerspectives: [],
     playtimeAvgHours: null,
     ...overrides,
   };
@@ -144,5 +146,28 @@ describe("aggregateFingerprint — vector normalization", () => {
       rows: [row({}), row({}), row({})],
     });
     expect(r.totalLogsAtGeneration).toBe(3);
+  });
+});
+
+describe("aggregateFingerprint — modes and perspectives", () => {
+  it("aggregates game_modes weighted by sign", () => {
+    const result = aggregateFingerprint({
+      rows: [
+        row({ rating: 9, gameModes: ["Multiplayer", "Co-operative"] }),
+        row({ rating: 9, gameModes: ["Multiplayer"] }),
+      ],
+    });
+    expect(result.gameMode["Multiplayer"]).toBeGreaterThan(result.gameMode["Co-operative"]);
+  });
+
+  it("aggregates player_perspectives weighted by sign", () => {
+    const result = aggregateFingerprint({
+      rows: [
+        row({ rating: 9, playerPerspectives: ["First person"] }),
+        row({ rating: 2, playerPerspectives: ["Side view"] }),
+      ],
+    });
+    expect(result.playerPerspective["First person"]).toBeGreaterThan(0);
+    expect(result.playerPerspective["Side view"]).toBeLessThan(0);
   });
 });

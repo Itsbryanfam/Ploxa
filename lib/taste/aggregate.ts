@@ -12,6 +12,8 @@ export type AggregateInputRow = {
   genres: string[];
   themes: string[];
   mechanics: string[];
+  gameModes: string[];
+  playerPerspectives: string[];
   /** numeric(5,1) on disk → number | null in TS. */
   playtimeAvgHours: number | null;
 };
@@ -106,6 +108,8 @@ export function aggregateFingerprint(input: AggregateInput): AggregateResult {
   const genreRaw: SparseVector = {};
   const themeRaw: SparseVector = {};
   const mechanicRaw: SparseVector = {};
+  const gameModeRaw: SparseVector = {};
+  const playerPerspectiveRaw: SparseVector = {};
   const lengthRaw: LengthPreference = emptyLengthPreference();
 
   let totalW = 0;
@@ -121,6 +125,8 @@ export function aggregateFingerprint(input: AggregateInput): AggregateResult {
     for (const g of row.genres) genreRaw[g] = (genreRaw[g] ?? 0) + signedWeight;
     for (const t of row.themes) themeRaw[t] = (themeRaw[t] ?? 0) + signedWeight;
     for (const m of row.mechanics) mechanicRaw[m] = (mechanicRaw[m] ?? 0) + signedWeight;
+    for (const gm of row.gameModes) gameModeRaw[gm] = (gameModeRaw[gm] ?? 0) + signedWeight;
+    for (const pp of row.playerPerspectives) playerPerspectiveRaw[pp] = (playerPerspectiveRaw[pp] ?? 0) + signedWeight;
 
     if (row.playtimeAvgHours != null && row.playtimeAvgHours > 0) {
       const bucket = lengthBucket(row.playtimeAvgHours);
@@ -146,6 +152,8 @@ export function aggregateFingerprint(input: AggregateInput): AggregateResult {
     genre: normalize(genreRaw),
     theme: normalize(themeRaw),
     mechanic: normalize(mechanicRaw),
+    gameMode: normalize(gameModeRaw),
+    playerPerspective: normalize(playerPerspectiveRaw),
     lengthPreference,
     totalLogsAtGeneration: input.rows.length,
   };

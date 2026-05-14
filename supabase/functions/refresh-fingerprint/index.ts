@@ -58,6 +58,8 @@ Deno.serve(async (req) => {
         g.genres,
         g.themes,
         g.mechanics,
+        g.game_modes,
+        g.player_perspectives,
         g.playtime_avg_hours::float AS playtime_avg_hours
       FROM logs l
       JOIN games g ON g.id = l.game_id
@@ -120,7 +122,7 @@ Deno.serve(async (req) => {
 
     // 4. Call AI router.
     const { system, user } = buildNarrativePrompt({
-      vectors: { genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic },
+      vectors: { genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic, game_mode: agg.game_mode, player_perspective: agg.player_perspective },
       lengthPreference: agg.length_preference,
       recentLikedGames: recentLiked,
       recentDislikedGames: recentDisliked,
@@ -190,7 +192,7 @@ Deno.serve(async (req) => {
     // current vectors vs this snapshot to decide whether to re-narrate.
     // Do not "dedupe" by reading from the just-inserted columns; this
     // freeze IS the contract.
-    const narrativeSnapshot = sql.json({ genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic });
+    const narrativeSnapshot = sql.json({ genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic, game_mode: agg.game_mode, player_perspective: agg.player_perspective });
     await sql`
       INSERT INTO taste_fingerprints (
         user_id, genre_vector, theme_vector, mechanic_vector,

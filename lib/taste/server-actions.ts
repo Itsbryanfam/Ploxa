@@ -54,6 +54,8 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
       genres: games.genres,
       themes: games.themes,
       mechanics: games.mechanics,
+      gameModes: games.gameModes,
+      playerPerspectives: games.playerPerspectives,
       playtimeAvgHours: games.playtimeAvgHours,
     })
     .from(logs)
@@ -67,6 +69,8 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
     genres: r.genres ?? [],
     themes: r.themes ?? [],
     mechanics: r.mechanics ?? [],
+    gameModes: r.gameModes ?? [],
+    playerPerspectives: r.playerPerspectives ?? [],
     playtimeAvgHours: r.playtimeAvgHours != null ? Number(r.playtimeAvgHours) : null,
   }));
 
@@ -84,7 +88,7 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
 
   return {
     tier: tierForUser(inputRows.length),
-    vectors: { genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic },
+    vectors: { genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic, gameMode: agg.gameMode, playerPerspective: agg.playerPerspective },
     lengthPreference: agg.lengthPreference,
     narrative: fpRows[0]?.narrative ?? null,
     narrativeGeneratedAt: fpRows[0]?.narrativeGeneratedAt ?? null,

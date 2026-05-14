@@ -139,8 +139,8 @@ export async function getSimilarUsers(
       0,
       1 -
         drift(
-          { genre: fp.genre_vector, theme: fp.theme_vector, mechanic: fp.mechanic_vector },
-          { genre: c.genre_vector, theme: c.theme_vector, mechanic: c.mechanic_vector },
+          { genre: fp.genre_vector, theme: fp.theme_vector, mechanic: fp.mechanic_vector, gameMode: {}, playerPerspective: {} },
+          { genre: c.genre_vector, theme: c.theme_vector, mechanic: c.mechanic_vector, gameMode: {}, playerPerspective: {} },
         ),
     ),
   }));

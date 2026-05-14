@@ -46,10 +46,15 @@ describe("cosineSim — direction-only similarity", () => {
 });
 
 describe("drift — max distance across genre + theme + mechanic", () => {
+  // gameMode and playerPerspective are given identical non-empty values so
+  // their axes contribute 0 cosine distance in these tests, keeping the
+  // assertions focused on genre/theme/mechanic semantics.
   const allOnes: VectorBundle = {
     genre: { rpg: 1 },
     theme: { fantasy: 1 },
     mechanic: { turn_based: 1 },
+    gameMode: { single_player: 1 },
+    playerPerspective: { third_person: 1 },
   };
 
   it("returns 0 when current and snapshot are identical", () => {
@@ -61,22 +66,26 @@ describe("drift — max distance across genre + theme + mechanic", () => {
   });
 
   it("returns the MAX distance across the three fields", () => {
-    // Identical genre + theme; orthogonal mechanic → max distance = 1.
+    // Identical genre + theme + gameMode + playerPerspective; orthogonal mechanic → max distance = 1.
     const snapshot: VectorBundle = {
       genre: { rpg: 1 },
       theme: { fantasy: 1 },
       mechanic: { realtime: 1 },
+      gameMode: { single_player: 1 },
+      playerPerspective: { third_person: 1 },
     };
     expect(drift(allOnes, snapshot)).toBeCloseTo(1, 6);
   });
 
   it("captures the worst-shifted field, ignoring stable ones", () => {
-    // genre drifted slightly; theme + mechanic untouched. The result
+    // genre drifted slightly; other axes untouched. The result
     // should reflect the genre drift, not be diluted by averaging.
     const snapshot: VectorBundle = {
       genre: { rpg: 1, action: 1 }, // 2D vector, drifted
       theme: { fantasy: 1 },
       mechanic: { turn_based: 1 },
+      gameMode: { single_player: 1 },
+      playerPerspective: { third_person: 1 },
     };
     const d = drift(allOnes, snapshot);
     // 1 - cosine of (1,0) and (1,1) = 1 - (1/√2) ≈ 0.293

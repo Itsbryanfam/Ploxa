@@ -13,6 +13,8 @@ function row(partial: Partial<AggregateInputRow>): AggregateInputRow {
     genres: [],
     themes: [],
     mechanics: [],
+    gameModes: [],
+    playerPerspectives: [],
     playtimeAvgHours: null,
     ...partial,
   };

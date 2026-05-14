@@ -16,6 +16,9 @@ type Snapshot = {
   genre: Record<string, number>;
   theme: Record<string, number>;
   mechanic: Record<string, number>;
+  // Optional for backward compat with DB rows written before T9 extended the snapshot.
+  game_mode?: Record<string, number>;
+  player_perspective?: Record<string, number>;
 };
 
 function cosineSim(a: Record<string, number>, b: Record<string, number>): number {
@@ -39,6 +42,9 @@ function drift(current: Snapshot, snap: Snapshot): number {
     1 - cosineSim(current.genre, snap.genre),
     1 - cosineSim(current.theme, snap.theme),
     1 - cosineSim(current.mechanic, snap.mechanic),
+    // Use `?? {}` for backward compat with DB snapshots written before T9.
+    1 - cosineSim(current.game_mode ?? {}, snap.game_mode ?? {}),
+    1 - cosineSim(current.player_perspective ?? {}, snap.player_perspective ?? {}),
   );
 }
 
@@ -97,6 +103,8 @@ Deno.serve(async (req) => {
             g.genres,
             g.themes,
             g.mechanics,
+            g.game_modes,
+            g.player_perspectives,
             g.playtime_avg_hours::float AS playtime_avg_hours
           FROM logs l
           JOIN games g ON g.id = l.game_id
@@ -108,6 +116,8 @@ Deno.serve(async (req) => {
           genre: agg.genre,
           theme: agg.theme,
           mechanic: agg.mechanic,
+          game_mode: agg.game_mode ?? {},
+          player_perspective: agg.player_perspective ?? {},
         };
         const d = c.snapshot ? drift(current, c.snapshot) : Infinity;
         if (d > DRIFT_THRESHOLD) {

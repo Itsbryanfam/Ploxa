@@ -82,22 +82,22 @@ const cases: Case[] = [
   {
     name: "drift: null snapshot → Infinity",
     fn: () => {
-      const current: VectorBundle = { genre: { a: 1 }, theme: {}, mechanic: {} };
+      const current: VectorBundle = { genre: { a: 1 }, theme: {}, mechanic: {}, gameMode: {}, playerPerspective: {} };
       return drift(current, null) === Infinity;
     },
   },
   {
     name: "drift: identical snapshot → 0",
     fn: () => {
-      const current: VectorBundle = { genre: { a: 1 }, theme: { b: 1 }, mechanic: { c: 1 } };
+      const current: VectorBundle = { genre: { a: 1 }, theme: { b: 1 }, mechanic: { c: 1 }, gameMode: {}, playerPerspective: {} };
       return Math.abs(drift(current, current)) < 1e-10;
     },
   },
   {
     name: "drift: orthogonal genre shift → 1",
     fn: () => {
-      const current: VectorBundle = { genre: { y: 1 }, theme: { b: 1 }, mechanic: { c: 1 } };
-      const snap: VectorBundle = { genre: { x: 1 }, theme: { b: 1 }, mechanic: { c: 1 } };
+      const current: VectorBundle = { genre: { y: 1 }, theme: { b: 1 }, mechanic: { c: 1 }, gameMode: {}, playerPerspective: {} };
+      const snap: VectorBundle = { genre: { x: 1 }, theme: { b: 1 }, mechanic: { c: 1 }, gameMode: {}, playerPerspective: {} };
       return Math.abs(drift(current, snap) - 1) < 1e-10;
     },
   },

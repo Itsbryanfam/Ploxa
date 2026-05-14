@@ -207,6 +207,8 @@ function row(partial: Partial<AggregateInputRow>): AggregateInputRow {
     genres: [],
     themes: [],
     mechanics: [],
+    gameModes: [],
+    playerPerspectives: [],
     playtimeAvgHours: null,
     ...partial,
   };
@@ -556,7 +558,7 @@ function checkPromptsAndMoods() {
 
   // 1. Narrative prompt returns { system, user } with non-empty strings.
   const narr = buildNarrativePrompt({
-    vectors: { genre: { RPG: 0.5 }, theme: {}, mechanic: {} },
+    vectors: { genre: { RPG: 0.5 }, theme: {}, mechanic: {}, gameMode: {}, playerPerspective: {} },
     lengthPreference: { "<5h": 0, "5-10h": 0.4, "10-30h": 0.6, "30-60h": 0, "60h+": 0 },
     recentLikedGames: [{ title: "Disco Elysium", genres: ["RPG"], rating: 9 }],
     recentDislikedGames: [],
@@ -580,7 +582,7 @@ function checkPromptsAndMoods() {
   // 2. Rerank prompt returns non-empty { system, user }.
   const rer = buildRerankPrompt({
     narrative: "You favor moody RPGs with reactive worlds.",
-    vectors: { genre: { RPG: 0.5 }, theme: {}, mechanic: {} },
+    vectors: { genre: { RPG: 0.5 }, theme: {}, mechanic: {}, gameMode: {}, playerPerspective: {} },
     filters: { moods: ["chill"], time: "1hr", platforms: ["steam"] },
     candidates: [
       {

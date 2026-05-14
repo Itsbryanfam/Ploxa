@@ -88,6 +88,8 @@ export async function GET(
     genre: (fp.genre as Record<string, number>) ?? {},
     theme: (fp.theme as Record<string, number>) ?? {},
     mechanic: (fp.mechanic as Record<string, number>) ?? {},
+    gameMode: {},
+    playerPerspective: {},
   };
   const pose = dominantPose(vectors);
   const playstyle = playstyleFromMechanics(vectors.mechanic);

@@ -17,6 +17,8 @@ export type AggregateRow = {
   genres: string[] | null;
   themes: string[] | null;
   mechanics: string[] | null;
+  game_modes: string[] | null;
+  player_perspectives: string[] | null;
   playtime_avg_hours: number | null;
 };
 
@@ -26,6 +28,8 @@ export type AggregateResult = {
   genre: SparseVector;
   theme: SparseVector;
   mechanic: SparseVector;
+  game_mode: SparseVector;
+  player_perspective: SparseVector;
   length_preference: Record<string, number>;
   total_logs_at_generation: number;
 };
@@ -78,6 +82,8 @@ export function aggregate(rows: AggregateRow[]): AggregateResult {
   const genreRaw: SparseVector = {};
   const themeRaw: SparseVector = {};
   const mechanicRaw: SparseVector = {};
+  const gameModeRaw: SparseVector = {};
+  const playerPerspectiveRaw: SparseVector = {};
   const lengthRaw: Record<string, number> = {
     "<5h": 0,
     "5-10h": 0,
@@ -98,6 +104,8 @@ export function aggregate(rows: AggregateRow[]): AggregateResult {
     for (const g of row.genres ?? []) genreRaw[g] = (genreRaw[g] ?? 0) + signed;
     for (const t of row.themes ?? []) themeRaw[t] = (themeRaw[t] ?? 0) + signed;
     for (const m of row.mechanics ?? []) mechanicRaw[m] = (mechanicRaw[m] ?? 0) + signed;
+    for (const gm of row.game_modes ?? []) gameModeRaw[gm] = (gameModeRaw[gm] ?? 0) + signed;
+    for (const pp of row.player_perspectives ?? []) playerPerspectiveRaw[pp] = (playerPerspectiveRaw[pp] ?? 0) + signed;
 
     if (row.playtime_avg_hours != null && row.playtime_avg_hours > 0) {
       lengthRaw[bucket(row.playtime_avg_hours)] += w;
@@ -127,6 +135,8 @@ export function aggregate(rows: AggregateRow[]): AggregateResult {
     genre: normalize(genreRaw),
     theme: normalize(themeRaw),
     mechanic: normalize(mechanicRaw),
+    game_mode: normalize(gameModeRaw),
+    player_perspective: normalize(playerPerspectiveRaw),
     length_preference,
     total_logs_at_generation: rows.length,
   };

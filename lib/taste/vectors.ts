@@ -16,6 +16,8 @@ export type VectorBundle = {
   genre: SparseVector;
   theme: SparseVector;
   mechanic: SparseVector;
+  gameMode: SparseVector;
+  playerPerspective: SparseVector;
 };
 
 /**
@@ -38,7 +40,7 @@ export function cosineSim(a: SparseVector, b: SparseVector): number {
 }
 
 /**
- * Max cosine distance across the three vector fields between the current
+ * Max cosine distance across the five vector fields between the current
  * snapshot and the snapshot taken at last narrative generation.
  *
  * Returns Infinity when no snapshot exists (forces a regen).
@@ -55,5 +57,7 @@ export function drift(
     1 - cosineSim(current.genre, snapshot.genre),
     1 - cosineSim(current.theme, snapshot.theme),
     1 - cosineSim(current.mechanic, snapshot.mechanic),
+    1 - cosineSim(current.gameMode, snapshot.gameMode),
+    1 - cosineSim(current.playerPerspective, snapshot.playerPerspective),
   );
 }
