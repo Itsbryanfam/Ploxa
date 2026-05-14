@@ -20,7 +20,7 @@ export function ScoreBar({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex items-center gap-2 font-mono text-xs">
       {negative ? (
-        <span className="w-3 text-center text-zinc-500" aria-label="negative score">
+        <span className="w-3 text-center text-[var(--text-faint)]" aria-label="negative score">
           −
         </span>
       ) : (
@@ -34,14 +34,14 @@ export function ScoreBar({ value, label }: { value: number; label: string }) {
               "h-3 w-2 rounded-[1px]",
               i < filled
                 ? negative
-                  ? "bg-zinc-500"
-                  : "bg-emerald-500"
-                : "bg-zinc-800",
+                  ? "bg-[var(--text-faint)]"
+                  : "bg-[var(--success)]"
+                : "bg-[var(--border)]",
             )}
           />
         ))}
       </div>
-      <span className={cn("flex-1 truncate", negative && "text-zinc-500")}>
+      <span className={cn("flex-1 truncate", negative && "text-[var(--text-faint)]")}>
         {label}
       </span>
     </div>

@@ -50,7 +50,7 @@ export function RefreshButton() {
       type="button"
       onClick={onClick}
       disabled={pending}
-      className="rounded border border-zinc-800 px-3 py-1 text-xs hover:bg-zinc-900 disabled:opacity-60"
+      className="rounded border border-[var(--border)] px-3 py-1 text-xs hover:bg-[var(--bg-card-hover)] disabled:opacity-60"
     >
       {pending ? "Refreshing…" : "Refresh fingerprint"}
     </button>

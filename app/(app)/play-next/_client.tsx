@@ -127,7 +127,7 @@ export function PlayNextClient({
       <MascotPrompt mood="pointing">
         <p className="text-sm">
           Log at least one game and I&apos;ll start recommending. Try{" "}
-          <Link href="/games" className="text-emerald-400 underline">
+          <Link href="/games" className="text-[var(--accent)] underline">
             finding something here
           </Link>
           .
@@ -197,7 +197,7 @@ export function PlayNextClient({
             type="button"
             disabled={moods.length === 0}
             onClick={() => setEditingStep("platform")}
-            className="mt-4 rounded bg-emerald-600 px-4 py-2 font-mono text-sm text-white disabled:opacity-50"
+            className="mt-4 rounded bg-[var(--accent)] px-4 py-2 font-mono text-sm text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
           >
             Continue →
           </button>
@@ -237,7 +237,7 @@ export function PlayNextClient({
                 loadRecs(time, moods, platforms);
               }
             }}
-            className="mt-4 rounded bg-emerald-600 px-4 py-2 font-mono text-sm text-white disabled:opacity-50"
+            className="mt-4 rounded bg-[var(--accent)] px-4 py-2 font-mono text-sm text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
           >
             Show me what to play →
           </button>
@@ -263,7 +263,7 @@ export function PlayNextClient({
       {!pending && recsState && recsState.ok && (
         <>
           {recsState.banner && (
-            <div className="mb-4 rounded-md border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-400">
+            <div className="mb-4 rounded-md border border-[var(--border)] bg-[var(--bg)]/50 p-3 text-xs text-[var(--text-dim)]">
               {recsState.banner}
             </div>
           )}
@@ -304,7 +304,7 @@ export function PlayNextClient({
                 type="button"
                 onClick={onRefill}
                 disabled={pending}
-                className="rounded border border-emerald-700 px-4 py-2 font-mono text-sm text-emerald-300 hover:bg-emerald-950/30 disabled:opacity-50"
+                className="rounded border border-[var(--accent)] px-4 py-2 font-mono text-sm text-[var(--accent)] hover:bg-[var(--accent-soft)] disabled:opacity-50"
               >
                 Show me more like these →
               </button>
@@ -358,7 +358,7 @@ function Pill({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="rounded-full border border-zinc-700 px-3 py-1 hover:border-zinc-500"
+      className="rounded-full border border-[var(--border)] px-3 py-1 hover:border-[var(--border-hover)]"
     >
       {label} <span className="ml-1 opacity-50">✎</span>
     </button>

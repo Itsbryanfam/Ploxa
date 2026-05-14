@@ -106,9 +106,9 @@ export function RecCard({
       layout
       initial={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-      className="overflow-hidden rounded-md border border-zinc-800 bg-zinc-950"
+      className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg)]"
     >
-      <div className="relative aspect-[2/3] w-full bg-zinc-900">
+      <div className="relative aspect-[2/3] w-full bg-[var(--bg-elev)]">
         {art ? (
           <Image
             src={art}
@@ -122,8 +122,8 @@ export function RecCard({
           className={cn(
             "absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
             isAi
-              ? "bg-emerald-600/90 text-white"
-              : "bg-zinc-800/90 text-zinc-300",
+              ? "bg-[var(--accent)]/90 text-[var(--accent-fg)]"
+              : "bg-[var(--bg-card)]/90 text-[var(--text-dim)]",
           )}
         >
           {isAi ? "AI pick" : "basic match"}
@@ -133,13 +133,13 @@ export function RecCard({
         <h3 className="text-sm font-medium leading-tight">
           {rec.title}
           {rec.releasedYear ? (
-            <span className="ml-1 font-normal text-zinc-500">
+            <span className="ml-1 font-normal text-[var(--text-faint)]">
               &apos;{String(rec.releasedYear).slice(-2)}
             </span>
           ) : null}
         </h3>
         <p
-          className="line-clamp-3 text-xs leading-snug text-zinc-400"
+          className="line-clamp-3 text-xs leading-snug text-[var(--text-dim)]"
           title={rec.reason}
         >
           {rec.reason}
@@ -154,7 +154,7 @@ export function RecCard({
             type="button"
             disabled={pending}
             onClick={onSave}
-            className="rounded border border-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-700 disabled:opacity-50"
+            className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-dim)] hover:border-[var(--border-hover)] disabled:opacity-50"
           >
             Save for later
           </button>
@@ -162,7 +162,7 @@ export function RecCard({
             type="button"
             disabled={pending}
             onClick={onNotForMe}
-            className="rounded border border-zinc-900 px-2 py-1 text-xs text-zinc-500 hover:border-zinc-800 hover:text-zinc-400 disabled:opacity-50"
+            className="rounded border border-[var(--border-soft)] px-2 py-1 text-xs text-[var(--text-faint)] hover:border-[var(--border)] hover:text-[var(--text-dim)] disabled:opacity-50"
           >
             Not for me
           </button>
@@ -199,7 +199,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => onPlay(undefined)}
-        className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-500 disabled:opacity-50"
+        className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play this →
       </button>
@@ -212,7 +212,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => onPlay(overlap[0])}
-        className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-500 disabled:opacity-50"
+        className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play on {overlap[0]} →
       </button>
@@ -225,12 +225,12 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => setOpenPicker((o) => !o)}
-        className="w-full rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-500 disabled:opacity-50"
+        className="w-full rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play this ▾
       </button>
       {openPicker && (
-        <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-lg">
+        <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-[var(--border)] bg-[var(--bg-elev)] p-1 shadow-lg">
           {overlap.map((p) => (
             <button
               key={p}
@@ -239,7 +239,7 @@ function PlayThisButton({
                 setOpenPicker(false);
                 onPlay(p);
               }}
-              className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-zinc-800"
+              className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-[var(--bg-card)]"
             >
               On {p}
             </button>

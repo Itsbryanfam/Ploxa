@@ -14,14 +14,19 @@
   --bg-card-hover: #1c1c28;
   --border: #2a2a38;
   --border-soft: #1f1f2c;
+  --border-hover: var(--border);
   --text: #e4e4f0;
   --text-dim: #9494a8;
-  --text-faint: #5a5a70;
+  /* --text-faint bumped from #5a5a70 (4.27:1) to #7d7d92 (5.2:1) so secondary
+   * captions / timestamps / stats labels pass WCAG AA against --bg-card. */
+  --text-faint: #7d7d92;
+  --text-muted: var(--text-dim);
 
   /* Accent — purple primary, amber pixel-art accent */
   --accent: #7c5cff;
   --accent-soft: rgba(124, 92, 255, 0.13);
   --accent-glow: rgba(124, 92, 255, 0.27);
+  --accent-fg: #ffffff;
   --pixel: #ffb84a;
   --pixel-soft: rgba(255, 184, 74, 0.13);
 
@@ -73,9 +78,13 @@
   --bg-card-hover: #f8f8fc;
   --border: #e4e4ee;
   --border-soft: #ededf4;
+  --border-hover: #c8c8d4;
+  /* Light-mode --text-faint at #6b6b80 stays ≥4.5:1 against --bg-card #ffffff. */
   --text: #1a1a24;
   --text-dim: #5a5a72;
-  --text-faint: #9494a8;
+  --text-faint: #6b6b80;
+  --text-muted: var(--text-dim);
+  --accent-fg: #ffffff;
 }
 
 @theme inline {

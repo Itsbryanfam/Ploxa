@@ -33,7 +33,7 @@ export function TierSparse({
     <>
       <div className="mb-8 flex items-start gap-4">
         <Mascot mood="pointing" size="md" silent />
-        <div className="flex-1 rounded-md border border-zinc-800 bg-zinc-950 p-4">
+        <div className="flex-1 rounded-md border border-[var(--border)] bg-[var(--bg)] p-4">
           <p className="text-sm">
             I need about <strong>{remaining}</strong> more{" "}
             {remaining === 1 ? "log" : "logs"} before I can write you a proper
@@ -43,7 +43,7 @@ export function TierSparse({
             <button
               type="button"
               disabled
-              className="rounded border border-zinc-800 px-3 py-1 text-xs text-zinc-600"
+              className="rounded border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-faint)]"
               title="Available once you reach 10 logs"
             >
               Refresh fingerprint
@@ -51,7 +51,7 @@ export function TierSparse({
             <button
               type="button"
               disabled
-              className="rounded border border-zinc-800 px-3 py-1 text-xs text-zinc-600"
+              className="rounded border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-faint)]"
               title="Available once you reach 10 logs"
             >
               Share →

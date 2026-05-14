@@ -76,7 +76,7 @@ export function ShareModal({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded border border-zinc-800 px-3 py-1 text-xs hover:bg-zinc-900"
+        className="rounded border border-[var(--border)] px-3 py-1 text-xs hover:bg-[var(--bg-card-hover)]"
       >
         Share →
       </button>
@@ -88,11 +88,11 @@ export function ShareModal({
           onClick={() => setOpen(false)}
         >
           <div
-            className="max-w-2xl rounded-lg border border-zinc-800 bg-zinc-950 p-6"
+            className="max-w-2xl rounded-lg border border-[var(--border)] bg-[var(--bg)] p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="mb-4 font-mono text-lg">Share your taste card</h2>
-            <div className="mb-4 overflow-hidden rounded-md border border-zinc-800 bg-zinc-900">
+            <div className="mb-4 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-elev)]">
               <Image
                 src={ogUrl}
                 alt="Taste card preview"
@@ -105,28 +105,28 @@ export function ShareModal({
               <button
                 type="button"
                 onClick={onTweet}
-                className="rounded bg-sky-600 px-3 py-1.5 text-sm text-white hover:bg-sky-500"
+                className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent-fg)] hover:bg-[var(--accent)]/90"
               >
                 Tweet
               </button>
               <button
                 type="button"
                 onClick={onCopyLink}
-                className="rounded border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
+                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]"
               >
                 Copy link
               </button>
               <button
                 type="button"
                 onClick={onDownload}
-                className="rounded border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-900"
+                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]"
               >
                 Download image
               </button>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="ml-auto text-xs text-zinc-500 hover:text-zinc-300"
+                className="ml-auto text-xs text-[var(--text-faint)] hover:text-[var(--text)]"
               >
                 Close
               </button>

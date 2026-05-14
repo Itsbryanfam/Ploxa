@@ -44,10 +44,10 @@ export function TierNarrative({
     <>
       <div className="mb-8 flex items-start gap-4">
         <Mascot mood="thinking" size="md" silent />
-        <div className="flex-1 rounded-md border border-zinc-800 bg-zinc-950 p-4">
+        <div className="flex-1 rounded-md border border-[var(--border)] bg-[var(--bg)] p-4">
           <p className="text-sm leading-relaxed">
             {narrative ?? (
-              <em className="text-zinc-500">Generating your read…</em>
+              <em className="text-[var(--text-faint)]">Generating your read…</em>
             )}
           </p>
           {isOwner && (
@@ -64,7 +64,7 @@ export function TierNarrative({
                   type="button"
                   disabled
                   title="Make your profile public to share your taste card."
-                  className="rounded border border-zinc-800 px-3 py-1 text-xs disabled:cursor-not-allowed disabled:text-zinc-600"
+                  className="rounded border border-[var(--border)] px-3 py-1 text-xs disabled:cursor-not-allowed disabled:text-[var(--text-faint)]"
                 >
                   Share →
                 </button>
@@ -72,7 +72,7 @@ export function TierNarrative({
             </div>
           )}
           {narrativeGeneratedAt && (
-            <p className="mt-2 text-[10px] uppercase tracking-wider text-zinc-600">
+            <p className="mt-2 text-[10px] uppercase tracking-wider text-[var(--text-faint)]">
               Last refreshed{" "}
               {narrativeGeneratedAt.toLocaleDateString(undefined, {
                 month: "short",
@@ -84,7 +84,7 @@ export function TierNarrative({
       </div>
 
       {tier === "sharpening" && (
-        <div className="mb-6 rounded-md border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-400">
+        <div className="mb-6 rounded-md border border-[var(--border)] bg-[var(--bg)]/50 p-3 text-xs text-[var(--text-dim)]">
           Your taste is still sharpening — log more for refinement.
         </div>
       )}

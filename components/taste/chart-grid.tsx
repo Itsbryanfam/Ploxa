@@ -80,8 +80,8 @@ export function ChartGrid({
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-950 p-4">
-      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+    <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-4">
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-dim)]">
         {title}
       </h3>
       <div className="space-y-2">{children}</div>
@@ -90,7 +90,7 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 }
 
 function Empty() {
-  return <p className="text-xs text-zinc-600">No signal yet.</p>;
+  return <p className="text-xs text-[var(--text-faint)]">No signal yet.</p>;
 }
 
 function LengthDistribution({ data }: { data: LengthPreference }) {

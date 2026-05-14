@@ -50,7 +50,7 @@ export function MilestoneToast({
 
     toast.custom(
       () => (
-        <div className="flex items-center gap-3 rounded-md border border-emerald-700 bg-emerald-950/80 px-4 py-3 text-sm">
+        <div className="flex items-center gap-3 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3 text-sm">
           <Mascot mood="celebrating" size="sm" silent />
           <span>Your first taste read is ready!</span>
         </div>

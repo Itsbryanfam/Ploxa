@@ -21,7 +21,7 @@ export function MascotPrompt({
   return (
     <div className="mb-6 flex items-start gap-4">
       <Mascot mood={mood} size="md" silent />
-      <div className="flex-1 rounded-md border border-zinc-800 bg-zinc-950 p-4">
+      <div className="flex-1 rounded-md border border-[var(--border)] bg-[var(--bg)] p-4">
         {children}
       </div>
     </div>

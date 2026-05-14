@@ -16,13 +16,13 @@ export function TierEmpty() {
       <Mascot mood="celebrating" size="lg" silent />
       <div className="space-y-2">
         <h2 className="font-mono text-xl">No taste yet</h2>
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-[var(--text-dim)]">
           Log a game and I&apos;ll start reading it.
         </p>
       </div>
       <Link
         href="/games"
-        className="rounded-md bg-emerald-600 px-4 py-2 font-mono text-sm text-white transition-colors hover:bg-emerald-500"
+        className="rounded-md bg-[var(--accent)] px-4 py-2 font-mono text-sm text-[var(--accent-fg)] transition-colors hover:bg-[var(--accent)]/90"
       >
         Find a game to log →
       </Link>
