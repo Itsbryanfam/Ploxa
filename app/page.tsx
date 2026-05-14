@@ -24,10 +24,10 @@ export default async function HomePage() {
             <Image
               src="/logo/logo.png"
               alt="Ploxa"
-              width={140}
-              height={40}
+              width={160}
+              height={56}
               priority
-              className="pixelated h-10 w-auto"
+              className="pixelated h-14 w-auto"
             />
           </Link>
           <nav className="flex items-center gap-3">
