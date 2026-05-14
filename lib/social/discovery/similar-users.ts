@@ -98,6 +98,7 @@ export async function getSimilarUsers(
     FROM taste_fingerprints tf
     JOIN profiles p ON p.user_id = tf.user_id
     WHERE p.is_public = true
+      AND p.deleted_at IS NULL
       AND tf.user_id != ${viewerId}
       AND tf.total_logs_at_generation >= 10
       AND NOT EXISTS (

@@ -85,6 +85,10 @@ describe("buildDigest — null cases", () => {
       displayName: null,
       lastDigestSentAt: null,
       emailDigestCadence: "off",
+      emailFollows: true,
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
     });
     const result = await buildDigest("alice");
     expect(result).toBeNull();
@@ -97,6 +101,10 @@ describe("buildDigest — null cases", () => {
       displayName: null,
       lastDigestSentAt: null,
       emailDigestCadence: "weekly",
+      emailFollows: true,
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
     });
     queryQueue.push([]); // notifications
     queryQueue.push([]); // yourWeek logs
@@ -113,6 +121,10 @@ describe("buildDigest — populated payload", () => {
       displayName: "Alice",
       lastDigestSentAt: null,
       emailDigestCadence: "weekly",
+      emailFollows: true,
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
     });
     // Notifications: 1 of each type the digest cares about.
     queryQueue.push([
@@ -191,6 +203,10 @@ describe("buildDigest — populated payload", () => {
       displayName: null,
       lastDigestSentAt: null,
       emailDigestCadence: "weekly",
+      emailFollows: true,
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
     });
     queryQueue.push([
       {
@@ -218,6 +234,10 @@ describe("buildDigest — populated payload", () => {
       displayName: null,
       lastDigestSentAt: null,
       emailDigestCadence: "weekly",
+      emailFollows: true,
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
     });
     queryQueue.push([]); // notifications empty
     queryQueue.push([
@@ -242,6 +262,10 @@ describe("buildDigest — populated payload", () => {
       displayName: null,
       lastDigestSentAt: recentSend,
       emailDigestCadence: "weekly",
+      emailFollows: true,
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
     });
     queryQueue.push([]); // notifications empty
     queryQueue.push([]); // yourWeek empty
@@ -251,5 +275,101 @@ describe("buildDigest — populated payload", () => {
     // didn't bail early or crash).
     const result = await buildDigest("alice");
     expect(result).toBeNull();
+  });
+});
+
+describe("buildDigest — per-type email opt-outs (T9)", () => {
+  it("excludes new_follower notifications when emailFollows is false", async () => {
+    // Profile has follows opted-out; reactions opted-in
+    findFirstSpy.mockResolvedValueOnce({
+      userId: "alice",
+      username: "alice",
+      displayName: "Alice",
+      lastDigestSentAt: null,
+      emailDigestCadence: "weekly",
+      emailFollows: false,  // opted out
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
+    });
+    // Notifications: 1 new_follower (should be filtered) + 1 review_liked (should pass)
+    queryQueue.push([
+      {
+        type: "new_follower",
+        targetId: "alice-uuid",
+        actorId: "bob",
+        createdAt: new Date(),
+        actorUsername: "bob",
+        actorDisplayName: null,
+      },
+      {
+        type: "review_liked",
+        targetId: "review-1",
+        actorId: "carol",
+        createdAt: new Date(),
+        actorUsername: "carol",
+        actorDisplayName: null,
+      },
+    ]);
+    queryQueue.push([]); // yourWeek empty
+    // Reviews hydration for the surviving review_liked
+    queryQueue.push([{ id: "review-1", gameTitle: "Outer Wilds" }]);
+    // No lists or parentComments queries (those id arrays are empty)
+
+    const result = await buildDigest("alice");
+    expect(result).not.toBeNull();
+    expect(result!.newFollowers).toEqual([]);    // filtered out
+    expect(result!.reactions).toHaveLength(1);    // review_liked kept
+    expect(result!.reactions[0]).toMatchObject({ kind: "review_liked" });
+  });
+
+  it("excludes both review_liked AND list_liked when emailReactions is false", async () => {
+    // Profile has reactions opted-out; follows opted-in
+    findFirstSpy.mockResolvedValueOnce({
+      userId: "alice",
+      username: "alice",
+      displayName: "Alice",
+      lastDigestSentAt: null,
+      emailDigestCadence: "weekly",
+      emailFollows: true,
+      emailReactions: false, // opted out
+      emailComments: true,
+      emailWishlist: true,
+    });
+    // Notifications: 1 new_follower (passes) + 1 review_liked + 1 list_liked (both filtered)
+    queryQueue.push([
+      {
+        type: "new_follower",
+        targetId: "alice-uuid",
+        actorId: "bob",
+        createdAt: new Date(),
+        actorUsername: "bob",
+        actorDisplayName: null,
+      },
+      {
+        type: "review_liked",
+        targetId: "review-1",
+        actorId: "carol",
+        createdAt: new Date(),
+        actorUsername: "carol",
+        actorDisplayName: null,
+      },
+      {
+        type: "list_liked",
+        targetId: "list-1",
+        actorId: "dave",
+        createdAt: new Date(),
+        actorUsername: "dave",
+        actorDisplayName: null,
+      },
+    ]);
+    queryQueue.push([]); // yourWeek empty
+    // No hydration queries fire: no review/list/comment ids survive the filter
+
+    const result = await buildDigest("alice");
+    expect(result).not.toBeNull();
+    expect(result!.reactions).toEqual([]);         // both reaction types filtered
+    expect(result!.newFollowers).toHaveLength(1);  // follows kept
+    expect(result!.newFollowers[0]).toMatchObject({ username: "bob" });
   });
 });

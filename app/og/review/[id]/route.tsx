@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const [profile, game] = await Promise.all([
     db.query.profiles.findFirst({
-      where: eq(schema.profiles.userId, review.userId),
+      where: and(eq(schema.profiles.userId, review.userId), isNull(schema.profiles.deletedAt)),
       // isPublic is queried so we can 404 private profiles even when the
       // review itself is_public + published. This OG endpoint is reached
       // by unauthenticated crawlers (Twitter, Discord, etc.), so we don't

@@ -345,15 +345,18 @@ async function checkRecsEngine() {
   //
   // Multi-line signatures are formatted with prettier; allow whitespace +
   // newlines between the params. dotall on `.` lets us span the linebreaks
-  // between the function name and the return-type clause.
+  // between the function name and the return-type clause. The opts type
+  // can carry additional fields (e.g. `vectors?` since the live-vectors
+  // refactor) — we only assert that `limit?: number` is present and the
+  // return type matches.
   const candSrc = await readFile("lib/recs/candidate-pool.ts", "utf8");
   const candidateSigOk =
-    /export\s+async\s+function\s+candidatePool\s*\([^)]*userId:\s*string[^)]*opts:\s*\{\s*limit\?: number\s*\}[^)]*\)\s*:\s*Promise<CandidateGame\[\]>/s.test(
+    /export\s+async\s+function\s+candidatePool\s*\([^)]*userId:\s*string[^)]*opts:\s*\{[^}]*limit\?: number[^}]*\}[^)]*\)\s*:\s*Promise<CandidateGame\[\]>/s.test(
       candSrc,
     );
   record({
     group,
-    name: "candidatePool signature: (userId, { limit? }) → Promise<CandidateGame[]>",
+    name: "candidatePool signature: (userId, { limit?, … }) → Promise<CandidateGame[]>",
     status: candidateSigOk ? "pass" : "fail",
     gate: "5",
   });

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
@@ -19,7 +19,7 @@ export default async function UserListsPage({ params }: Props) {
   const { username } = await params;
 
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.username, username),
+    where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
     columns: { userId: true, username: true, displayName: true, isPublic: true },
   });
   if (!profile) notFound();

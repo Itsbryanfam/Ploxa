@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { profiles, tasteFingerprints } from "@/lib/db/schema";
@@ -66,7 +66,7 @@ export async function GET(
       isPublic: profiles.isPublic,
     })
     .from(profiles)
-    .where(eq(profiles.username, username))
+    .where(and(eq(profiles.username, username), isNull(profiles.deletedAt)))
     .limit(1);
   if (!profile) return new NextResponse("Not Found", { status: 404 });
   if (!profile.isPublic) return new NextResponse("Not Found", { status: 404 });

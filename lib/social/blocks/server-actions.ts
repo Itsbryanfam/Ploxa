@@ -1,5 +1,5 @@
 "use server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db, schema } from "@/lib/db";
@@ -31,7 +31,7 @@ export async function block(targetUserId: string): Promise<BlockResult> {
   }
 
   revalidatePath("/home/feed");
-  revalidatePath("/settings/blocked");
+  revalidatePath("/settings/privacy");
   return { ok: true };
 }
 
@@ -44,7 +44,7 @@ export async function unblock(targetUserId: string): Promise<BlockResult> {
       and(eq(blocks.blockerId, user.id), eq(blocks.blockedId, targetUserId)),
     );
   revalidatePath("/home/feed");
-  revalidatePath("/settings/blocked");
+  revalidatePath("/settings/privacy");
   return { ok: true };
 }
 
@@ -81,6 +81,6 @@ export async function getBlocked(): Promise<
     })
     .from(blocks)
     .innerJoin(profiles, eq(profiles.userId, blocks.blockedId))
-    .where(eq(blocks.blockerId, user.id))
+    .where(and(eq(blocks.blockerId, user.id), isNull(profiles.deletedAt)))
     .orderBy(desc(blocks.createdAt));
 }

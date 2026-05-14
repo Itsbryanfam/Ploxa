@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ReviewListCard } from "@/components/reviews/review-list-card";
@@ -11,7 +11,7 @@ interface Props {
 export default async function ReviewsListPage({ params }: Props) {
   const { username } = await params;
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.username, username),
+    where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
     columns: { userId: true, username: true, isPublic: true },
   });
   if (!profile) notFound();

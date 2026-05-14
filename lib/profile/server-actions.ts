@@ -1,7 +1,7 @@
 "use server";
 
 import type { User } from "@supabase/supabase-js";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -60,7 +60,7 @@ export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
 
 export async function getProfileByUsername(username: string) {
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.username, username),
+    where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
     columns: {
       userId: true,
       username: true,
@@ -77,7 +77,7 @@ export async function getProfileByUsername(username: string) {
 
 export async function getProfileByUserId(userId: string) {
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.userId, userId),
+    where: and(eq(schema.profiles.userId, userId), isNull(schema.profiles.deletedAt)),
     columns: {
       userId: true,
       username: true,
@@ -239,6 +239,11 @@ export async function suggestUsernames(taken: string): Promise<string[]> {
     `${taken}_x`,
   ].filter((c) => usernameSchema.safeParse(c).success);
   if (candidates.length === 0) return [];
+  // Allowlist: no isNull(deletedAt) filter here. A soft-deleted user retains
+  // their handle for the 30-day grace window — suggesting their handle as an
+  // alternative would let a different user claim it before grace ends and the
+  // soft-delete is either cancelled or finalised. Same rationale as
+  // checkUsernameAvailability above.
   const rows = await db
     .select({ username: schema.profiles.username })
     .from(schema.profiles)
@@ -309,6 +314,102 @@ export async function updateUsername(
   revalidatePath(`/u/${existing.username}`, "page");
   revalidatePath(`/u/${parsed.data}`, "page");
   return { ok: true, username: parsed.data };
+}
+
+// ---------------------------------------------------------------------------
+// Display name + bio (profile section, save-on-blur)
+// ---------------------------------------------------------------------------
+
+const DISPLAY_NAME_MAX = 64;
+const BIO_MAX = 500;
+
+export type UpdateDisplayNameResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
+ * Set the display name shown on the public profile and header.
+ * Pass an empty string to clear. Leading/trailing whitespace is trimmed
+ * before persisting and before the length check.
+ */
+export async function updateDisplayName(
+  input: string,
+): Promise<UpdateDisplayNameResult> {
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const trimmed = input.trim();
+  if (trimmed.length > DISPLAY_NAME_MAX) {
+    return {
+      ok: false,
+      error: `Display name must be ${DISPLAY_NAME_MAX} characters or fewer.`,
+    };
+  }
+  // Coerce empty string to null so the public profile's
+  // `profile.displayName ?? profile.username` fallback fires correctly.
+  // (The `??` operator treats null/undefined as falsy but does NOT coerce
+  // empty string — saving "" would render an empty <h1>.) Mirrors the
+  // updateDiscordUsername null-on-clear pattern below.
+  const value = trimmed.length === 0 ? null : trimmed;
+
+  // Read the current username so we can revalidate the public profile route.
+  const existing = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.userId, user.id),
+    columns: { username: true },
+  });
+  if (!existing) return { ok: false, error: "Profile not found." };
+
+  await db
+    .update(schema.profiles)
+    .set({ displayName: value, updatedAt: new Date() })
+    .where(eq(schema.profiles.userId, user.id));
+
+  if (existing.username) revalidatePath(`/u/${existing.username}`, "page");
+  revalidatePath("/settings/profile", "page");
+  return { ok: true };
+}
+
+export type UpdateBioResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Set the bio shown on the public profile page.
+ * Pass an empty string to clear. Leading/trailing whitespace is trimmed
+ * before persisting and before the 500-char UX cap check.
+ * (The DB column is text — no hard schema limit — but we cap at 500 chars
+ * to keep profile pages readable.)
+ */
+export async function updateBio(input: string): Promise<UpdateBioResult> {
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const trimmed = input.trim();
+  if (trimmed.length > BIO_MAX) {
+    return {
+      ok: false,
+      error: `Bio must be ${BIO_MAX} characters or fewer.`,
+    };
+  }
+  // Coerce empty string to null for consistency with displayName + Discord.
+  // (The bio consumer uses `profile.bio && ...` which would treat "" the same
+  // as null, but writing the same shape across every nullable string column
+  // keeps the schema honest.)
+  const value = trimmed.length === 0 ? null : trimmed;
+
+  // Read the current username so we can revalidate the public profile route.
+  const existing = await db.query.profiles.findFirst({
+    where: eq(schema.profiles.userId, user.id),
+    columns: { username: true },
+  });
+  if (!existing) return { ok: false, error: "Profile not found." };
+
+  await db
+    .update(schema.profiles)
+    .set({ bio: value, updatedAt: new Date() })
+    .where(eq(schema.profiles.userId, user.id));
+
+  if (existing.username) revalidatePath(`/u/${existing.username}`, "page");
+  revalidatePath("/settings/profile", "page");
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

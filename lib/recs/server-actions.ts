@@ -19,6 +19,7 @@ import { ensureLog } from "@/lib/logs/server-actions";
 import { cacheKey } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
+import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
 
@@ -228,20 +229,28 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
   // 3. Sharpening / full — invoke rerank-recs Edge Function. First we need
   //    a candidate pool with hard filters applied so the AI only chooses
   //    from games that satisfy the user's time + platform constraints.
-  const candidates = await candidatePool(me.id, { limit: 50 });
+  //    Pass live `fp.vectors` so the pool stays correct even when the
+  //    persisted taste_fingerprints row hasn't been written yet (the
+  //    refresh-fingerprint Edge Function only fires on milestone counts
+  //    and depends on AI providers being healthy).
+  const candidates = await candidatePool(me.id, {
+    limit: 50,
+    vectors: fpReady.vectors,
+  });
   if (candidates.length === 0) {
     return { ok: false, reason: "no-candidates" };
   }
 
   const [minH, maxH] = timeWindow(filters.time);
-  const platSet = new Set<string>(filters.platforms);
   const filtered: CandidateGame[] = candidates.filter((g) => {
     if (g.playtimeAvgHours != null) {
       if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
     }
-    if (g.platforms && g.platforms.length > 0) {
-      const platMatches = g.platforms.some((p) => platSet.has(p));
-      if (!platMatches) return false;
+    // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
+    // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
+    // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
+    if (!gamePlatformsMatchUserFilter(g.platforms, filters.platforms)) {
+      return false;
     }
     return true;
   });
@@ -407,7 +416,14 @@ async function metadataOnlyRecs(
     Object.values(fp.vectors.genre).reduce((a, b) => a + Math.abs(b), 0) +
     Object.values(fp.vectors.theme).reduce((a, b) => a + Math.abs(b), 0) +
     Object.values(fp.vectors.mechanic).reduce((a, b) => a + Math.abs(b), 0);
-  let candidates = await candidatePool(userId, { limit: 50 });
+  // Pass live `fp.vectors` (same rationale as the sharpening/full branch
+  // in getRecs above): decouple the recs pipeline from the persisted
+  // taste_fingerprints row so a missing/stale row doesn't return an
+  // empty pool when the user actually has plenty of signal.
+  let candidates = await candidatePool(userId, {
+    limit: 50,
+    vectors: fp.vectors,
+  });
   const useFallback =
     fp.tier === "sparse" && (vectorMass < 2.0 || candidates.length === 0);
 
@@ -462,14 +478,15 @@ async function metadataOnlyRecs(
   }
 
   const [minH, maxH] = timeWindow(filters.time);
-  const platSet = new Set<string>(filters.platforms);
   const filtered: CandidateGame[] = candidates.filter((g) => {
     if (g.playtimeAvgHours != null) {
       if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
     }
-    if (g.platforms && g.platforms.length > 0) {
-      const platMatches = g.platforms.some((p) => platSet.has(p));
-      if (!platMatches) return false;
+    // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
+    // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
+    // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
+    if (!gamePlatformsMatchUserFilter(g.platforms, filters.platforms)) {
+      return false;
     }
     return true;
   });

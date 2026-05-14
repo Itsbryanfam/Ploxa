@@ -128,6 +128,15 @@ export const profiles = pgTable("profiles", {
     .notNull()
     .default("weekly"),
   lastDigestSentAt: timestamp("last_digest_sent_at", { withTimezone: true }),
+  // Settings overhaul (2026-05-13): soft-delete marker. Reads filter WHERE deleted_at IS NULL.
+  // Nightly purge cron removes auth.users rows once deleted_at < NOW() - 30 days.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  // Per-type email opt-out booleans. Master cadence is emailDigestCadence above;
+  // these flags filter notification types within whatever cadence the user chose.
+  emailFollows: boolean("email_follows").notNull().default(true),
+  emailReactions: boolean("email_reactions").notNull().default(true),
+  emailComments: boolean("email_comments").notNull().default(true),
+  emailWishlist: boolean("email_wishlist").notNull().default(true),
 });
 
 // ─────────────────────────────────────────────────────────────

@@ -29,7 +29,7 @@ export function ImportsNudge() {
         </div>
       </div>
       <Link
-        href="/settings#connections"
+        href="/settings/connections"
         className="text-xs px-3 py-1.5 rounded bg-[var(--accent)] text-white shrink-0"
       >
         Connect →

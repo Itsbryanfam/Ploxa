@@ -60,7 +60,7 @@ export function ImportToast() {
   if (data.active?.status === "failed") {
     return (
       <Link
-        href="/settings#connections"
+        href="/settings/connections"
         className="fixed bottom-3 right-3 z-50 flex w-[280px] items-center gap-2 rounded-lg border border-[var(--danger)] bg-[var(--bg-card)] px-4 py-2 text-xs shadow-lg"
       >
         <span className="h-3.5 w-3.5 flex-shrink-0 rounded bg-[var(--danger)]" aria-hidden />
@@ -77,7 +77,7 @@ export function ImportToast() {
         : 0;
     return (
       <Link
-        href="/settings#connections"
+        href="/settings/connections"
         className="fixed bottom-3 right-3 z-50 block w-[280px] rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-4 py-2 text-xs shadow-lg"
       >
         <div className="mb-1 flex items-center justify-between">

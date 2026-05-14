@@ -1,4 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
+import { redirect } from "next/navigation";
 
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { db } from "@/lib/db";
@@ -6,9 +7,15 @@ import { imports } from "@/lib/db/schema";
 import { listConnections } from "@/lib/imports/server-actions";
 import { PlatformCard } from "@/components/imports/platform-card";
 
-export async function ConnectionsSection() {
+export const metadata = { title: "Connections — Settings" };
+
+// ---------------------------------------------------------------------------
+// ConnectionsSettingsPage — migrated from _sections/connections-section.tsx
+// ---------------------------------------------------------------------------
+
+export default async function ConnectionsSettingsPage() {
   const user = await getCachedUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
 
   const connections = await listConnections();
   const byPlatform = Object.fromEntries(connections.map((c) => [c.platform, c]));
@@ -33,7 +40,7 @@ export async function ConnectionsSection() {
     .limit(10);
 
   return (
-    <section id="connections" className="space-y-4">
+    <section className="space-y-4">
       <div>
         <h2 className="text-base font-semibold">Connected platforms</h2>
         <p className="text-sm text-[var(--text-muted)]">

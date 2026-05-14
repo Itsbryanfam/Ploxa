@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { games, logs, tasteFingerprints } from "@/lib/db/schema";
+import type { VectorBundle } from "@/lib/taste/vectors";
 
 export type CandidateGame = {
   id: number;
@@ -21,28 +22,40 @@ export type CandidateGame = {
 };
 
 /**
- * Metadata-similarity prefilter. Pulls the user's vectors, scores every
- * game in the catalog by dot-product against the user's preferences,
- * excludes games they've already logged, returns the top N.
+ * Metadata-similarity prefilter. Scores every game in the catalog by
+ * dot-product against the user's vector preferences, excludes games
+ * they've already logged, returns the top N.
  *
  * Naive O(catalog × user-vectors) — fine for Phase 4 scale (RAWG seed is
  * ~10k games, user vectors are ~30 keys). When catalog grows, we'd push
  * scoring into Postgres via array overlap operators; not yet.
  *
- * Empty fingerprint (no taste_fingerprints row, or all-zero vectors) →
- * empty candidates: every dot-product is 0, and the `s <= 0` gate skips
- * them. T10 wires the popularity fallback for the sparse tier so brand-new
- * users still get something to look at.
+ * **Vectors source.** Callers should pass `opts.vectors` from the live
+ * `getFingerprint()` snapshot (lib/taste/server-actions.ts) so the recs
+ * stay correct even when the persisted `taste_fingerprints` row is
+ * missing or stale. The persisted row is only written when milestone
+ * triggers (10/25/50/100/250 logs) or the daily drift cron fire and
+ * actually succeed — both depend on the refresh-fingerprint Edge
+ * Function not erroring, which has historically been brittle (AI
+ * provider keys, network). Live vectors decouple us from that.
  *
- * Vector typing: the jsonb columns are typed as `unknown` by Drizzle; we
- * assert `Record<string, number>` because the refresh-fingerprint Edge
- * function is the sole writer and enforces numeric values via the
- * aggregate.ts pipeline. No runtime validation here — that would burn
- * CPU on every recs call for a near-impossible failure mode.
+ * When `opts.vectors` is omitted (legacy callers, tests), we fall back
+ * to the persisted row. Treat that as a slow path; new code should
+ * always pass live vectors.
+ *
+ * Empty vectors (no row + no live aggregation, or genuinely zero
+ * signal) → empty candidates: every dot-product is 0 and the `s <= 0`
+ * gate skips them. The T10 popularity fallback in `metadataOnlyRecs`
+ * picks up sparse-tier users with thin vectors.
+ *
+ * Vector typing: the jsonb columns are typed as `unknown` by Drizzle;
+ * we assert `Record<string, number>` because the refresh-fingerprint
+ * Edge function and the `aggregate.ts` pipeline both produce numeric
+ * maps. No runtime validation here.
  */
 export async function candidatePool(
   userId: string,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; vectors?: VectorBundle } = {},
 ): Promise<CandidateGame[]> {
   // Defense-in-depth: every caller derives userId from getCachedUser(),
   // but a stray empty string would still cost a full catalog scan
@@ -51,19 +64,30 @@ export async function candidatePool(
 
   const limit = opts.limit ?? 50;
 
-  const [fpRow] = await db
-    .select({
-      genreVector: tasteFingerprints.genreVector,
-      themeVector: tasteFingerprints.themeVector,
-      mechanicVector: tasteFingerprints.mechanicVector,
-    })
-    .from(tasteFingerprints)
-    .where(eq(tasteFingerprints.userId, userId))
-    .limit(1);
-
-  const genreVec = (fpRow?.genreVector as Record<string, number> | undefined) ?? {};
-  const themeVec = (fpRow?.themeVector as Record<string, number> | undefined) ?? {};
-  const mechanicVec = (fpRow?.mechanicVector as Record<string, number> | undefined) ?? {};
+  let genreVec: Record<string, number>;
+  let themeVec: Record<string, number>;
+  let mechanicVec: Record<string, number>;
+  if (opts.vectors) {
+    // Fast path: caller already aggregated vectors live (getFingerprint).
+    genreVec = opts.vectors.genre;
+    themeVec = opts.vectors.theme;
+    mechanicVec = opts.vectors.mechanic;
+  } else {
+    // Legacy path: read from the persisted row. Returns empty maps if no
+    // refresh has succeeded yet, in which case every game scores 0.
+    const [fpRow] = await db
+      .select({
+        genreVector: tasteFingerprints.genreVector,
+        themeVector: tasteFingerprints.themeVector,
+        mechanicVector: tasteFingerprints.mechanicVector,
+      })
+      .from(tasteFingerprints)
+      .where(eq(tasteFingerprints.userId, userId))
+      .limit(1);
+    genreVec = (fpRow?.genreVector as Record<string, number> | undefined) ?? {};
+    themeVec = (fpRow?.themeVector as Record<string, number> | undefined) ?? {};
+    mechanicVec = (fpRow?.mechanicVector as Record<string, number> | undefined) ?? {};
+  }
 
   // Pull every game the user has already logged — exclude these from candidates.
   const loggedRows = await db

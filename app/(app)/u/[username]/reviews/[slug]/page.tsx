@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { and, eq, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ReviewCard } from "@/components/reviews/review-card";
@@ -13,7 +13,7 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username, slug } = await params;
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.username, username),
+    where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
     // isPublic mirrors the page-body gate below; without this, share unfurlers
     // would receive the review's hook + OG image URL for a private profile
     // even though the page itself 404s.
@@ -73,7 +73,7 @@ export default async function CanonicalReviewPage({ params }: Props) {
   // load path; this page is the canonical OG/unfurl destination.)
   const [profile, game, viewer] = await Promise.all([
     db.query.profiles.findFirst({
-      where: eq(schema.profiles.username, username),
+      where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
       columns: { userId: true, username: true, isPublic: true },
     }),
     db.query.games.findFirst({
@@ -126,9 +126,12 @@ export default async function CanonicalReviewPage({ params }: Props) {
         authorUsername: schema.profiles.username,
         authorDisplayName: schema.profiles.displayName,
         authorAvatarUrl: schema.profiles.avatarUrl,
+        authorDeletedAt: schema.profiles.deletedAt,
       })
       .from(schema.comments)
-      .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.comments.userId))
+      // leftJoin so comments from soft-deleted authors still appear (body stays
+      // visible); the authorDeletedAt field drives the "[deleted user]" mask below.
+      .leftJoin(schema.profiles, eq(schema.profiles.userId, schema.comments.userId))
       .where(
         and(
           eq(schema.comments.reviewId, review.id),
@@ -142,20 +145,30 @@ export default async function CanonicalReviewPage({ params }: Props) {
   const count = countResult[0]?.count ?? 0;
   const viewerLiked = Boolean(viewerLikedRow);
 
-  const threadComments: ThreadComment[] = commentRows.map((r) => ({
-    id: r.id,
-    body: r.body,
-    userId: r.userId,
-    parentId: r.parentId,
-    createdAt: r.createdAt,
-    editedAt: r.editedAt,
-    isHidden: r.isHidden,
-    author: {
-      username: r.authorUsername,
-      displayName: r.authorDisplayName,
-      avatarUrl: r.authorAvatarUrl,
-    },
-  }));
+  const threadComments: ThreadComment[] = commentRows.map((r) => {
+    // Mask author info for both soft-deleted users (deletedAt set) AND orphans
+    // (cascade-deleted profile row, leftJoin returned null username). Both
+    // cases mean the author is gone — the comment body stays visible so
+    // threads remain readable, but the author identity is anonymised.
+    const authorMissing = r.authorDeletedAt !== null || r.authorUsername === null;
+    return {
+      id: r.id,
+      body: r.body,
+      userId: r.userId,
+      parentId: r.parentId,
+      createdAt: r.createdAt,
+      editedAt: r.editedAt,
+      isHidden: r.isHidden,
+      author: authorMissing
+        ? { username: "[deleted user]", displayName: null, avatarUrl: null }
+        : {
+            // Non-null: gated by authorMissing above (covers null username).
+            username: r.authorUsername!,
+            displayName: r.authorDisplayName,
+            avatarUrl: r.authorAvatarUrl,
+          },
+    };
+  });
 
   return (
     <>
