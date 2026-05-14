@@ -18,8 +18,9 @@ export default async function FeedPage({
   if (!user) redirect("/login?next=/home/feed");
   const { cursor } = await searchParams;
 
+  // viewerId is derived from session inside getFeed (it's a "use server"
+  // RPC; accepting a caller-supplied id let attackers probe block state).
   const { items, nextCursor, hasFollowees } = await getFeed({
-    viewerId: user.id,
     cursor: cursor ?? null,
     limit: 50,
   });

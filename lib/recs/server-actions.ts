@@ -118,7 +118,10 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
     return { ok: false, reason: "invalid-filters" };
   }
   const filters = filtersResult.data;
+  // getFingerprint is owner-or-public; me.id is always the owner branch,
+  // so the only null path is "profile row missing" — treat as empty-tier.
   const fp = await getFingerprint(me.id);
+  if (!fp) return { ok: false, reason: "empty-tier" };
 
   if (fp.tier === "empty") return { ok: false, reason: "empty-tier" };
 
@@ -656,7 +659,9 @@ export async function saveRecForLater(
     .set({ dismissed: true })
     .where(eq(recommendations.id, recId));
 
-  await ensureLog({ userId: me.id, gameId: row.gameId, status: "backlog" });
+  // ensureLog derives userId from session — it would no-op if `me` were
+  // gone here, but we already gated above so this is informational.
+  await ensureLog({ gameId: row.gameId, status: "backlog" });
 
   revalidatePath("/play-next");
   revalidatePath("/library");
@@ -745,8 +750,8 @@ export async function playRec(
     .set({ dismissed: true })
     .where(eq(recommendations.id, recId));
 
+  // ensureLog derives userId from session (see header comment in lib/logs).
   await ensureLog({
-    userId: me.id,
     gameId: row.gameId,
     status: "playing",
     platforms: [platform],

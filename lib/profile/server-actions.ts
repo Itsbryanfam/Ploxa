@@ -58,6 +58,33 @@ export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
   };
 }
 
+/**
+ * Defense-in-depth redaction shared by `getProfileByUsername` and
+ * `getProfileByUserId`. Both are `"use server"` exports — any authenticated
+ * caller can hit them via direct RPC, bypassing the page-level visibility
+ * gates at /u/[username]. When the viewer is NOT the owner AND the profile
+ * is private, blank out `displayName` + `bio` (the only PII-bearing fields
+ * returned). The username stays — it's already public via the URL.
+ *
+ * Returning the row (with redacted fields) rather than null preserves the
+ * existing "indistinguishable 404" contract for the page-level callers,
+ * which still see `isPublic: false` and decide whether to call `notFound()`.
+ */
+function redactPrivateProfile<
+  T extends {
+    userId: string;
+    displayName: string | null;
+    bio: string | null;
+    isPublic: boolean;
+  },
+>(profile: T, viewerId: string | null): T {
+  const isOwner = viewerId === profile.userId;
+  if (!isOwner && !profile.isPublic) {
+    return { ...profile, displayName: null, bio: null };
+  }
+  return profile;
+}
+
 export async function getProfileByUsername(username: string) {
   const profile = await db.query.profiles.findFirst({
     where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
@@ -72,7 +99,9 @@ export async function getProfileByUsername(username: string) {
       isPublic: true,
     },
   });
-  return profile ?? null;
+  if (!profile) return null;
+  const viewer = await getCachedUser();
+  return redactPrivateProfile(profile, viewer?.id ?? null);
 }
 
 export async function getProfileByUserId(userId: string) {
@@ -86,7 +115,9 @@ export async function getProfileByUserId(userId: string) {
       isPublic: true,
     },
   });
-  return profile ?? null;
+  if (!profile) return null;
+  const viewer = await getCachedUser();
+  return redactPrivateProfile(profile, viewer?.id ?? null);
 }
 
 export type CheckUsernameResult =

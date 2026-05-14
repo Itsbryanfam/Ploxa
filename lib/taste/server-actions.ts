@@ -9,6 +9,7 @@ import {
   logs,
   reviews,
   games,
+  profiles,
   tasteFingerprints,
   recommendations,
 } from "@/lib/db/schema";
@@ -43,8 +44,29 @@ export type FingerprintSnapshot = {
  * Aggregation is computed live on every call. Cheap enough for a 1000-log
  * power user (<50ms). When this becomes a hot path we'll move to a stored
  * row + cron-driven refresh; not yet.
+ *
+ * Visibility: this is a `"use server"` export — any authenticated network
+ * caller can hit it directly with an arbitrary userId, bypassing the
+ * page-level visibility gate at /u/[username]/taste. Defend in depth here:
+ * the snapshot is returned ONLY when the viewer is the target user OR the
+ * target profile is public AND not soft-deleted. Returns null otherwise so
+ * direct-RPC probes look identical to "user not found".
  */
-export async function getFingerprint(userId: string): Promise<FingerprintSnapshot> {
+export async function getFingerprint(userId: string): Promise<FingerprintSnapshot | null> {
+  // Visibility gate (mirrors the page-level check at /u/[username]/taste).
+  // We always look up the profile so we can also reject queries against
+  // soft-deleted users — a public-but-deleted profile shouldn't surface
+  // taste data via direct RPC even though pages 404 on it.
+  const viewer = await getCachedUser();
+  const targetProfile = await db.query.profiles.findFirst({
+    where: eq(profiles.userId, userId),
+    columns: { userId: true, isPublic: true, deletedAt: true },
+  });
+  if (!targetProfile) return null;
+  if (targetProfile.deletedAt !== null) return null;
+  const isOwner = viewer?.id === targetProfile.userId;
+  if (!isOwner && !targetProfile.isPublic) return null;
+
   // Single join query pulling everything aggregateFingerprint needs.
   const rows = await db
     .select({
@@ -141,7 +163,13 @@ export async function refreshFingerprint(): Promise<RefreshFingerprintResult> {
   // Empty tier short-circuit: nothing to aggregate, no AI to call. Return
   // the (empty) snapshot directly so the page can re-render without
   // round-tripping to the Edge Function for a known no-op.
+  //
+  // `getFingerprint` is owner-or-public; here we always pass our own id,
+  // so the only null path is "profile row missing entirely" (e.g. just-
+  // signed-up user without ensureMyProfile having run yet). Treat that
+  // as ai-failure rather than crashing — the UI shows a toast.
   const before = await getFingerprint(me.id);
+  if (!before) return { ok: false, reason: "ai-failure" };
   if (before.tier === "empty") {
     return { ok: true, snapshot: before };
   }
@@ -196,6 +224,9 @@ export async function refreshFingerprint(): Promise<RefreshFingerprintResult> {
       ),
     );
 
+  // Same null-path reasoning as `before` above — own-id guarantees the
+  // owner branch in getFingerprint, so the only null is missing profile.
   const after = await getFingerprint(me.id);
+  if (!after) return { ok: false, reason: "ai-failure" };
   return { ok: true, snapshot: after };
 }

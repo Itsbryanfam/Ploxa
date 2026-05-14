@@ -27,6 +27,11 @@ export default async function PlayNextPage({
     searchParams,
   ]);
 
+  // getFingerprint returns null if our profile row was deleted — extreme
+  // edge case (signed-in session against a hard-deleted profile). Bounce
+  // to /home where the redirect logic will handle the broken-state.
+  if (!fp) redirect("/home");
+
   // Surface only the platforms the user has actively connected. Manual users
   // (no platform_connections rows) still need a choice, so we fall back to
   // all three. ConnectionSummary.platform is already typed as

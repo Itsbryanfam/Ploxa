@@ -2,17 +2,23 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
+import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { buildFeedQuery, type FeedRow } from "./queries";
 import { decodeCursor, encodeCursor } from "@/lib/social/_shared/cursors";
 
 const { follows, blocks } = schema;
 
 /**
- * Returns a cursor-paginated feed page for `viewerId`.
+ * Returns a cursor-paginated feed page for the current viewer.
  *
- * NOTE: Identity is caller-supplied (not derived from session). Callers must
- * resolve the viewer from the session before calling; passing an empty string
- * or a wrong UUID produces an empty feed, not an error.
+ * Identity is derived from `getCachedUser()` — never from the caller. This
+ * is a `"use server"` export reachable as a public RPC; accepting a caller-
+ * supplied `viewerId` would let an attacker probe "is X blocked by Y" by
+ * passing different ids and observing whether followees appear/disappear
+ * in the post-hoc block filter.
+ *
+ * Unauthenticated callers get the `hasFollowees: false` empty shape rather
+ * than an error — same UX as a brand-new account, no leak of session state.
  *
  * Two DB round-trips: one for followee IDs, one for the bidirectional block
  * check. The block check uses `inArray` so both the blocks PK and the reverse
@@ -29,11 +35,15 @@ const { follows, blocks } = schema;
  *     thinking pose + "Quiet around here. Check back later."
  */
 export async function getFeed(args: {
-  viewerId: string;
   cursor?: string | null;
   limit?: number;
 }): Promise<{ items: FeedRow[]; nextCursor: string | null; hasFollowees: boolean }> {
-  const { viewerId, cursor: rawCursor, limit = 50 } = args;
+  const me = await getCachedUser();
+  if (!me) {
+    return { items: [], nextCursor: null, hasFollowees: false };
+  }
+  const viewerId = me.id;
+  const { cursor: rawCursor, limit = 50 } = args;
   const cursor = decodeCursor(rawCursor);
 
   // Step 1: followee IDs.

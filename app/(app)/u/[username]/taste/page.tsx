@@ -43,7 +43,12 @@ export default async function UserTastePage({
   // Privacy gate: 404 when profile is private and viewer isn't owner.
   if (!profile.isPublic && !isOwner) notFound();
 
+  // getFingerprint also runs its own owner-or-public visibility check
+  // against the same profile row (defense in depth — it's a "use server"
+  // RPC). Returning null here would only happen on a TOCTOU race with a
+  // privacy flip; treat it the same as the page-level gate above.
   const fp = await getFingerprint(profile.userId);
+  if (!fp) notFound();
 
   // Empty-tier page is owner-only — non-owners 404 so we don't leak the
   // "user has no logs" state to strangers browsing a public profile.

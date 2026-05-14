@@ -101,13 +101,21 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
   return { ok: true, logId: inserted.id, gameSlug: game.slug };
 }
 
+export type EnsureLogResult = { ok: true } | { ok: false; error: "not-signed-in" };
+
 /**
  * Lower-level idempotent log writer used by paths that already have a
  * resolved `gameId` (the rec-feedback actions in `lib/recs/server-actions.ts`)
  * — they don't need `createLog`'s RAWG round-trip, friendly error envelope, or
- * Zod-validated `formData` shape. Caller is responsible for auth + owner checks
- * before invoking. Always fires `triggerOnLogWrite` so the taste pipeline picks
- * up new logs regardless of which code path inserted them.
+ * Zod-validated `formData` shape. Always fires `triggerOnLogWrite` so the
+ * taste pipeline picks up new logs regardless of which code path inserted them.
+ *
+ * Identity is ALWAYS derived from `getCachedUser()` — never the caller. This
+ * is a `"use server"` export, so any authenticated network attacker can call
+ * it directly; trusting a caller-supplied userId would let one user pollute
+ * another's library. Returns `{ ok: false, error: "not-signed-in" }` when no
+ * session is present rather than throwing — matches the discriminated-union
+ * shape used by `createLog` / `updateLogStatus` / `deleteLog` siblings.
  *
  * Two upsert paths under the `(userId, gameId, isReplay=false)` unique index:
  *   - `status: "playing"` — overwrite existing row's status to "playing" and
@@ -121,15 +129,15 @@ export async function createLog(input: unknown): Promise<CreateLogResult> {
  *     "User already has this in their library" is the steady state; we don't
  *     downgrade or churn `updatedAt` just because the rec system wanted to
  *     bump it to backlog.
- *
- * No return value — current callers only need the side effect.
  */
 export async function ensureLog(input: {
-  userId: string;
   gameId: number;
   status: LogStatus;
   platforms?: string[];
-}): Promise<void> {
+}): Promise<EnsureLogResult> {
+  const user = await getCachedUser();
+  if (!user) return { ok: false, error: "not-signed-in" };
+
   if (input.status === "playing") {
     // "playing" is a material status — set lastEventAt on both the fresh-insert
     // path and the on-conflict-update path so either code path produces an event.
@@ -137,7 +145,7 @@ export async function ensureLog(input: {
     await db
       .insert(schema.logs)
       .values({
-        userId: input.userId,
+        userId: user.id,
         gameId: input.gameId,
         status: "playing",
         platforms: input.platforms,
@@ -162,7 +170,7 @@ export async function ensureLog(input: {
     await db
       .insert(schema.logs)
       .values({
-        userId: input.userId,
+        userId: user.id,
         gameId: input.gameId,
         status: input.status,
         platforms: input.platforms,
@@ -171,7 +179,8 @@ export async function ensureLog(input: {
         target: [schema.logs.userId, schema.logs.gameId, schema.logs.isReplay],
       });
   }
-  await triggerOnLogWrite(input.userId);
+  await triggerOnLogWrite(user.id);
+  return { ok: true };
 }
 
 export type SortKey = "rating-desc" | "rating-asc" | "recent" | "title-asc" | "released-desc";
