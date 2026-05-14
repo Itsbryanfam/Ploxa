@@ -89,6 +89,7 @@ export function ReportModal({
         {!success && (
           <>
             <fieldset className="space-y-2">
+              <legend className="sr-only">Reason for report</legend>
               {REASONS.map((r) => (
                 <label
                   key={r.value}
@@ -109,11 +110,16 @@ export function ReportModal({
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               placeholder="Optional details (max 500 chars)"
+              aria-label="Optional details"
               rows={3}
               maxLength={500}
               className="w-full p-2 text-sm rounded border border-[var(--border)] bg-[var(--bg)]"
             />
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error && (
+              <p className="text-xs text-red-400" role="alert">
+                {error}
+              </p>
+            )}
             <DialogFooter>
               <button
                 type="button"

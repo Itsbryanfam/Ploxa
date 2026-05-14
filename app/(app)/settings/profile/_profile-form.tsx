@@ -303,13 +303,17 @@ export function ProfileForm({
           )}
         </div>
         <div>
-          <div className="text-sm text-[var(--text-dim)] mb-1">
+          <label
+            htmlFor="discord-username"
+            className="text-sm text-[var(--text-dim)] mb-1 block"
+          >
             Discord{" "}
             <span className="text-xs text-[var(--text-faint)]">
               (shown as a copy-to-clipboard pill on your profile)
             </span>
-          </div>
+          </label>
           <input
+            id="discord-username"
             type="text"
             inputMode="text"
             value={discordDraft}

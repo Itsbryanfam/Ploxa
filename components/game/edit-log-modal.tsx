@@ -96,9 +96,11 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
         </header>
 
         {/* Status */}
-        <div>
-          <p className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-2">Status</p>
-          <div className="grid grid-cols-3 gap-2">
+        <fieldset>
+          <legend className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-2">
+            Status
+          </legend>
+          <div role="radiogroup" aria-label="Status" className="grid grid-cols-3 gap-2">
             {LOG_STATUSES.map((s) => {
               const Icon = STATUS_ICONS[s];
               const isActive = status === s;
@@ -107,6 +109,8 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
                 <button
                   key={s}
                   type="button"
+                  role="radio"
+                  aria-checked={isActive}
                   onClick={() => setStatus(s)}
                   disabled={pending}
                   style={isActive ? { borderColor: color, color } : undefined}
@@ -123,9 +127,11 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
               );
             })}
           </div>
-        </div>
+        </fieldset>
 
         {/* Rating */}
+        {/* HeartRating is a role="slider" with self-applied aria-label, so the
+            visible "Rating" text is just a section header (no fieldset needed). */}
         <div>
           <p className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-2">
             Rating <span className="font-mono">{rating > 0 ? rating : "—"}</span>
@@ -179,7 +185,11 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
           />
         </Field>
 
-        {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+        {error && (
+          <p className="text-sm text-[var(--danger)]" role="alert">
+            {error}
+          </p>
+        )}
 
         <div className="flex justify-between pt-2 border-t border-[var(--border-soft)]">
           <Button variant="ghost" onClick={handleDelete} disabled={pending}>Delete log</Button>
@@ -197,10 +207,15 @@ const inputCls =
   "w-full bg-[var(--bg-elev)] border border-[var(--border-soft)] rounded-md px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent-soft)] disabled:opacity-50";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  // Wrapping the input in a <label> creates implicit association without
+  // needing matching id/htmlFor pairs. Screen readers announce the label
+  // text together with the input role/value (e.g. "Hours played, spinbutton").
   return (
-    <div>
-      <p className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-1.5">{label}</p>
+    <label className="block">
+      <span className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-1.5 block">
+        {label}
+      </span>
       {children}
-    </div>
+    </label>
   );
 }

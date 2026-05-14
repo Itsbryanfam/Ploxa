@@ -19,10 +19,12 @@ export function CommentComposer(props: {
   const router = useRouter();
   const [body, setBody] = useState("");
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   function onSubmit() {
     if (body.trim().length === 0) return;
+    setError(null);
     startTransition(async () => {
       const result = await createComment({
         reviewId: props.reviewId,
@@ -33,6 +35,8 @@ export function CommentComposer(props: {
         setBody("");
         props.onSubmitted?.();
         router.refresh();
+      } else {
+        setError("Couldn't post your comment. Please try again.");
       }
     });
   }
@@ -44,10 +48,16 @@ export function CommentComposer(props: {
         value={body}
         onChange={(e) => setBody(e.target.value)}
         placeholder={props.parentId ? "Write a reply…" : "Write a comment…"}
+        aria-label={props.parentId ? "Reply" : "Comment"}
         rows={3}
         maxLength={5000}
         className="w-full p-2 text-sm rounded border border-[var(--border)] bg-[var(--bg-card)]"
       />
+      {error && (
+        <p className="text-sm text-[var(--danger)]" role="alert">
+          {error}
+        </p>
+      )}
       <div className="flex justify-end">
         <button
           type="button"

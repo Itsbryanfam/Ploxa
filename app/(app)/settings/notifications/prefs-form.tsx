@@ -135,8 +135,8 @@ export function NotificationPrefsForm({ initial }: Props) {
       </div>
 
       {/* Per-type opt-outs */}
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-[var(--text)]">Email me when&hellip;</p>
+      <fieldset className="flex flex-col gap-3">
+        <legend className="text-sm font-medium text-[var(--text)]">Email me when&hellip;</legend>
         <div className="flex flex-col gap-2">
           {EMAIL_TYPE_OPTIONS.map(({ key, type, label }) => {
             const itemPending = pendingControls.has(key);
@@ -165,7 +165,7 @@ export function NotificationPrefsForm({ initial }: Props) {
             );
           })}
         </div>
-      </div>
+      </fieldset>
 
       {anyPending && (
         <p className="text-xs text-[var(--text-dim)]" aria-live="polite">

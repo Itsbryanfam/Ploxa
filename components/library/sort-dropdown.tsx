@@ -28,6 +28,7 @@ export function SortDropdown() {
     <select
       value={current}
       onChange={(e) => setSort(e.target.value as SortKey)}
+      aria-label="Sort library by"
       className="bg-[var(--bg-card)] border border-[var(--border)] rounded-md px-3 py-1.5 text-sm text-[var(--text-dim)] focus:border-[var(--accent-soft)] outline-none"
     >
       {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (

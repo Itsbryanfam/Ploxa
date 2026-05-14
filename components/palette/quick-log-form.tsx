@@ -105,9 +105,11 @@ export function QuickLogForm() {
       </div>
 
       {/* Status chips */}
-      <div>
-        <p className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-2">Status</p>
-        <div className="grid grid-cols-3 gap-2">
+      <fieldset>
+        <legend className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-2">
+          Status
+        </legend>
+        <div role="radiogroup" aria-label="Status" className="grid grid-cols-3 gap-2">
           {LOG_STATUSES.map((s) => {
             const Icon = STATUS_ICONS[s];
             const isActive = status === s;
@@ -116,6 +118,8 @@ export function QuickLogForm() {
               <button
                 key={s}
                 type="button"
+                role="radio"
+                aria-checked={isActive}
                 onClick={() => setStatus(s)}
                 disabled={pending}
                 style={isActive ? { borderColor: color, color } : undefined}
@@ -132,9 +136,12 @@ export function QuickLogForm() {
             );
           })}
         </div>
-      </div>
+      </fieldset>
 
       {/* Rating */}
+      {/* HeartRating is a role="slider" with self-applied aria-label, so we don't
+          need a fieldset/legend pairing here — the visible "Rating" text is just
+          a section header. */}
       <div>
         <div className="flex items-baseline justify-between mb-2">
           <p className="text-xs uppercase tracking-wide text-[var(--text-faint)]">Rating</p>
@@ -147,10 +154,14 @@ export function QuickLogForm() {
 
       {/* Note */}
       <div>
-        <p className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-2">
+        <label
+          htmlFor="quick-log-note"
+          className="text-xs uppercase tracking-wide text-[var(--text-faint)] mb-2 block"
+        >
           One-line thought (optional)
-        </p>
+        </label>
         <input
+          id="quick-log-note"
           type="text"
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -162,7 +173,11 @@ export function QuickLogForm() {
       </div>
 
       {/* Error */}
-      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+      {error && (
+        <p className="text-sm text-[var(--danger)]" role="alert">
+          {error}
+        </p>
+      )}
 
       {/* Actions */}
       <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-soft)]">
