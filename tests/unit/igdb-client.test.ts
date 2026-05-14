@@ -43,6 +43,9 @@ describe("igdbQuery", () => {
 
   it("throws IgdbApiError when IGDB_CLIENT_ID is missing", async () => {
     vi.unstubAllEnvs();
+    // Works because client.ts reads process.env.IGDB_CLIENT_ID at call time,
+    // not at module evaluation time. If that read is ever moved to module
+    // scope, this test must switch to vi.resetModules() + re-import.
     const { igdbQuery, IgdbApiError } = await import("@/lib/igdb/client");
     await expect(igdbQuery("games", "")).rejects.toBeInstanceOf(IgdbApiError);
   });
