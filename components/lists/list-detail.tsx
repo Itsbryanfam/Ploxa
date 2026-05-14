@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import { ListLikeButton } from "./like-button";
+import { ListShareButton } from "./share-button";
+
 interface GameRow {
   gameId: number;
   position: number;
@@ -17,19 +20,31 @@ interface ListDetailProps {
     title: string;
     description: string | null;
     publishedAt: Date | null;
+    /** Absolute URL used for share intents (Tweet, Copy link). */
+    shareUrl: string;
   };
   items: GameRow[];
   author: {
     username: string;
     displayName: string | null;
   };
+  /** Like state for the actions bar. Only rendered when the list is published. */
+  reactions: {
+    count: number;
+    viewerLiked: boolean;
+    /** When true, the like button redirects to /login instead of toggling. */
+    loggedOut: boolean;
+  };
 }
 
 /**
  * ListDetail — server component. Renders the canonical public view of a list.
- * Title + description + ordered game cards with optional notes + author header.
+ * Title + description + ordered game cards with optional notes + author header,
+ * then a footer with like + share affordances. Comments on lists are deferred
+ * (the comments table is review-only as of migration 0015; adding list comments
+ * requires nullable reviewId + XOR check + a new list_commented enum value).
  */
-export function ListDetail({ list, items, author }: ListDetailProps) {
+export function ListDetail({ list, items, author, reactions }: ListDetailProps) {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8 space-y-6">
       {/* Author header */}
@@ -113,6 +128,25 @@ export function ListDetail({ list, items, author }: ListDetailProps) {
             </li>
           ))}
         </ol>
+      )}
+
+      {/* Actions footer — only rendered for published lists. likeList()
+          server-side gates on (isPublic && publishedAt), so this is mostly a
+          UX gate matching that contract: no point showing a heart that always
+          ok:false reverts. Owners see the actions but the heart silently
+          succeeds on self-likes (per reactions/server-actions.ts) so the row
+          stays empty on the server side; the optimistic UI shows the toggle
+          locally regardless. */}
+      {list.publishedAt && (
+        <footer className="flex items-center justify-between border-t border-[var(--border)] pt-4">
+          <ListLikeButton
+            listId={list.id}
+            initialLiked={reactions.viewerLiked}
+            initialCount={reactions.count}
+            loggedOut={reactions.loggedOut}
+          />
+          <ListShareButton url={list.shareUrl} title={list.title} />
+        </footer>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
@@ -8,6 +9,20 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ListDetail } from "@/components/lists/list-detail";
 import { ReportModal } from "@/components/moderation/report-modal";
 import { redactPrivateProfile } from "@/lib/profile/redact";
+
+/**
+ * Build an absolute origin (proto + host) from request headers — same shape
+ * as the taste page's resolveOrigin(). Used to compose the share URL for
+ * the list-detail Tweet/Copy-link affordances. Falls back to
+ * `http://localhost:3000` for local dev where the proxy header may not be
+ * present.
+ */
+async function resolveOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  return `${proto}://${host}`;
+}
 
 interface Props {
   params: Promise<{ username: string; listSlug: string }>;
@@ -139,6 +154,34 @@ export default async function ListDetailPage({ params }: Props) {
   if (!data) notFound();
   const { profile, viewer, isOwner, list, items } = data;
 
+  // Like state — only meaningful for published lists. likeList()
+  // server-side rejects unpublished/private lists; for unpublished owner
+  // previews we still skip the count query to avoid burning a round-trip
+  // on a row that's guaranteed to be 0. Mirrors the canonical review page's
+  // Stage-3 like-count + viewerLiked parallel fetch.
+  const isPublished = list.publishedAt !== null && list.isPublic;
+  const [countResult, viewerLikedRow, origin] = await Promise.all([
+    isPublished
+      ? db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(schema.listLikes)
+          .where(eq(schema.listLikes.listId, list.id))
+      : Promise.resolve([{ count: 0 }] as const),
+    isPublished && viewer
+      ? db.query.listLikes.findFirst({
+          where: and(
+            eq(schema.listLikes.listId, list.id),
+            eq(schema.listLikes.userId, viewer.id),
+          ),
+          columns: { listId: true },
+        })
+      : Promise.resolve(undefined),
+    resolveOrigin(),
+  ]);
+  const likeCount = countResult[0]?.count ?? 0;
+  const viewerLiked = Boolean(viewerLikedRow);
+  const shareUrl = `${origin}/u/${profile.username}/lists/${list.slug}`;
+
   return (
     <>
       <ListDetail
@@ -147,11 +190,17 @@ export default async function ListDetailPage({ params }: Props) {
           title: list.title,
           description: list.description,
           publishedAt: list.publishedAt,
+          shareUrl,
         }}
         items={items}
         author={{
           username: profile.username,
           displayName: profile.displayName ?? null,
+        }}
+        reactions={{
+          count: likeCount,
+          viewerLiked,
+          loggedOut: !viewer,
         }}
       />
       {viewer && !isOwner && (

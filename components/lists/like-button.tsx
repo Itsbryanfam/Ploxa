@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { HeartFull, HeartEmpty } from "@/components/pixel/hearts";
-import { likeReview, unlikeReview } from "@/lib/social/reactions/server-actions";
+import { likeList, unlikeList } from "@/lib/social/reactions/server-actions";
 
 interface Props {
-  reviewId: string;
+  listId: string;
   initialLiked: boolean;
   initialCount: number;
   /** When true, click triggers a login redirect instead of action. */
@@ -14,17 +14,17 @@ interface Props {
 }
 
 /**
- * Heart toggle for a single review. Optimistic — flips local state first,
- * then reverts if the server action returns ok:false. Targets only reviews;
- * lists use ListLikeButton (same UX, different server action).
+ * Heart toggle for a single list. Mirrors components/reviews/like-button.tsx
+ * — optimistic flip, revert on ok:false, login redirect when logged out.
  *
- * Could be unified with ListLikeButton via a presentational base accepting
- * action callbacks as props, but the duplication is ~40 lines and keeping
- * each variant tightly bound to its server-action import means refactors of
- * one don't accidentally regress the other. Revisit if a third reactable
- * surface lands.
+ * Why a parallel component instead of a generic LikeButton: each variant
+ * imports its own server action ('use server' modules can't be passed as
+ * function values from server components into client components without an
+ * async boundary, and a generic dispatcher would force a runtime kind check
+ * on every render). The duplication cost is ~40 lines; isolated regressions
+ * are worth it. See review like-button.tsx header for the same note.
  */
-export function LikeButton({ reviewId, initialLiked, initialCount, loggedOut }: Props) {
+export function ListLikeButton({ listId, initialLiked, initialCount, loggedOut }: Props) {
   const router = useRouter();
   const [liked, setLiked] = useState(initialLiked);
   const [count, setCount] = useState(initialCount);
@@ -40,9 +40,8 @@ export function LikeButton({ reviewId, initialLiked, initialCount, loggedOut }: 
     setLiked(willLike);
     setCount((c) => c + (willLike ? 1 : -1));
     startTransition(async () => {
-      const result = willLike ? await likeReview(reviewId) : await unlikeReview(reviewId);
+      const result = willLike ? await likeList(listId) : await unlikeList(listId);
       if (!result.ok) {
-        // Revert on failure
         setLiked(!willLike);
         setCount((c) => c + (willLike ? -1 : 1));
       }
@@ -55,7 +54,7 @@ export function LikeButton({ reviewId, initialLiked, initialCount, loggedOut }: 
       onClick={handleClick}
       className="inline-flex items-center gap-2 text-sm text-[var(--text-dim)] hover:text-[var(--accent)] transition"
       aria-pressed={liked}
-      aria-label={liked ? "Unlike" : "Like"}
+      aria-label={liked ? "Unlike list" : "Like list"}
     >
       {liked ? <HeartFull size={20} /> : <HeartEmpty size={20} />}
       <span className="tabular-nums">{count}</span>
