@@ -229,7 +229,14 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
   // 3. Sharpening / full — invoke rerank-recs Edge Function. First we need
   //    a candidate pool with hard filters applied so the AI only chooses
   //    from games that satisfy the user's time + platform constraints.
-  const candidates = await candidatePool(me.id, { limit: 50 });
+  //    Pass live `fp.vectors` so the pool stays correct even when the
+  //    persisted taste_fingerprints row hasn't been written yet (the
+  //    refresh-fingerprint Edge Function only fires on milestone counts
+  //    and depends on AI providers being healthy).
+  const candidates = await candidatePool(me.id, {
+    limit: 50,
+    vectors: fpReady.vectors,
+  });
   if (candidates.length === 0) {
     return { ok: false, reason: "no-candidates" };
   }
@@ -409,7 +416,14 @@ async function metadataOnlyRecs(
     Object.values(fp.vectors.genre).reduce((a, b) => a + Math.abs(b), 0) +
     Object.values(fp.vectors.theme).reduce((a, b) => a + Math.abs(b), 0) +
     Object.values(fp.vectors.mechanic).reduce((a, b) => a + Math.abs(b), 0);
-  let candidates = await candidatePool(userId, { limit: 50 });
+  // Pass live `fp.vectors` (same rationale as the sharpening/full branch
+  // in getRecs above): decouple the recs pipeline from the persisted
+  // taste_fingerprints row so a missing/stale row doesn't return an
+  // empty pool when the user actually has plenty of signal.
+  let candidates = await candidatePool(userId, {
+    limit: 50,
+    vectors: fp.vectors,
+  });
   const useFallback =
     fp.tier === "sparse" && (vectorMass < 2.0 || candidates.length === 0);
 
