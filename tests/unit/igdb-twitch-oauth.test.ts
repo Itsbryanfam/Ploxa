@@ -49,7 +49,13 @@ describe("getAppAccessToken", () => {
     const token = await getAppAccessToken();
     expect(token).toBe("fresh_token_xyz");
     expect(globalThis.fetch).toHaveBeenCalledOnce();
-    expect(dbState.get("igdb_app_token")?.value).toBe("fresh_token_xyz");
+    const row = dbState.get("igdb_app_token");
+    expect(row?.value).toBe("fresh_token_xyz");
+    const expectedExpiresMs = Date.now() + (5_184_000 - 300) * 1000;
+    // 100ms tolerance for execution time between Date.now() in production code
+    // and Date.now() in this assertion.
+    expect(row?.expiresAt.getTime()).toBeGreaterThanOrEqual(expectedExpiresMs - 100);
+    expect(row?.expiresAt.getTime()).toBeLessThanOrEqual(expectedExpiresMs + 100);
   });
 
   it("returns the cached token when not near expiry", async () => {

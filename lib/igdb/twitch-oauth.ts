@@ -7,8 +7,8 @@ const TOKEN_KEY = "igdb_app_token";
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 export class TwitchTokenUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
     this.name = "TwitchTokenUnavailableError";
   }
 }
@@ -74,6 +74,7 @@ export async function getAppAccessToken(): Promise<string> {
     } catch (secondErr) {
       throw new TwitchTokenUnavailableError(
         `Twitch token endpoint failed after retry: ${(secondErr as Error).message}`,
+        secondErr,
       );
     }
   }
@@ -82,6 +83,9 @@ export async function getAppAccessToken(): Promise<string> {
   const expiresAt = new Date(
     Date.now() + (payload.expires_in - 300) * 1000,
   );
+  // Concurrent refreshes are benign: Twitch's client-credentials flow issues
+  // multiple valid tokens simultaneously. Whichever upsert lands last wins;
+  // both tokens are equally valid until their respective expiry times.
   await db
     .insert(appSecrets)
     .values({
