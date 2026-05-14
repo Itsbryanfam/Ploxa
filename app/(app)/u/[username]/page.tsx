@@ -1,4 +1,5 @@
 import { cache } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -91,6 +92,7 @@ export default async function ProfilePage({
     topLists,
     recentReviews,
     libraryTruncated,
+    currentlyPlaying,
     connections,
     isOwner,
     isFollowing,
@@ -119,6 +121,35 @@ export default async function ProfilePage({
       />
 
       <StatsStrip stats={stats} />
+
+      {currentlyPlaying.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold mb-3">Currently playing</h2>
+          <ul className="flex flex-wrap gap-3">
+            {currentlyPlaying.map((g) => (
+              <li key={g.logId}>
+                <Link
+                  href={`/games/${g.gameSlug}`}
+                  className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-3 hover:border-[var(--accent-soft)] transition-colors"
+                >
+                  {g.gameCoverUrl ? (
+                    <Image
+                      src={g.gameCoverUrl}
+                      alt=""
+                      width={36}
+                      height={54}
+                      className="rounded shrink-0"
+                    />
+                  ) : (
+                    <div className="w-9 h-[54px] rounded bg-[var(--bg-elev)] shrink-0" />
+                  )}
+                  <span className="text-sm font-medium">{g.gameTitle}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {tasteSnippet && (
         <section>

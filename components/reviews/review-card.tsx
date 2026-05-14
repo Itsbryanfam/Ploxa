@@ -5,6 +5,7 @@ import { HeartRating } from "@/components/ui/heart-rating";
 import { ReportModal } from "@/components/moderation/report-modal";
 import { LikeButton } from "./like-button";
 import { DeleteReviewLink } from "./delete-review-link";
+import { ReviewShareButton } from "./share-button";
 
 interface Props {
   review: { id: string; body: string; rating: number | null; publishedAt: Date };
@@ -14,6 +15,7 @@ interface Props {
   loggedOut: boolean;
   initialLiked: boolean;
   initialLikeCount: number;
+  shareUrl: string;
 }
 
 export function ReviewCard({
@@ -24,6 +26,7 @@ export function ReviewCard({
   loggedOut,
   initialLiked,
   initialLikeCount,
+  shareUrl,
 }: Props) {
   const paragraphs = (review.body ?? "").split("\n\n").filter((p) => p.trim().length > 0);
 
@@ -83,6 +86,7 @@ export function ReviewCard({
             initialCount={initialLikeCount}
             loggedOut={loggedOut}
           />
+          <ReviewShareButton url={shareUrl} title={game.title} author={author.username} />
           {!loggedOut && !isOwner && (
             <ReportModal targetType="review" targetId={review.id} />
           )}

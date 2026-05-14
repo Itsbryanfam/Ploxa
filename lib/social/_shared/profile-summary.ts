@@ -38,6 +38,16 @@ export type ProfileSummary = {
     gameCoverUrl: string | null;
   }>;
   libraryTruncated: LibraryItem[]; // first 12 most recently updated
+  // Up to 3 most-recently-updated logs with status='playing'. Drives the
+  // "Currently playing" section on the profile overview. Empty array when
+  // no in-flight games (most casual users).
+  currentlyPlaying: Array<{
+    logId: string;
+    gameTitle: string;
+    gameSlug: string;
+    gameCoverUrl: string | null;
+    startedAt: Date | null;
+  }>;
   // Active platform connections (Steam, Xbox) for connector-pill rendering.
   // Discord lives on profile.discordUsername (no OAuth, text-only).
   connections: Array<{
@@ -90,7 +100,7 @@ export async function getProfileSummary(
     isOwner ? undefined : eq(logs.isPrivate, false),
   );
 
-  // 9 parallel fetches — none depend on each other's results.
+  // 10 parallel fetches — none depend on each other's results.
   //
   // T13 (2026-05-14): split the old single "load every log + game join"
   // query into two bounded queries:
@@ -107,6 +117,7 @@ export async function getProfileSummary(
     rawFollowingCount,
     rawIsFollowing,
     rawConnections,
+    rawCurrentlyPlaying,
   ] = await Promise.all([
     // Stats aggregate — single row, no row hydration. PG `avg()` ignores NULL
     // ratings natively, so unrated logs don't drag the mean toward zero.
@@ -227,6 +238,23 @@ export async function getProfileSummary(
         ),
       )
       .orderBy(platformConnections.platform),
+
+    // Currently-playing top-3. Filtered by status='playing' + visibility scope
+    // (private logs hidden from non-owners). LIMIT 3 is the "Currently playing"
+    // section's display cap — wider lists would dominate the profile chrome.
+    db
+      .select({
+        logId: logs.id,
+        gameTitle: schema.games.title,
+        gameSlug: schema.games.slug,
+        gameCoverUrl: schema.games.coverUrl,
+        startedAt: logs.startedAt,
+      })
+      .from(logs)
+      .innerJoin(schema.games, eq(logs.gameId, schema.games.id))
+      .where(and(visibilityWhere, eq(logs.status, "playing")))
+      .orderBy(desc(logs.updatedAt))
+      .limit(3),
   ]);
 
   const libraryTruncated: LibraryItem[] = rawLibrary.map((r) =>
@@ -268,6 +296,7 @@ export async function getProfileSummary(
     topLists: rawTopLists,
     recentReviews: rawReviews,
     libraryTruncated,
+    currentlyPlaying: rawCurrentlyPlaying,
     connections: rawConnections,
     isOwner,
     isFollowing: Boolean(rawIsFollowing),

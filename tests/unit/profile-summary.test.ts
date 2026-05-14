@@ -78,10 +78,13 @@ vi.mock("@/lib/db", () => {
         deletedAt: { name: "deleted_at" },
       },
       logs: {
+        id: {},
         userId: {},
         isPrivate: {},
         gameId: {},
+        status: {},
         updatedAt: {},
+        startedAt: {},
       },
       reviews: {
         userId: {},

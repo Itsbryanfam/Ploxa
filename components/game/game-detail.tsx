@@ -120,7 +120,7 @@ export function GameDetail({ game, screenshots, log, ownReview }: Props) {
       {screenshots.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-[var(--text)] mb-3">Screenshots</h2>
-          <ScreenshotGallery urls={screenshots} />
+          <ScreenshotGallery urls={screenshots} title={game.title} />
         </div>
       )}
     </div>

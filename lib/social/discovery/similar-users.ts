@@ -22,6 +22,13 @@ export type SimilarUser = {
    * candidate set is known — see `getSimilarUsers` for the shape.
    */
   viewerFollows: boolean;
+  /**
+   * True when this candidate follows the viewer. Drives the "Follows you"
+   * indicator on SimilarUsersRow — surfaces the bidirectional context so
+   * a viewer can prioritize following back over cold-following strangers.
+   * Computed alongside `viewerFollows` in the same batched query.
+   */
+  followsViewer: boolean;
 };
 
 /**
@@ -48,8 +55,9 @@ export type SimilarUser = {
  *    similarity across all three — a conservative "at least this similar"
  *    measure.
  * 5. Sort descending by similarity score and slice to the top `limit`
- *    entries; then issue ONE batched `SELECT followed_id FROM follows`
- *    against the surviving candidate IDs and stamp `viewerFollows` per row.
+ *    entries; then issue ONE OR'd `SELECT follower_id, followed_id FROM follows`
+ *    that captures both directions (viewer→candidate AND candidate→viewer) in a
+ *    single round-trip, and stamp `viewerFollows` + `followsViewer` per row.
  *
  * No cache: the candidate set is viewer-specific (block exclusion varies
  * per viewer, and the viewerFollows stamp depends on the live follows
@@ -173,14 +181,28 @@ export async function getSimilarUsers(
   if (scored.length === 0) return [];
 
   const candidateIds = scored.map((c) => c.userId);
-  const rawFollows = await db.execute<{ followed_id: string }>(sql`
-    SELECT followed_id
+  // Single OR'd lookup pulls both directions in one round-trip. Each returned
+  // row carries the directed edge (follower_id → followed_id); we partition
+  // into "viewer follows candidate" vs "candidate follows viewer" by checking
+  // which side is the viewer.
+  const rawFollows = await db.execute<{ follower_id: string; followed_id: string }>(sql`
+    SELECT follower_id, followed_id
     FROM follows
-    WHERE follower_id = ${viewerId}
-      AND followed_id = ANY(${candidateIds}::uuid[])
+    WHERE
+      (follower_id = ${viewerId} AND followed_id = ANY(${candidateIds}::uuid[]))
+      OR (followed_id = ${viewerId} AND follower_id = ANY(${candidateIds}::uuid[]))
   `);
-  const followedRows = rawFollows as unknown as Array<{ followed_id: string }>;
-  const followedSet = new Set(followedRows.map((r) => r.followed_id));
+  const followRows = rawFollows as unknown as Array<{ follower_id: string; followed_id: string }>;
+  const viewerFollowsSet = new Set<string>();
+  const followsViewerSet = new Set<string>();
+  for (const row of followRows) {
+    if (row.follower_id === viewerId) viewerFollowsSet.add(row.followed_id);
+    if (row.followed_id === viewerId) followsViewerSet.add(row.follower_id);
+  }
 
-  return scored.map((c) => ({ ...c, viewerFollows: followedSet.has(c.userId) }));
+  return scored.map((c) => ({
+    ...c,
+    viewerFollows: viewerFollowsSet.has(c.userId),
+    followsViewer: followsViewerSet.has(c.userId),
+  }));
 }

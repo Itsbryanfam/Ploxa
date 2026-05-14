@@ -40,7 +40,7 @@ describe("getSimilarUsers — viewerFollows", () => {
     vi.resetModules();
   });
 
-  it("stamps viewerFollows=true on rows where viewer follows the candidate, false otherwise", async () => {
+  it("stamps viewerFollows + followsViewer correctly from the batched directed-follows lookup", async () => {
     // Call 1: viewer fingerprint (sparse-or-better tier so we don't short-circuit).
     executeMock.mockResolvedValueOnce([
       {
@@ -73,8 +73,13 @@ describe("getSimilarUsers — viewerFollows", () => {
         total_logs_at_generation: 15,
       },
     ]);
-    // Call 3: batched follows lookup — viewer (u1) follows u2 only.
-    executeMock.mockResolvedValueOnce([{ followed_id: "u2" }]);
+    // Call 3: combined directed-follows lookup.
+    //   - u1 → u2: viewer follows u2 (viewerFollows on u2)
+    //   - u3 → u1: u3 follows viewer (followsViewer on u3)
+    executeMock.mockResolvedValueOnce([
+      { follower_id: "u1", followed_id: "u2" },
+      { follower_id: "u3", followed_id: "u1" },
+    ]);
 
     const { getSimilarUsers } = await import(
       "@/lib/social/discovery/similar-users"
@@ -84,7 +89,9 @@ describe("getSimilarUsers — viewerFollows", () => {
 
     const byId = new Map(rows.map((r) => [r.userId, r]));
     expect(byId.get("u2")?.viewerFollows).toBe(true);
+    expect(byId.get("u2")?.followsViewer).toBe(false);
     expect(byId.get("u3")?.viewerFollows).toBe(false);
+    expect(byId.get("u3")?.followsViewer).toBe(true);
   });
 
   it("issues exactly one batched follows query (not N per candidate)", async () => {
@@ -128,15 +135,16 @@ describe("getSimilarUsers — viewerFollows", () => {
         total_logs_at_generation: 20,
       },
     ]);
-    executeMock.mockResolvedValueOnce([]); // viewer follows none of them
+    executeMock.mockResolvedValueOnce([]); // no follow edges in either direction
 
     const { getSimilarUsers } = await import(
       "@/lib/social/discovery/similar-users"
     );
     await getSimilarUsers("u1", 12);
 
-    // 3 calls total: viewer-fp + candidates + ONE batched follows lookup.
-    // If a regression turned this into per-row lookups we'd see 3 + N.
+    // 3 calls total: viewer-fp + candidates + ONE OR'd directed-follows lookup.
+    // If a regression split the bidirectional check into two queries (or N+1
+    // per-row lookups) we'd see >= 4 calls.
     expect(executeMock).toHaveBeenCalledTimes(3);
   });
 

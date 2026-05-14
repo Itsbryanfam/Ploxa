@@ -78,6 +78,9 @@ export function LoginForm({ next }: { next?: string }) {
 
       <button
         type="button"
+        role="switch"
+        aria-checked={mode === "magic"}
+        aria-label="Use magic link instead of password"
         className="block w-full text-center text-sm text-[var(--text-dim)] hover:text-[var(--accent)]"
         onClick={() => setMode((m) => (m === "password" ? "magic" : "password"))}
       >

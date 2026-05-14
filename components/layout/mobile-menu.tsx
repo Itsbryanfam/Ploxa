@@ -33,6 +33,9 @@ export function MobileMenu({ user, profileHref }: Props) {
         <nav className="flex flex-col gap-1 mt-6">
           {[
             { label: "Home", href: "/home" },
+            { label: "Feed", href: "/home/feed" },
+            { label: "What to play", href: "/play-next" },
+            { label: "Notifications", href: "/notifications" },
             { label: "Discover", href: "/discover" },
             { label: "Library", href: "/library" },
             { label: "Profile", href: profileHref },

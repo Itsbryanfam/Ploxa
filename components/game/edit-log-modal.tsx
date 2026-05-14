@@ -4,6 +4,7 @@ import { useState, useTransition, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { updateLogFull, deleteLog } from "@/lib/logs/server-actions";
 import { LOG_STATUSES, STATUS_LABELS, type LogStatus } from "@/lib/db/schema-types";
@@ -95,7 +96,13 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
       >
         <header className="flex justify-between items-center">
           <h2 className="text-lg font-semibold">Edit log</h2>
-          <button onClick={onClose} aria-label="Close" className="text-[var(--text-dim)] text-2xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md p-1 text-[var(--text-dim)] transition-colors hover:bg-[var(--bg-elev)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <X size={18} />
+          </button>
         </header>
 
         {/* Status */}

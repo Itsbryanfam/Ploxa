@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
@@ -7,6 +8,13 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ReviewCard } from "@/components/reviews/review-card";
 import { CommentThread, type ThreadComment } from "@/components/comments/comment-thread";
 import { withBlockedFilter } from "@/lib/social/_shared/visibility";
+
+async function resolveOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  return `${proto}://${host}`;
+}
 
 interface Props {
   params: Promise<{ username: string; slug: string }>;
@@ -153,7 +161,7 @@ export default async function CanonicalReviewPage({ params }: Props) {
     .orderBy(schema.comments.createdAt)
     .limit(100);
 
-  const [countResult, viewerLikedRow, commentRows] = await Promise.all([
+  const [countResult, viewerLikedRow, commentRows, origin] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.likes)
@@ -165,9 +173,11 @@ export default async function CanonicalReviewPage({ params }: Props) {
         })
       : Promise.resolve(undefined),
     commentsQuery,
+    resolveOrigin(),
   ]);
   const count = countResult[0]?.count ?? 0;
   const viewerLiked = Boolean(viewerLikedRow);
+  const shareUrl = `${origin}/u/${profile.username}/reviews/${slug}`;
 
   const threadComments: ThreadComment[] = commentRows.map((r) => {
     // Mask author info for both soft-deleted users (deletedAt set) AND orphans
@@ -213,6 +223,7 @@ export default async function CanonicalReviewPage({ params }: Props) {
         loggedOut={!viewer}
         initialLiked={viewerLiked}
         initialLikeCount={count}
+        shareUrl={shareUrl}
       />
       <div className="mx-auto max-w-3xl px-6 pb-12">
         <CommentThread

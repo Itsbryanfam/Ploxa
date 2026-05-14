@@ -57,6 +57,11 @@ export function SimilarUsersRow({ users }: { users: SimilarUser[] }) {
                     {tierLabel} · {Math.round(u.similarity * 100)}% match
                   </p>
                 )}
+                {u.followsViewer && !u.viewerFollows && (
+                  <span className="inline-block mt-1 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--accent)]">
+                    Follows you
+                  </span>
+                )}
               </div>
             </Link>
             <FollowButton
