@@ -1,106 +1,144 @@
 {
   "planPath": "docs/superpowers/plans/2026-05-13-settings-overhaul-plan.md",
-  "lastUpdated": "2026-05-13T00:00:00Z",
+  "lastUpdated": "2026-05-14T08:46:50.610Z",
   "tasks": [
     {
       "id": 1,
       "subject": "Task 1: Migration 0013 — soft-delete + email opt-out columns",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add 5 new columns to profiles (deleted_at + 4 email_* booleans) + partial index. Apply to live DB. Drizzle schema mirrored.\n\n**Files:**\n- Create: lib/db/migrations/0013_account_lifecycle_prefs.sql\n- Modify: lib/db/schema.ts\n\n**Acceptance Criteria:**\n- profiles has 5 new columns\n- profiles_deleted_at_idx partial index exists\n- Drizzle mirror matches\n- Migration applied via mcp__supabase__apply_migration\n\n**Verify:** pnpm tsc --noEmit\n\n**Steps:** Edit schema.ts → generate draft via drizzle-kit → audit for drift (memory: snapshots 0007-0011 missing on disk; strip phantom statements) → write migration by hand → apply via Supabase MCP → verify columns → commit.\n\n```json:metadata\n{\"files\":[\"lib/db/schema.ts\",\"lib/db/migrations/0013_account_lifecycle_prefs.sql\"],\"verifyCommand\":\"pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"profiles has 5 new columns\",\"partial index profiles_deleted_at_idx exists\",\"drizzle schema mirrored\",\"migration applied to live\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Soft-delete read-side filter audit + updates",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Every query surfacing another user's content honors profiles.deleted_at IS NULL.\n\n**Files (audit set, ~6 files):** lib/social/feed/queries.ts, lib/social/follows/server-actions.ts, lib/social/_shared/profile-summary.ts, lib/social/discovery/similar-users.ts, lib/social/comments/server-actions.ts, app/(app)/u/[username]/page.tsx\n\n**Acceptance Criteria:**\n- Every from(profiles)/innerJoin(profiles) honors deleted_at OR is allowlisted (taste cron, purge cron, soft-delete actions)\n- /u/[username] 404s for soft-deleted profiles\n- Comments by soft-deleted users render as \"[deleted user]\" with generic avatar; body remains visible\n- Existing tests pass\n\n**Verify:** pnpm vitest run\n\n**Steps:** Grep for `from(profiles` and `innerJoin(profiles` across lib/ and app/ → for each match decide filter-needed vs allowlisted → add isNull(profiles.deletedAt) clauses → mask comment authors via deletedAt check → run full vitest suite → commit.\n\n```json:metadata\n{\"files\":[\"lib/social/feed/queries.ts\",\"lib/social/follows/server-actions.ts\",\"lib/social/_shared/profile-summary.ts\",\"lib/social/discovery/similar-users.ts\",\"lib/social/comments/server-actions.ts\",\"app/(app)/u/[username]/page.tsx\"],\"verifyCommand\":\"pnpm vitest run\",\"acceptanceCriteria\":[\"every from(profiles) honors deleted_at OR is allowlisted\",\"/u/[username] 404s for soft-deleted profiles\",\"comments by soft-deleted users render as [deleted user]\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Layout shell + sidebar nav + route migration",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Convert /settings from in-page tabs to subpath routes with shared sidebar layout. Move existing Profile + Connections content into subroutes; redirect /settings/blocked.\n\n**Files:**\n- Create: app/(app)/settings/layout.tsx, components/settings/sidebar-nav.tsx, app/(app)/settings/profile/page.tsx, app/(app)/settings/connections/page.tsx\n- Modify: app/(app)/settings/page.tsx → 307 redirect to /settings/profile\n- Modify: app/(app)/settings/blocked/page.tsx → 301 redirect to /settings/privacy#blocked\n- Delete: app/(app)/settings/_sections/ (after extraction)\n\n**Acceptance Criteria:**\n- /settings 307s to /settings/profile\n- /settings/blocked 301s to /settings/privacy#blocked\n- 6-link sidebar with active styling (Profile/Account/Notifications/Privacy/Connections/Danger Zone)\n- Profile + Connections render under new layout (others temporarily 404 until later tasks)\n\n**Verify:** pnpm tsc --noEmit + manual /settings → /settings/profile redirect.\n\n```json:metadata\n{\"files\":[\"app/(app)/settings/layout.tsx\",\"app/(app)/settings/page.tsx\",\"app/(app)/settings/profile/page.tsx\",\"app/(app)/settings/connections/page.tsx\",\"app/(app)/settings/blocked/page.tsx\",\"components/settings/sidebar-nav.tsx\"],\"verifyCommand\":\"pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"/settings 307 redirects to /settings/profile\",\"/settings/blocked 301 redirects to /settings/privacy#blocked\",\"Sidebar shows 6 sections with active styling\",\"Profile + Connections render under new layout\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Profile section — display name + bio editors",
-      "status": "pending",
-      "blockedBy": [3],
+      "status": "completed",
+      "blockedBy": [
+        3
+      ],
       "description": "**Goal:** Add UI for displayName (0-64 chars) and bio (0-500 chars). Schema columns already exist. Save-on-blur via two new server actions parallel to updateDiscordUsername.\n\n**Files:**\n- Modify: lib/profile/server-actions.ts (add updateDisplayName, updateBio)\n- Modify: app/(app)/settings/profile/page.tsx (add the two new fields)\n- Create: tests/unit/profile-extras.test.ts\n\n**Acceptance Criteria:**\n- Display name accepts 0-64 chars; longer rejected with returned error\n- Bio accepts 0-500 chars; longer rejected\n- Both trim whitespace before persisting\n- Both revalidate /u/[username] + /settings/profile on success\n- 4 unit tests pass\n\n**Verify:** pnpm vitest run tests/unit/profile-extras.test.ts\n\n```json:metadata\n{\"files\":[\"lib/profile/server-actions.ts\",\"app/(app)/settings/profile/page.tsx\",\"tests/unit/profile-extras.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/profile-extras.test.ts\",\"acceptanceCriteria\":[\"64-char cap on displayName\",\"500-char cap on bio\",\"trim before persist\",\"revalidate /u/[username] + /settings/profile\",\"4 tests green\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: userHasPassword admin-SDK helper + per-request cache",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Server-side helper reading auth.users.encrypted_password presence. Per-request memoized via React cache(). Fail-closed.\n\n**Files:**\n- Create: lib/auth/admin-client.ts (service-role client factory, server-only)\n- Create: lib/auth/user-has-password.ts\n- Create: tests/unit/user-has-password.test.ts\n\n**Acceptance Criteria:**\n- userHasPassword(userId) returns true when encrypted_password set, false when null/missing\n- Per-request cached via React cache()\n- Returns false (fail-closed) on admin SDK errors\n- 3 unit tests pass\n\n**Verify:** pnpm vitest run tests/unit/user-has-password.test.ts\n\n```json:metadata\n{\"files\":[\"lib/auth/admin-client.ts\",\"lib/auth/user-has-password.ts\",\"tests/unit/user-has-password.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/user-has-password.test.ts\",\"acceptanceCriteria\":[\"userHasPassword returns true when encrypted_password set, false when not\",\"Per-request memoized via React cache()\",\"Fail-closed on admin SDK errors\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: Reauth server actions — verifyCurrentPassword + send/verify OTP",
-      "status": "pending",
-      "blockedBy": [5],
+      "status": "completed",
+      "blockedBy": [
+        5
+      ],
       "description": "**Goal:** Three server actions consumed by all sensitive flows. One ReauthFailedError type for callers.\n\n**Files:**\n- Create: lib/auth/reauth-actions.ts (verifyCurrentPassword, sendReauthOtp, verifyReauthOtp, ReauthFailedError)\n- Create: tests/unit/reauth-actions.test.ts\n\n**Acceptance Criteria:**\n- verifyCurrentPassword calls signInWithPassword + throws ReauthFailedError on bad password\n- sendReauthOtp calls signInWithOtp({shouldCreateUser:false}); rate-limited\n- verifyReauthOtp calls verifyOtp({type:'email'}) + throws on bad/expired code\n- All three rate-limited via existing lib/security/rate-limit.ts\n- 6 unit tests cover happy + error paths\n\n**Verify:** pnpm vitest run tests/unit/reauth-actions.test.ts\n\n```json:metadata\n{\"files\":[\"lib/auth/reauth-actions.ts\",\"tests/unit/reauth-actions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/reauth-actions.test.ts\",\"acceptanceCriteria\":[\"verifyCurrentPassword throws on wrong password\",\"sendReauthOtp uses shouldCreateUser:false\",\"verifyReauthOtp throws on bad/expired code\",\"All paths rate-limited\",\"ReauthFailedError exported\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: ReauthChallenge shared component",
-      "status": "pending",
-      "blockedBy": [6],
+      "status": "completed",
+      "blockedBy": [
+        6
+      ],
       "description": "**Goal:** One Client Component shared by change-password / change-email / delete-account. Branches on hasPassword. Manages internal Send-code → Enter-code state for OTP path.\n\n**Files:**\n- Create: components/settings/reauth-challenge.tsx\n\n**Acceptance Criteria:**\n- hasPassword=true: single password input named current_password\n- hasPassword=false: 'Send code' button → 6-digit code input named otp_code (with Resend)\n- Field names parameterizable via props (defaults match consuming forms)\n- No internal submit logic — parent form handles submission\n\n**Verify:** pnpm tsc --noEmit\n\n```json:metadata\n{\"files\":[\"components/settings/reauth-challenge.tsx\"],\"verifyCommand\":\"pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"Branches on hasPassword\",\"OTP path manages send/sent state internally\",\"Field names parameterizable\",\"No internal submit\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: Privacy page — visibility toggle + blocked users absorbed",
-      "status": "pending",
-      "blockedBy": [3],
+      "status": "completed",
+      "blockedBy": [
+        3
+      ],
       "description": "**Goal:** New /settings/privacy page hosting the visibility toggle (isPublic) and the blocked-users list (relocated from /settings/blocked).\n\n**Files:**\n- Create: lib/settings/visibility-actions.ts (toggleProfileVisibility)\n- Create: tests/unit/visibility-actions.test.ts\n- Create: app/(app)/settings/privacy/page.tsx + visibility-toggle.tsx + blocked-list.tsx\n\n**Acceptance Criteria:**\n- toggleProfileVisibility(isPublic) updates profiles.isPublic + revalidates /u/[username] + /settings/privacy\n- Page renders toggle bound to current isPublic value + blocked list\n- Blocked section has id=\"blocked\" so /settings/blocked redirect anchor lands correctly\n- 2 unit tests pass\n\n**Verify:** pnpm vitest run tests/unit/visibility-actions.test.ts\n\n```json:metadata\n{\"files\":[\"lib/settings/visibility-actions.ts\",\"app/(app)/settings/privacy/page.tsx\",\"app/(app)/settings/privacy/visibility-toggle.tsx\",\"app/(app)/settings/privacy/blocked-list.tsx\",\"tests/unit/visibility-actions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/visibility-actions.test.ts\",\"acceptanceCriteria\":[\"toggleProfileVisibility persists isPublic + revalidates\",\"Page renders toggle + blocked list\",\"#blocked anchor matches the redirect target\",\"2 tests green\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: Notifications page — cadence + per-type opt-outs + digest filter",
-      "status": "pending",
-      "blockedBy": [1, 3],
+      "status": "completed",
+      "blockedBy": [
+        1,
+        3
+      ],
       "description": "**Goal:** /settings/notifications page with cadence dropdown + 4 per-type checkboxes. Update buildDigest to filter notification rows by per-type opt-outs.\n\n**Files:**\n- Create: lib/settings/notification-prefs-actions.ts (updateCadence, updateEmailType)\n- Create: tests/unit/notification-prefs.test.ts\n- Modify: lib/social/notifications/digest.ts (add 4 cols to columns: select + filter notifications)\n- Modify: tests/unit/digest-builder.test.ts (add 2 tests covering per-type filter + the 1-toggle-2-types reactions case)\n- Create: app/(app)/settings/notifications/page.tsx + prefs-form.tsx\n\n**Acceptance Criteria:**\n- updateCadence persists to emailDigestCadence; rejects unknown values\n- updateEmailType persists to matching email_* boolean; rejects unknown types\n- buildDigest filters out new_follower / review_liked / list_liked / review_commented / comment_replied / wishlist_logged_by_friend rows according to the user's opt-out booleans\n- Page renders + saves on change\n- 4 prefs unit tests + 2 digest-builder tests pass\n\n**Verify:** pnpm vitest run tests/unit/notification-prefs.test.ts tests/unit/digest-builder.test.ts\n\n```json:metadata\n{\"files\":[\"lib/settings/notification-prefs-actions.ts\",\"lib/social/notifications/digest.ts\",\"app/(app)/settings/notifications/page.tsx\",\"app/(app)/settings/notifications/prefs-form.tsx\",\"tests/unit/notification-prefs.test.ts\",\"tests/unit/digest-builder.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/notification-prefs.test.ts tests/unit/digest-builder.test.ts\",\"acceptanceCriteria\":[\"updateCadence + updateEmailType validate input\",\"buildDigest filters by per-type opt-outs\",\"Page renders + saves on change\",\"6 tests green (4 prefs + 2 digest)\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 10: Account page — change-password flow + sessions",
-      "status": "pending",
-      "blockedBy": [3, 5, 6, 7],
+      "status": "completed",
+      "blockedBy": [
+        3,
+        5,
+        6,
+        7
+      ],
       "description": "**Goal:** /settings/account page with Email + Password + Sessions sections. Implement Password (branches on userHasPassword) and Sessions (sign-out-others) — Email arrives in Task 11.\n\n**Files:**\n- Create: app/(app)/settings/account/page.tsx, _components/change-password-form.tsx, _components/sign-out-others-button.tsx\n- Create: lib/auth/password-actions.ts (updatePassword), lib/auth/sessions-actions.ts (signOutOtherSessions)\n\n**Acceptance Criteria:**\n- Password form branches: 'Change password' (hasPassword=true) vs 'Set a password' expanded with callout (hasPassword=false)\n- Submit triggers reauth → auth.updateUser({password}) → success/error toast\n- 'Sign out other sessions' button → confirm modal → signOut({scope:'others'}) → toast\n- Page TS-clean\n\n**Verify:** Manual smoke + pnpm tsc --noEmit\n\n```json:metadata\n{\"files\":[\"app/(app)/settings/account/page.tsx\",\"app/(app)/settings/account/_components/change-password-form.tsx\",\"app/(app)/settings/account/_components/sign-out-others-button.tsx\",\"lib/auth/password-actions.ts\",\"lib/auth/sessions-actions.ts\"],\"verifyCommand\":\"pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"Branches on userHasPassword\",\"Reauth gates the change\",\"sign-out-others button uses scope:'others'\",\"Email subsection placeholder pending Task 11\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 11: Account page — change-email flow + live-actual poll",
-      "status": "pending",
-      "blockedBy": [10],
+      "status": "completed",
+      "blockedBy": [
+        10
+      ],
       "description": "**Goal:** Email subsection of /settings/account — change-email form with reauth + 30s polling for the live-actual current email (since Supabase's both-confirm flow has a pending window).\n\n**Files:**\n- Create: app/(app)/settings/account/_components/change-email-form.tsx\n- Create: lib/auth/email-actions.ts (updateEmailAddress, getLiveCurrentEmail)\n- Modify: app/(app)/settings/account/page.tsx (replace placeholder with the form)\n\n**Acceptance Criteria:**\n- Form: new email + reauth challenge; submit triggers reauth → auth.updateUser({email})\n- Success toast: 'Confirmation links sent to both your old email and your new one'\n- Pending callout shows live-actual email until both links clicked\n- Email validated via zod server-side\n- Polling every 30s detects when change finalizes\n\n**Verify:** Manual smoke + pnpm tsc --noEmit\n\n```json:metadata\n{\"files\":[\"app/(app)/settings/account/_components/change-email-form.tsx\",\"app/(app)/settings/account/page.tsx\",\"lib/auth/email-actions.ts\"],\"verifyCommand\":\"pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"Form gates on reauth + zod email validation\",\"Toast explains both-inbox confirmation\",\"Pending callout shows live-actual email\",\"Polling every 30s detects when change finalizes\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 12: Data export — JSON .zip download",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 'Download my data' button → JSON .zip with profile + logs + reviews + lists + comments_authored + comments_received (PII-redacted) + last-90-days notifications.\n\n**Files:**\n- Create: lib/settings/data-export.ts\n- Create: tests/unit/data-export.test.ts\n- Create: app/api/settings/export/route.ts (GET handler)\n- Create: app/(app)/settings/danger/_components/export-data-button.tsx\n- Add dep: jszip\n\n**Acceptance Criteria:**\n- exportUserData(userId) returns 7 sections in expected shape\n- comments_received only includes commenter user_id + display_name (no email/IP/etc.)\n- comments_authored verbatim\n- GET /api/settings/export requires auth, streams .zip with filename letterboxd-for-games-{username}-{date}.zip\n- 3 unit tests pass\n\n**Verify:** pnpm vitest run tests/unit/data-export.test.ts\n\n```json:metadata\n{\"files\":[\"lib/settings/data-export.ts\",\"app/api/settings/export/route.ts\",\"app/(app)/settings/danger/_components/export-data-button.tsx\",\"tests/unit/data-export.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/data-export.test.ts\",\"acceptanceCriteria\":[\"7 sections in shape\",\"comments_received redacts PII\",\"comments_authored verbatim\",\"Filename letterboxd-for-games-{username}-{date}.zip\",\"3 tests green\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 13: Soft-delete + cancel flow + post-delete pages + layout guard",
-      "status": "pending",
-      "blockedBy": [1, 2, 3, 6, 7, 12],
+      "status": "completed",
+      "blockedBy": [
+        1,
+        2,
+        3,
+        6,
+        7,
+        12
+      ],
       "description": "**Goal:** End-to-end soft-delete: from clicking 'Delete account' through /account-deleted landing, login-callback intercept, /cancel-deletion page, layout-level guard for soft-deleted users.\n\n**Files:**\n- Create: lib/settings/account-deletion-actions.ts (softDeleteAccount, cancelDeletion, isAccountSoftDeleted)\n- Create: tests/unit/account-deletion-actions.test.ts\n- Create: app/(app)/settings/danger/page.tsx + _components/delete-account-flow.tsx\n- Create: app/account-deleted/page.tsx (PUBLIC, NOT under (app))\n- Create: app/(app)/cancel-deletion/page.tsx\n- Modify: app/auth/callback/route.ts (intercept soft-deleted users → /cancel-deletion)\n- Modify: app/(app)/layout.tsx (guard: redirect soft-deleted users to /cancel-deletion on any other (app) path)\n\n**Acceptance Criteria:**\n- softDeleteAccount(form): username confirmation case-insensitive, reauth gate, sets deleted_at, signs out global\n- cancelDeletion clears deleted_at\n- Login callback redirects soft-deleted users (within 30 days) to /cancel-deletion (suppresses ?next=)\n- (app) layout guard restricts navigation to /cancel-deletion for soft-deleted sessions\n- 4 unit tests pass\n\n**Verify:** pnpm vitest run tests/unit/account-deletion-actions.test.ts\n\n```json:metadata\n{\"files\":[\"lib/settings/account-deletion-actions.ts\",\"app/(app)/settings/danger/page.tsx\",\"app/(app)/settings/danger/_components/delete-account-flow.tsx\",\"app/(app)/cancel-deletion/page.tsx\",\"app/account-deleted/page.tsx\",\"app/auth/callback/route.ts\",\"app/(app)/layout.tsx\",\"tests/unit/account-deletion-actions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/account-deletion-actions.test.ts\",\"acceptanceCriteria\":[\"softDelete reauths + sets deleted_at + signs out globally\",\"cancelDeletion clears deleted_at\",\"Login callback intercepts soft-deleted users\",\"(app) layout guard restricts navigation to /cancel-deletion\",\"Username confirm is case-insensitive\",\"4 tests green\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 14: Account-purge nightly cron + cascade audit",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Supabase Edge Function that nightly hard-deletes any auth.users row whose profile has deleted_at < NOW() - 30 days. Audit ON DELETE CASCADE coverage.\n\n**Files:**\n- Create: supabase/functions/account-purge/index.ts\n- Audit (no file change unless gaps found): lib/db/schema.ts FKs referencing auth.users.id or profiles.userId\n\n**Acceptance Criteria:**\n- Cascade audit complete: every FK to auth.users.id or profiles.userId has onDelete:'cascade' (or documented exception)\n- account-purge function deployed via mcp__supabase__deploy_edge_function and ACTIVE\n- Cron scheduled (daily 03:00 UTC via pg_cron)\n- Manual test: backdate test user's deleted_at to 31 days, invoke function, confirm auth.users row removed and cascade flowed through dependent tables\n\n**Verify:** mcp__supabase__list_edge_functions (account-purge ACTIVE) + manual cron invoke\n\n```json:metadata\n{\"files\":[\"supabase/functions/account-purge/index.ts\"],\"verifyCommand\":\"mcp__supabase__list_edge_functions\",\"acceptanceCriteria\":[\"account-purge function ACTIVE\",\"Scheduled daily at 03:00 UTC\",\"Manual invoke purges past-grace test user + cascades\",\"Cascade audit complete or documented exceptions\"]}\n```"
     },
     {
       "id": 15,
       "subject": "Task 15: End-to-end verification + final commit",
-      "status": "pending",
-      "blockedBy": [4, 8, 9, 10, 11, 12, 13, 14],
+      "status": "in_progress",
+      "blockedBy": [
+        4,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
       "description": "**Goal:** Run the full verification gate from the spec. Tag the branch.\n\n**Acceptance Criteria:**\n- All Vitest tests green\n- All 9 manual gate items pass (sidebar nav, set-password, change-email, visibility toggle, notification opt-out, sign-out-others, soft-delete + cancel, data export, production purge gate)\n- Memory updated (settings_overhaul_complete.md + MEMORY.md index)\n- Branch tagged settings-overhaul-complete\n\n**Verify:** Manual\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"manual\",\"acceptanceCriteria\":[\"All Vitest tests green\",\"All 9 manual gate items pass\",\"Production purge gate confirmed\",\"Memory updated\",\"Branch tagged\"]}\n```"
     }
   ]
