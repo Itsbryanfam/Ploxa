@@ -1,7 +1,7 @@
 "use server";
 
 import type { User } from "@supabase/supabase-js";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -60,7 +60,7 @@ export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
 
 export async function getProfileByUsername(username: string) {
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.username, username),
+    where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
     columns: {
       userId: true,
       username: true,
@@ -77,7 +77,7 @@ export async function getProfileByUsername(username: string) {
 
 export async function getProfileByUserId(userId: string) {
   const profile = await db.query.profiles.findFirst({
-    where: eq(schema.profiles.userId, userId),
+    where: and(eq(schema.profiles.userId, userId), isNull(schema.profiles.deletedAt)),
     columns: {
       userId: true,
       username: true,
@@ -239,6 +239,11 @@ export async function suggestUsernames(taken: string): Promise<string[]> {
     `${taken}_x`,
   ].filter((c) => usernameSchema.safeParse(c).success);
   if (candidates.length === 0) return [];
+  // Allowlist: no isNull(deletedAt) filter here. A soft-deleted user retains
+  // their handle for the 30-day grace window — suggesting their handle as an
+  // alternative would let a different user claim it before grace ends and the
+  // soft-delete is either cancelled or finalised. Same rationale as
+  // checkUsernameAvailability above.
   const rows = await db
     .select({ username: schema.profiles.username })
     .from(schema.profiles)

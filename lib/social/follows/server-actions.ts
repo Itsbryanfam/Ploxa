@@ -1,5 +1,5 @@
 "use server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db, schema } from "@/lib/db";
@@ -103,7 +103,7 @@ export async function getFollowers(
     })
     .from(follows)
     .innerJoin(profiles, eq(profiles.userId, follows.followerId))
-    .where(eq(follows.followedId, userId))
+    .where(and(eq(follows.followedId, userId), isNull(profiles.deletedAt)))
     .$dynamic();
 
   return await withBlockedFilter(viewerId, base, profiles.userId);
@@ -134,7 +134,7 @@ export async function getFollowing(
     })
     .from(follows)
     .innerJoin(profiles, eq(profiles.userId, follows.followedId))
-    .where(eq(follows.followerId, userId))
+    .where(and(eq(follows.followerId, userId), isNull(profiles.deletedAt)))
     .$dynamic();
 
   return await withBlockedFilter(viewerId, base, profiles.userId);

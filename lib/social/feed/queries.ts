@@ -81,6 +81,9 @@ export async function buildFeedQuery(args: {
        WHERE user_id = ANY(${followeeArray})
          AND last_event_at IS NOT NULL
          AND is_private = false
+         AND EXISTS (
+           SELECT 1 FROM profiles WHERE user_id = logs.user_id AND deleted_at IS NULL
+         )
          ${cursorClause})
       UNION ALL
       (SELECT
@@ -98,6 +101,9 @@ export async function buildFeedQuery(args: {
        WHERE user_id = ANY(${followeeArray})
          AND published_at IS NOT NULL
          AND is_public = true
+         AND EXISTS (
+           SELECT 1 FROM profiles WHERE user_id = reviews.user_id AND deleted_at IS NULL
+         )
          ${cursorClause})
       UNION ALL
       (SELECT
@@ -115,6 +121,9 @@ export async function buildFeedQuery(args: {
        WHERE user_id = ANY(${followeeArray})
          AND published_at IS NOT NULL
          AND is_public = true
+         AND EXISTS (
+           SELECT 1 FROM profiles WHERE user_id = lists.user_id AND deleted_at IS NULL
+         )
          ${cursorClause})
     ) AS feed
     ORDER BY event_at DESC, kind ASC, actor_id ASC

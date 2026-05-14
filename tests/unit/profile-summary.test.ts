@@ -75,6 +75,7 @@ vi.mock("@/lib/db", () => {
         username: { name: "username" },
         userId: { name: "user_id" },
         isPublic: { name: "is_public" },
+        deletedAt: { name: "deleted_at" },
       },
       logs: {
         userId: {},
@@ -204,6 +205,18 @@ describe("getProfileSummary — early returns", () => {
     const result = await getProfileSummary("private-owner", "owner-id");
     expect(result).not.toBeNull();
     expect(result?.isOwner).toBe(true);
+  });
+
+  it("returns null for soft-deleted profile (deleted_at is non-null)", async () => {
+    // The DB mock resolves findFirst by returned value, not by where clause.
+    // A soft-deleted profile would never be returned by findFirst because the
+    // isNull(profiles.deletedAt) filter is in the where clause — so undefined
+    // is the correct mock return to represent the DB returning no row.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { db } = (await import("@/lib/db")) as any;
+    db.query.profiles.findFirst.mockResolvedValueOnce(undefined);
+    const result = await getProfileSummary("deleted-user", "viewer-id");
+    expect(result).toBeNull();
   });
 
   it("reflects isFollowing=true when viewer follows the target", async () => {

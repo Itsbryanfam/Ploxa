@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
 
@@ -100,7 +100,17 @@ export async function buildDigest(userId: string): Promise<DigestPayload | null>
         actorDisplayName: profiles.displayName,
       })
       .from(notifications)
-      .leftJoin(profiles, eq(profiles.userId, notifications.actorId))
+      // Soft-delete on the join predicate (not WHERE) so a soft-deleted actor
+      // returns null username — the `if (!n.actorUsername ...) continue` guard
+      // below then drops the row from the digest entirely (digest emails should
+      // never name a soft-deleted user).
+      .leftJoin(
+        profiles,
+        and(
+          eq(profiles.userId, notifications.actorId),
+          isNull(profiles.deletedAt),
+        ),
+      )
       .where(
         and(eq(notifications.userId, userId), gt(notifications.createdAt, since)),
       )

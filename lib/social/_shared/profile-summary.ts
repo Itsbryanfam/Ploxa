@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
 import { LOG_GAME_SELECT } from "@/lib/logs/select";
@@ -69,7 +69,7 @@ export async function getProfileSummary(
   viewerId: string | null,
 ): Promise<ProfileSummary | null> {
   const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.username, username),
+    where: and(eq(profiles.username, username), isNull(profiles.deletedAt)),
   });
   if (!profile) return null;
 

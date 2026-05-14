@@ -65,7 +65,18 @@ export async function getInbox(
       actorAvatarUrl: schema.profiles.avatarUrl,
     })
     .from(notifications)
-    .leftJoin(schema.profiles, eq(schema.profiles.userId, notifications.actorId))
+    // Soft-delete filter on the join predicate, not the WHERE: we keep the
+    // notification row visible (so the receiver still sees the activity) but
+    // null out the actor identity. The notification-row UI renders null
+    // actorUsername as "someone" with no profile link — same UX as an actor
+    // whose row was hard-deleted via cascade.
+    .leftJoin(
+      schema.profiles,
+      and(
+        eq(schema.profiles.userId, notifications.actorId),
+        isNull(schema.profiles.deletedAt),
+      ),
+    )
     .where(
       and(
         eq(notifications.userId, user.id),
