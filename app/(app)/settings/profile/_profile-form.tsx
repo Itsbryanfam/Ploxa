@@ -12,19 +12,23 @@ import {
 import { UsernameInput } from "@/components/auth/username-input";
 import { Button } from "@/components/ui/button";
 
+// ---------------------------------------------------------------------------
+// ProfileForm — interactive client island for /settings/profile
+// Receives server-fetched data via props; all mutations go through Server
+// Actions (uploadAvatar, updateUsername, updateDiscordUsername).
+// ---------------------------------------------------------------------------
+
 interface Props {
   user: HeaderUser;
   discordUsername: string | null;
 }
 
-export function ProfileSection({ user, discordUsername }: Props) {
+export function ProfileForm({ user, discordUsername }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const handleResult = (blob: Blob, kind: "static" | "gif") => {
     setError(null);
-    // Re-pack the blob as a File so the server action sees the intended
-    // MIME and a filename. The cropper outputs JPEG; GIFs pass-through.
     const filename = kind === "gif" ? "avatar.gif" : "avatar.jpg";
     const mime = kind === "gif" ? "image/gif" : "image/jpeg";
     const file = new File([blob], filename, { type: mime });
@@ -35,9 +39,6 @@ export function ProfileSection({ user, discordUsername }: Props) {
       if (!res.ok) {
         setError(res.error);
       }
-      // No setState for the avatar URL: revalidatePath('/', 'layout') in
-      // the action refreshes the RSC tree, so the parent will re-render
-      // ProfileSection with the new `user` prop.
     });
   };
 
@@ -70,14 +71,12 @@ export function ProfileSection({ user, discordUsername }: Props) {
 
   function cancelUsernameEdit() {
     setEditingUsername(false);
-    // The user's current name is valid by definition (matches treatInitialAsValid
-    // when re-opened); flagging it as valid keeps state consistent.
     setUsernameDraft({ value: user.username ?? "", valid: true });
     setUsernameError(null);
   }
 
   // ---------------------------------------------------------------------------
-  // Discord handle (saves on blur; null = no pill rendered on profile page)
+  // Discord handle (saves on blur)
   // ---------------------------------------------------------------------------
   const [discordDraft, setDiscordDraft] = useState(discordUsername ?? "");
   const [discordSaved, setDiscordSaved] = useState<string | null>(discordUsername);
@@ -87,13 +86,12 @@ export function ProfileSection({ user, discordUsername }: Props) {
   function saveDiscordOnBlur() {
     const next = discordDraft.trim().replace(/^@/, "");
     const current = discordSaved ?? "";
-    if (next === current) return; // no-op
+    if (next === current) return;
     setDiscordError(null);
     startDiscordTransition(async () => {
       const res = await updateDiscordUsername(discordDraft);
       if (res.ok) {
         setDiscordSaved(res.discordUsername);
-        // Re-sync the input with the canonical normalized value (leading @ stripped).
         setDiscordDraft(res.discordUsername ?? "");
       } else {
         setDiscordError(res.error);
@@ -102,7 +100,7 @@ export function ProfileSection({ user, discordUsername }: Props) {
   }
 
   return (
-    <section id="profile">
+    <section>
       <h2 className="text-xl font-semibold mb-6">Profile</h2>
       <div className="space-y-6">
         <div>
