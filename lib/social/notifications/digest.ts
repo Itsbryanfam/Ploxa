@@ -57,6 +57,28 @@ export type DigestPayload = {
 type ReactionItem = DigestPayload["reactions"][number] & { targetId: string };
 type CommentItem = DigestPayload["comments"][number] & { targetId: string };
 
+/**
+ * Map notification type → which `email_*` preference column gates it.
+ * Two reaction types both gate on `emailReactions`; two comment types both
+ * gate on `emailComments`. Unknown types fall through (include rather than
+ * silently drop — safer default for future notification types added before
+ * this map updates).
+ *
+ * Exported so future consumers (in-app inbox filters, settings UI, etc.)
+ * can reuse the same mapping without duplicating it.
+ */
+export const NOTIF_TYPE_TO_PREF: Record<
+  string,
+  "emailFollows" | "emailReactions" | "emailComments" | "emailWishlist"
+> = {
+  new_follower: "emailFollows",
+  review_liked: "emailReactions",
+  list_liked: "emailReactions",
+  review_commented: "emailComments",
+  comment_replied: "emailComments",
+  wishlist_logged_by_friend: "emailWishlist",
+};
+
 export async function buildDigest(userId: string): Promise<DigestPayload | null> {
   const profile = await db.query.profiles.findFirst({
     where: eq(profiles.userId, userId),
@@ -66,6 +88,11 @@ export async function buildDigest(userId: string): Promise<DigestPayload | null>
       displayName: true,
       lastDigestSentAt: true,
       emailDigestCadence: true,
+      // T9: per-type email opt-outs
+      emailFollows: true,
+      emailReactions: true,
+      emailComments: true,
+      emailWishlist: true,
     },
   });
   if (!profile) return null;
@@ -130,13 +157,19 @@ export async function buildDigest(userId: string): Promise<DigestPayload | null>
       .limit(SECTION_CAP),
   ]);
 
+  const filteredNotes = notes.filter((n) => {
+    const prefKey = NOTIF_TYPE_TO_PREF[n.type];
+    if (!prefKey) return true; // unknown type → include
+    return profile[prefKey] === true;
+  });
+
   // Group notifications by type, carrying targetId on each item for hydration.
   const newFollowers: DigestPayload["newFollowers"] = [];
   const reactions: ReactionItem[] = [];
   const commentsList: CommentItem[] = [];
   const wishlistTriggers: DigestPayload["wishlistTriggers"] = [];
 
-  for (const n of notes) {
+  for (const n of filteredNotes) {
     if (!n.actorUsername || !n.targetId) continue; // skip orphaned actor or null targetId
     if (n.type === "new_follower") {
       newFollowers.push({ username: n.actorUsername, displayName: n.actorDisplayName });
