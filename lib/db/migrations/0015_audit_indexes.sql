@@ -1,0 +1,39 @@
+-- ============================================================================
+-- 0015_audit_indexes — reports composite index for editComment dedupe lookup
+--
+-- HAND-WRITTEN (not drizzle-kit generate output). The Drizzle snapshot chain
+-- is already drifted (0007–0011 missing from meta/; see memory note
+-- feedback_drizzle_snapshot_chain_drift.md), so the convention here is to
+-- hand-author additive index migrations rather than risk regenerating ghost
+-- DDL for already-applied changes.
+--
+-- T16 of audit-fixes-2026-05-14: editComment's auto-flag dedupe runs
+-- `WHERE target_type='comment' AND target_id=$1 AND status='auto_flagged'`
+-- (see lib/social/comments/server-actions.ts). The reports table only had
+-- reports_status_created_idx (status + created_at), so this query fell back
+-- to an index scan on status with in-memory filtering on target_id —
+-- acceptable today, degrades with scale.
+--
+-- ── CONCURRENTLY rationale ──────────────────────────────────────────────────
+-- `reports` is a write-active table (every flagged comment/review writes a
+-- row; moderators write resolutions). Plain CREATE INDEX takes an
+-- AccessShareLock for the duration of the build which briefly stalls reads.
+-- CREATE INDEX CONCURRENTLY avoids that but cannot run inside a transaction —
+-- Supabase's `apply_migration` wraps every migration in one. So:
+--
+--   - This file is committed for documentation + schema parity with Drizzle.
+--   - Operator applies via `mcp__supabase__execute_sql` (no transaction
+--     wrapper), NOT `apply_migration`.
+--
+-- See lib/db/migrations/README.md "Hand-authored index migrations".
+-- ============================================================================
+
+-- Composite (target_type, target_id, status) matches the equality predicate
+-- in editComment's dedupe `findFirst`. Column order follows selectivity:
+-- target_type has only 4 values (low cardinality, narrows little), but the
+-- leading position lets the same index serve future polymorphic queries that
+-- carry just (target_type, target_id) without status. target_id is the
+-- high-cardinality discriminator. status is last because the dedupe only
+-- ever checks one value ('auto_flagged').
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "reports_target_type_id_status_idx"
+  ON "reports" ("target_type", "target_id", "status");

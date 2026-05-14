@@ -649,6 +649,18 @@ export const reports = pgTable(
       table.status,
       desc(table.createdAt),
     ),
+    // ─── T16 (audit-fixes-2026-05-14): editComment dedupe index (mig 0015) ─
+    // Composite (target_type, target_id, status) for editComment's auto-flag
+    // dedupe `findFirst` (lib/social/comments/server-actions.ts). Without
+    // this, the query fell back to reports_status_created_idx + in-memory
+    // filter on target_id — fine today, degrades with scale. CONCURRENTLY
+    // DDL lives in migration 0015; Drizzle can't emit CONCURRENTLY, so this
+    // schema-level decl is informational only.
+    targetTypeIdStatusIdx: index("reports_target_type_id_status_idx").on(
+      table.targetType,
+      table.targetId,
+      table.status,
+    ),
   }),
 );
 
