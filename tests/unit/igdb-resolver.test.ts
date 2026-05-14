@@ -46,6 +46,16 @@ describe("resolveIgdbIds", () => {
     ]);
     expect(result.get(3)?.igdbId).toBe(7777);
     expect(result.get(3)?.steamAppid).toBeNull();
+    // Verify fallbackByNameYear constructed the expected query: name match
+    // + epoch-second release-date window.
+    expect(queryMock).toHaveBeenCalledWith(
+      "games",
+      expect.stringContaining('name = "Halo Infinite"'),
+    );
+    expect(queryMock).toHaveBeenCalledWith(
+      "games",
+      expect.stringMatching(/first_release_date > \d+ & first_release_date < \d+/),
+    );
   });
 
   it("records null for unresolved games", async () => {

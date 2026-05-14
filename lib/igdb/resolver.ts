@@ -23,9 +23,13 @@ const NAME_FALLBACK_CONCURRENCY = 4;
  *   matching `uid` (Steam appid).
  *
  * Bucket B: games with no steamAppid → per-game POST to /games with a
- *   name + first_release_date window (±1 year) match. Throttled to
- *   NAME_FALLBACK_CONCURRENCY parallel requests to respect IGDB's
- *   4 req/sec rate cap.
+ *   name + first_release_date window match. Limited to
+ *   NAME_FALLBACK_CONCURRENCY in-flight requests per wave. Note: this
+ *   limits peak concurrency, NOT requests-per-second — a wave of 4 short
+ *   requests could fire well over IGDB's 4 req/sec sustained cap. This
+ *   is acceptable here because Bucket B typically has <500 games over the
+ *   entire backfill (Bucket A resolves ~95%), making burst duration
+ *   short. If Bucket B grows, replace with a token-bucket limiter.
  *
  * Returns a Map<rawgId, ResolvedRow>; every input id appears in the map.
  */
@@ -41,12 +45,20 @@ export async function resolveIgdbIds(
   const steamGames = games.filter((g) => g.steamAppid != null);
   if (steamGames.length > 0) {
     const appidToRawgId = new Map<number, number>();
-    for (const g of steamGames) appidToRawgId.set(g.steamAppid!, g.id);
+    for (const g of steamGames) {
+      if (appidToRawgId.has(g.steamAppid!)) {
+        console.warn(
+          `[igdb-resolver] Duplicate steamAppid ${g.steamAppid} on rawgId ${g.id}; first entry wins (this game will fall to Bucket B name lookup).`,
+        );
+        continue;
+      }
+      appidToRawgId.set(g.steamAppid!, g.id);
+    }
 
     const uidList = steamGames.map((g) => `"${g.steamAppid}"`).join(",");
-    const rows = await igdbQuery<Array<{ game: number; uid: string; category: number }>>(
+    const rows = await igdbQuery<Array<{ game: number; uid: string }>>(
       "external_games",
-      `fields game,uid,category; where uid = (${uidList}) & category = 1; limit 500;`,
+      `fields game,uid; where uid = (${uidList}) & category = 1; limit 500;`,
     );
     for (const r of rows) {
       const rawgId = appidToRawgId.get(Number(r.uid));
@@ -70,6 +82,8 @@ export async function resolveIgdbIds(
       }),
     );
     for (const r of waveResults) {
+      // Safe non-null: every input id was pre-seeded in the initialization
+      // loop at the top of resolveIgdbIds.
       const existing = result.get(r.id)!;
       result.set(r.id, { igdbId: r.igdbId, steamAppid: existing.steamAppid });
     }
@@ -83,6 +97,8 @@ async function fallbackByNameYear(g: GameToResolve): Promise<Array<{ id: number 
   const safeTitle = g.title.replace(/"/g, '\\"');
   let where = `name = "${safeTitle}"`;
   if (g.releaseYear) {
+    // 36-month window centered on releaseYear: a release tagged 2021 in
+    // RAWG might appear as 2020 or 2022 in IGDB depending on edition.
     const start = Math.floor(new Date(`${g.releaseYear - 1}-01-01`).getTime() / 1000);
     const end = Math.floor(new Date(`${g.releaseYear + 1}-12-31`).getTime() / 1000);
     where += ` & first_release_date > ${start} & first_release_date < ${end}`;
