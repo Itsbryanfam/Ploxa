@@ -5,6 +5,7 @@ import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ListDetail } from "@/components/lists/list-detail";
 import { ReportModal } from "@/components/moderation/report-modal";
+import { redactPrivateProfile } from "@/lib/profile/redact";
 
 interface Props {
   params: Promise<{ username: string; listSlug: string }>;
@@ -22,14 +23,20 @@ interface Props {
 export default async function ListDetailPage({ params }: Props) {
   const { username, listSlug } = await params;
 
-  const profile = await db.query.profiles.findFirst({
+  const profileRow = await db.query.profiles.findFirst({
     where: and(eq(schema.profiles.username, username), isNull(schema.profiles.deletedAt)),
     columns: { userId: true, username: true, displayName: true, isPublic: true },
   });
-  if (!profile) notFound();
+  if (!profileRow) notFound();
 
   const viewer = await getCachedUser();
-  const isOwner = viewer?.id === profile.userId;
+  const isOwner = viewer?.id === profileRow.userId;
+
+  // Defense-in-depth: if the profile is private but the list itself is
+  // public+published (a deliberate configuration), a non-owner viewer can
+  // still hit this page — we must blank the displayName so it doesn't leak.
+  // Mirrors the redaction inside getProfileByUsername (T01 / commit d2dd478).
+  const profile = redactPrivateProfile(profileRow, viewer?.id ?? null);
 
   // Load list by (userId, slug).
   const list = await db.query.lists.findFirst({

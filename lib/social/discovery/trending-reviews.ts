@@ -29,6 +29,8 @@ export type TrendingReview = {
  * - Only published reviews (`published_at IS NOT NULL`) on public profiles
  *   (`p.is_public = true`) with the public flag set (`r.is_public = true`)
  *   are eligible.
+ * - Soft-deleted authors (`p.deleted_at IS NOT NULL`) are excluded so reviews
+ *   from users in their 30-day grace window stop appearing on Discover.
  * - Like recency (not review recency) drives ranking: a highly-liked older
  *   review whose likes spiked in the last 7 days will surface.
  * - The unfiltered result is shared across ALL callers and cached at this
@@ -62,6 +64,7 @@ async function _getTrendingReviewsUncached(limit: number): Promise<TrendingRevie
       AND r.is_public = true
       AND r.published_at IS NOT NULL
       AND p.is_public = true
+      AND p.deleted_at IS NULL
     GROUP BY r.id, p.username, p.display_name, g.slug, g.title, g.cover_url
     ORDER BY like_count DESC
     LIMIT ${limit}

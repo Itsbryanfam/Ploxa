@@ -49,6 +49,11 @@ export async function POST(request: Request) {
   // Candidate set: cadence='daily' OR (cadence='weekly' AND today is Sunday),
   // AND last_digest_sent_at IS NULL OR older than 20 hours (gives a 4-hour
   // tolerance window around the daily cron without re-sending).
+  //
+  // Soft-delete filter (p.deleted_at IS NULL): users in their 30-day grace
+  // window revoked consent to be marketed to — emailing them post-deletion
+  // is a privacy violation. The account-purge cron drops the row entirely
+  // at end-of-grace; this filter handles the in-between window.
   const rawCandidates = await db.execute<{
     user_id: string;
     email: string;
@@ -63,6 +68,7 @@ export async function POST(request: Request) {
       )
       AND (p.last_digest_sent_at IS NULL OR p.last_digest_sent_at < now() - interval '20 hours')
       AND u.email IS NOT NULL
+      AND p.deleted_at IS NULL
   `);
 
   // postgres-js RowList is array-like; cast through unknown to iterate directly.

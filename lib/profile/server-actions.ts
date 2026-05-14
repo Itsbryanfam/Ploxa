@@ -9,6 +9,7 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { usernameSchema } from "./username-schema";
 import { RESERVED_USERNAMES } from "./reserved-usernames";
 import { UsernameCollisionError } from "./errors";
+import { redactPrivateProfile } from "./redact";
 import {
   enforceRateLimit,
   clientIpForRateLimit,
@@ -56,33 +57,6 @@ export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
     profilePicturePosterUrl:
       profile?.profilePictureKind === "gif" ? await posterUrlFor(authUser.id) : null,
   };
-}
-
-/**
- * Defense-in-depth redaction shared by `getProfileByUsername` and
- * `getProfileByUserId`. Both are `"use server"` exports — any authenticated
- * caller can hit them via direct RPC, bypassing the page-level visibility
- * gates at /u/[username]. When the viewer is NOT the owner AND the profile
- * is private, blank out `displayName` + `bio` (the only PII-bearing fields
- * returned). The username stays — it's already public via the URL.
- *
- * Returning the row (with redacted fields) rather than null preserves the
- * existing "indistinguishable 404" contract for the page-level callers,
- * which still see `isPublic: false` and decide whether to call `notFound()`.
- */
-function redactPrivateProfile<
-  T extends {
-    userId: string;
-    displayName: string | null;
-    bio: string | null;
-    isPublic: boolean;
-  },
->(profile: T, viewerId: string | null): T {
-  const isOwner = viewerId === profile.userId;
-  if (!isOwner && !profile.isPublic) {
-    return { ...profile, displayName: null, bio: null };
-  }
-  return profile;
 }
 
 export async function getProfileByUsername(username: string) {

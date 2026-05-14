@@ -21,6 +21,8 @@ export type PopularGame = {
  * Invariants:
  * - Private logs (`is_private = true`) are excluded so a user's private
  *   activity does not influence the public discovery surface.
+ * - Logs from soft-deleted users (`p.deleted_at IS NOT NULL`) are excluded
+ *   so their in-grace activity stops influencing the public ranking.
  * - The result is deduplicated at the game level; multiple users logging the
  *   same game in the window count toward a single aggregated `logCount`.
  * - Result is cached via `unstable_cache` with a 30-minute TTL so every
@@ -39,8 +41,10 @@ async function _getPopularGamesUncached(limit: number): Promise<PopularGame[]> {
     SELECT g.id, g.slug, g.title, g.cover_url, count(l.id)::int AS log_count
     FROM logs l
     JOIN games g ON g.id = l.game_id
+    JOIN profiles p ON p.user_id = l.user_id
     WHERE l.created_at > now() - interval '7 days'
       AND l.is_private = false
+      AND p.deleted_at IS NULL
     GROUP BY g.id, g.slug, g.title, g.cover_url
     ORDER BY log_count DESC
     LIMIT ${limit}

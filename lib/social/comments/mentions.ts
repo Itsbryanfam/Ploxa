@@ -1,5 +1,5 @@
 import "server-only";
-import { inArray } from "drizzle-orm";
+import { and, inArray, isNull } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
 
@@ -32,9 +32,18 @@ export async function resolveMentionedUserIds(
   usernames: string[],
 ): Promise<Map<string, string>> {
   if (usernames.length === 0) return new Map();
+  // Filter soft-deleted profiles: a @mention of a user mid-grace shouldn't
+  // create a notification row referencing them (they revoked consent to be
+  // contacted). Once the account-purge cron runs the row is gone entirely;
+  // this handles the in-between 30-day grace window.
   const rows = await db
     .select({ userId: schema.profiles.userId, username: schema.profiles.username })
     .from(schema.profiles)
-    .where(inArray(schema.profiles.username, usernames));
+    .where(
+      and(
+        inArray(schema.profiles.username, usernames),
+        isNull(schema.profiles.deletedAt),
+      ),
+    );
   return new Map(rows.map((r) => [r.username, r.userId]));
 }

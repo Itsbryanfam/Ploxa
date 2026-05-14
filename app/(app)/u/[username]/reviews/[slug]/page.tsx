@@ -5,6 +5,7 @@ import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { ReviewCard } from "@/components/reviews/review-card";
 import { CommentThread, type ThreadComment } from "@/components/comments/comment-thread";
+import { withBlockedFilter } from "@/lib/social/_shared/visibility";
 
 interface Props {
   params: Promise<{ username: string; slug: string }>;
@@ -103,6 +104,45 @@ export default async function CanonicalReviewPage({ params }: Props) {
   // Stage 3: like count + viewer-liked + comments — all depend on review.id, run in parallel.
   // Comment visibility predicate: flagged comments only visible to their author. We have
   // no admin role yet (T24 will add it); for now: own + non-hidden.
+  //
+  // Block filter: wrap the comments query in withBlockedFilter so viewers
+  // don't see comments authored by users they've blocked (or who've blocked
+  // them). Goes through the visibility chokepoint to stay aligned with
+  // every other social read path (feed, profile, discovery).
+  const baseCommentsQuery = db
+    .select({
+      id: schema.comments.id,
+      body: schema.comments.body,
+      userId: schema.comments.userId,
+      parentId: schema.comments.parentId,
+      createdAt: schema.comments.createdAt,
+      editedAt: schema.comments.editedAt,
+      isHidden: schema.comments.isHidden,
+      authorUsername: schema.profiles.username,
+      authorDisplayName: schema.profiles.displayName,
+      authorAvatarUrl: schema.profiles.avatarUrl,
+      authorDeletedAt: schema.profiles.deletedAt,
+    })
+    .from(schema.comments)
+    // leftJoin so comments from soft-deleted authors still appear (body stays
+    // visible); the authorDeletedAt field drives the "[deleted user]" mask below.
+    .leftJoin(schema.profiles, eq(schema.profiles.userId, schema.comments.userId))
+    .where(
+      and(
+        eq(schema.comments.reviewId, review.id),
+        viewer
+          ? or(eq(schema.comments.isHidden, false), eq(schema.comments.userId, viewer.id))
+          : eq(schema.comments.isHidden, false),
+      ),
+    )
+    .$dynamic();
+
+  const commentsQuery = withBlockedFilter(
+    viewer?.id ?? null,
+    baseCommentsQuery,
+    schema.comments.userId,
+  ).orderBy(schema.comments.createdAt);
+
   const [countResult, viewerLikedRow, commentRows] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
@@ -114,33 +154,7 @@ export default async function CanonicalReviewPage({ params }: Props) {
           columns: { reviewId: true },
         })
       : Promise.resolve(undefined),
-    db
-      .select({
-        id: schema.comments.id,
-        body: schema.comments.body,
-        userId: schema.comments.userId,
-        parentId: schema.comments.parentId,
-        createdAt: schema.comments.createdAt,
-        editedAt: schema.comments.editedAt,
-        isHidden: schema.comments.isHidden,
-        authorUsername: schema.profiles.username,
-        authorDisplayName: schema.profiles.displayName,
-        authorAvatarUrl: schema.profiles.avatarUrl,
-        authorDeletedAt: schema.profiles.deletedAt,
-      })
-      .from(schema.comments)
-      // leftJoin so comments from soft-deleted authors still appear (body stays
-      // visible); the authorDeletedAt field drives the "[deleted user]" mask below.
-      .leftJoin(schema.profiles, eq(schema.profiles.userId, schema.comments.userId))
-      .where(
-        and(
-          eq(schema.comments.reviewId, review.id),
-          viewer
-            ? or(eq(schema.comments.isHidden, false), eq(schema.comments.userId, viewer.id))
-            : eq(schema.comments.isHidden, false),
-        ),
-      )
-      .orderBy(schema.comments.createdAt),
+    commentsQuery,
   ]);
   const count = countResult[0]?.count ?? 0;
   const viewerLiked = Boolean(viewerLikedRow);
