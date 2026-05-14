@@ -2,10 +2,10 @@ import "server-only";
 import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { db, schema } from "@/lib/db";
+import type { LogStatus } from "@/lib/db/schema-types";
 import { LOG_GAME_SELECT } from "@/lib/logs/select";
 import {
   type LibraryItem,
-  computeUserStatsFromLibrary,
   mapRowToLibraryItem,
   type UserStats,
 } from "@/lib/logs/library-item";
@@ -83,9 +83,23 @@ export async function getProfileSummary(
     if (await isBlockedBetween(viewerId, profile.userId)) return null;
   }
 
-  // 8 parallel fetches — none depend on each other's results.
+  // Visibility scope shared by both library queries below: own profile sees
+  // everything; non-owner sees only is_private=false rows.
+  const visibilityWhere = and(
+    eq(logs.userId, profile.userId),
+    isOwner ? undefined : eq(logs.isPrivate, false),
+  );
+
+  // 9 parallel fetches — none depend on each other's results.
+  //
+  // T13 (2026-05-14): split the old single "load every log + game join"
+  // query into two bounded queries:
+  //   1. Stats via SQL aggregates (count + count(*) FILTER per status + avg).
+  //   2. libraryTruncated via LIMIT 12 (top-12 covers shown on the profile).
+  // Pre-T13 a 1000-log user shipped 1000 cover URLs over the wire to render 12.
   const [
-    rawLogs,
+    rawStats,
+    rawLibrary,
     rawReviews,
     rawTopLists,
     rawFingerprint,
@@ -94,22 +108,33 @@ export async function getProfileSummary(
     rawIsFollowing,
     rawConnections,
   ] = await Promise.all([
-    // Library — own profile sees everything, public sees non-private. NOTE: no
-    // .limit() here on purpose: computeUserStatsFromLibrary needs the full set
-    // to compute totals/averages. libraryTruncated slices to 12 below, but the
-    // full array stays in scope only inside this function. If stats ever moves
-    // to SQL aggregates, this fetch should gain a LIMIT.
+    // Stats aggregate — single row, no row hydration. PG `avg()` ignores NULL
+    // ratings natively, so unrated logs don't drag the mean toward zero.
+    // Casts return strings/numbers depending on the column; coerce below.
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        backlog: sql<number>`count(*) FILTER (WHERE ${logs.status} = 'backlog')::int`,
+        playing: sql<number>`count(*) FILTER (WHERE ${logs.status} = 'playing')::int`,
+        completed: sql<number>`count(*) FILTER (WHERE ${logs.status} = 'completed')::int`,
+        dropped: sql<number>`count(*) FILTER (WHERE ${logs.status} = 'dropped')::int`,
+        on_hold: sql<number>`count(*) FILTER (WHERE ${logs.status} = 'on_hold')::int`,
+        wishlist: sql<number>`count(*) FILTER (WHERE ${logs.status} = 'wishlist')::int`,
+        // numeric returns as string from postgres-js; coerce below.
+        averageRating: sql<string | null>`avg(${logs.rating})`,
+      })
+      .from(logs)
+      .where(visibilityWhere),
+
+    // Library top-12 (the most-recently-updated covers shown on the profile).
+    // Ordered by updated_at DESC so it matches what the user just touched.
     db
       .select(LOG_GAME_SELECT)
       .from(logs)
       .innerJoin(schema.games, eq(logs.gameId, schema.games.id))
-      .where(
-        and(
-          eq(logs.userId, profile.userId),
-          isOwner ? undefined : eq(logs.isPrivate, false),
-        ),
-      )
-      .orderBy(desc(logs.updatedAt)),
+      .where(visibilityWhere)
+      .orderBy(desc(logs.updatedAt))
+      .limit(12),
 
     // Recent reviews (top 3, must be published + public unless owner).
     db
@@ -204,10 +229,32 @@ export async function getProfileSummary(
       .orderBy(platformConnections.platform),
   ]);
 
-  const allLibrary: LibraryItem[] = rawLogs.map((r) =>
+  const libraryTruncated: LibraryItem[] = rawLibrary.map((r) =>
     mapRowToLibraryItem(r.log, r.game),
   );
-  const stats = computeUserStatsFromLibrary(allLibrary);
+
+  // Aggregate row is always present — count(*) returns 0 for an empty table
+  // rather than no row at all. Defensive `?? 0` for safety.
+  const aggregateRow = rawStats[0];
+  const byStatus: Record<LogStatus, number> = {
+    backlog: aggregateRow?.backlog ?? 0,
+    playing: aggregateRow?.playing ?? 0,
+    completed: aggregateRow?.completed ?? 0,
+    dropped: aggregateRow?.dropped ?? 0,
+    on_hold: aggregateRow?.on_hold ?? 0,
+    wishlist: aggregateRow?.wishlist ?? 0,
+  };
+  // Mirror computeUserStatsFromLibrary's rounding: 1 decimal place. PG `avg()`
+  // returns a high-precision numeric string (e.g. "8.4285714285714286"); we
+  // coerce → number → round. Null when no rated logs (avg returns null).
+  const avgRaw = aggregateRow?.averageRating;
+  const averageRating =
+    avgRaw == null ? null : Math.round(Number(avgRaw) * 10) / 10;
+  const stats: UserStats = {
+    total: aggregateRow?.total ?? 0,
+    byStatus,
+    averageRating,
+  };
 
   return {
     profile,
@@ -220,7 +267,7 @@ export async function getProfileSummary(
       : null,
     topLists: rawTopLists,
     recentReviews: rawReviews,
-    libraryTruncated: allLibrary.slice(0, 12),
+    libraryTruncated,
     connections: rawConnections,
     isOwner,
     isFollowing: Boolean(rawIsFollowing),
