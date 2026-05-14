@@ -13,7 +13,8 @@ export type ResolvedRow = {
   steamAppid: number | null; // unchanged from input, OR newly discovered via external_games
 };
 
-const NAME_FALLBACK_CONCURRENCY = 4;
+const NAME_FALLBACK_CONCURRENCY = 2;
+const WAVE_INTERVAL_MS = 1000;
 
 /**
  * Resolve a batch of RAWG-ids to IGDB-ids.
@@ -23,13 +24,14 @@ const NAME_FALLBACK_CONCURRENCY = 4;
  *   matching `uid` (Steam appid).
  *
  * Bucket B: games with no steamAppid → per-game POST to /games with a
- *   name + first_release_date window match. Limited to
- *   NAME_FALLBACK_CONCURRENCY in-flight requests per wave. Note: this
- *   limits peak concurrency, NOT requests-per-second — a wave of 4 short
- *   requests could fire well over IGDB's 4 req/sec sustained cap. This
- *   is acceptable here because Bucket B typically has <500 games over the
- *   entire backfill (Bucket A resolves ~95%), making burst duration
- *   short. If Bucket B grows, replace with a token-bucket limiter.
+ *   name + first_release_date window match. Throttled to
+ *   NAME_FALLBACK_CONCURRENCY in-flight per wave + WAVE_INTERVAL_MS
+ *   delay between waves. With concurrency=2 + 1s wave gap, the effective
+ *   rate is ~2 RPS which sits well under IGDB's 4 RPS sustained cap and
+ *   leaves headroom for the surrounding Bucket A + facets calls in the
+ *   backfill loop. Earlier values (concurrency=4, no inter-wave delay)
+ *   triggered IGDB 429 cascades on the first batch — see
+ *   memory/igdb_rate_limit_2026_05_14.md for the postmortem.
  *
  * Returns a Map<rawgId, ResolvedRow>; every input id appears in the map.
  */
@@ -86,6 +88,12 @@ export async function resolveIgdbIds(
       // loop at the top of resolveIgdbIds.
       const existing = result.get(r.id)!;
       result.set(r.id, { igdbId: r.igdbId, steamAppid: existing.steamAppid });
+    }
+    // Pace waves so the effective Bucket B rate stays under 4 RPS, leaving
+    // headroom for the caller's Bucket A + facets calls. Skip the wait on
+    // the last wave (no follow-up request from this function).
+    if (i + NAME_FALLBACK_CONCURRENCY < fallbackGames.length) {
+      await new Promise((resolve) => setTimeout(resolve, WAVE_INTERVAL_MS));
     }
   }
 
