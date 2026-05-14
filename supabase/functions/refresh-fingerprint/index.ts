@@ -120,7 +120,13 @@ Deno.serve(async (req) => {
       LIMIT 3
     `;
 
-    // 4. Call AI router.
+    // 4. Call AI router. Wrapped in try/catch so a router throw
+    //    (AIProvidersExhaustedError when no provider is configured, or
+    //    when all providers are temporarily down) degrades to a
+    //    vector-only persist instead of returning 500. The vector-only
+    //    path below is identical to the AI-rejected-output handling, so
+    //    the user still gets a usable taste_fingerprints row that
+    //    candidatePool / rerank-recs can read.
     const { system, user } = buildNarrativePrompt({
       vectors: { genre: agg.genre, theme: agg.theme, mechanic: agg.mechanic, game_mode: agg.game_mode, player_perspective: agg.player_perspective },
       lengthPreference: agg.length_preference,
@@ -130,15 +136,56 @@ Deno.serve(async (req) => {
       totalLogs: rows.length,
     });
 
-    const result = await callRouter({
-      feature: "fingerprint",
-      system,
-      user,
-      maxTokens: 200,
-      // Telemetry parity with the Next-side router — writes to ai_calls
-      // so this Edge function's cost shows up on the same dashboard.
-      telemetry: { sql, userId },
-    });
+    let result: Awaited<ReturnType<typeof callRouter>>;
+    try {
+      result = await callRouter({
+        feature: "fingerprint",
+        system,
+        user,
+        maxTokens: 200,
+        // Telemetry parity with the Next-side router — writes to ai_calls
+        // so this Edge function's cost shows up on the same dashboard.
+        telemetry: { sql, userId },
+      });
+    } catch (err) {
+      console.warn(
+        `refresh-fingerprint: AI router failed, persisting vectors only: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      // Same vector-only persist as the length-rejected branch below —
+      // do NOT touch narrative_summary / narrative_snapshot_vectors /
+      // narrative_generated_at columns. Existing narrative (if any) is
+      // preserved; the daily drift cron remains the path that decides
+      // when to re-narrate.
+      await sql`
+        INSERT INTO taste_fingerprints (
+          user_id, genre_vector, theme_vector, mechanic_vector,
+          length_preference, total_logs_at_generation, vectors_generated_at
+        ) VALUES (
+          ${userId},
+          ${sql.json(agg.genre)},
+          ${sql.json(agg.theme)},
+          ${sql.json(agg.mechanic)},
+          ${sql.json(agg.length_preference)},
+          ${agg.total_logs_at_generation},
+          NOW()
+        )
+        ON CONFLICT (user_id) DO UPDATE SET
+          genre_vector = EXCLUDED.genre_vector,
+          theme_vector = EXCLUDED.theme_vector,
+          mechanic_vector = EXCLUDED.mechanic_vector,
+          length_preference = EXCLUDED.length_preference,
+          total_logs_at_generation = EXCLUDED.total_logs_at_generation,
+          vectors_generated_at = NOW()
+      `;
+      return Response.json({
+        tier,
+        narrative: null,
+        skipped: "ai-router-failed",
+        reason: reason ?? "manual",
+      });
+    }
 
     // Length sanity check — guard against AI failure modes that produce
     // empty/truncated/run-on output. callRouter already rejects empty strings;
