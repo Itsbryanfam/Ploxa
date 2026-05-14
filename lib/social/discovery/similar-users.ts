@@ -12,6 +12,16 @@ export type SimilarUser = {
   profilePictureUrl: string | null;
   tierLogCount: number;
   similarity: number;
+  /**
+   * True when the viewer already follows this candidate. Powers the
+   * Follow/Following CTA on /discover/people so the button reflects real
+   * state on first paint instead of always reading "Follow" and only
+   * correcting after a click + roundtrip.
+   *
+   * Computed via a single batched lookup against `follows` after the
+   * candidate set is known — see `getSimilarUsers` for the shape.
+   */
+  viewerFollows: boolean;
 };
 
 /**
@@ -26,18 +36,24 @@ export type SimilarUser = {
  *    with at least 10 logs (`total_logs_at_generation >= 10`, i.e., at or above
  *    the "sparse" tier boundary). The pool is ordered by `vectors_generated_at
  *    DESC` so the freshest taste data is selected first under the 500-row cap.
- * 3. Exclude at the SQL level: the viewer themselves, profiles the viewer
- *    already follows, and any mutual block edge (viewer→candidate OR
- *    candidate→viewer).
+ * 3. Exclude at the SQL level: the viewer themselves and any mutual block
+ *    edge (viewer→candidate OR candidate→viewer). Already-followed users
+ *    are NOT excluded — the row carries a `viewerFollows` flag so the
+ *    Follow/Following CTA renders honestly on first paint, and high-overlap
+ *    accounts you already follow stay visible (useful for confirming taste
+ *    matches and surfacing them in "people like you" contexts).
  * 4. Score each candidate as `1 - drift(viewerBundle, candidateBundle)`.
  *    `drift()` returns the max cosine distance across the three vector fields
  *    (genre, theme, mechanic), so `1 - drift` is effectively the min cosine
  *    similarity across all three — a conservative "at least this similar"
  *    measure.
- * 5. Sort descending by similarity score and return the top `limit` entries.
+ * 5. Sort descending by similarity score and slice to the top `limit`
+ *    entries; then issue ONE batched `SELECT followed_id FROM follows`
+ *    against the surviving candidate IDs and stamp `viewerFollows` per row.
  *
- * No cache: the candidate set is viewer-specific (follow/block exclusion varies
- * per viewer) and the drift math is O(500 × 3 vectors) — roughly 1 500 sparse
+ * No cache: the candidate set is viewer-specific (block exclusion varies
+ * per viewer, and the viewerFollows stamp depends on the live follows
+ * table) and the drift math is O(500 × 3 vectors) — roughly 1 500 sparse
  * dot-products. This is fast enough for on-demand compute and the viewer's
  * social graph changes too frequently to make a 30-minute cache correct.
  *
@@ -81,7 +97,9 @@ export async function getSimilarUsers(
   if (!fp || tierForUser(fp.total_logs_at_generation) === "empty") return [];
 
   // Step 2-3: Candidate pool — public profiles with >= 10 logs, not self,
-  // not already followed, and no block edge in either direction.
+  // and no block edge in either direction. Already-followed users stay in
+  // the pool so the Follow/Following CTA can render with the correct label
+  // on first paint (see step 6 below for the batched viewerFollows lookup).
   const rawCandidates = await db.execute<{
     user_id: string;
     username: string;
@@ -101,9 +119,6 @@ export async function getSimilarUsers(
       AND p.deleted_at IS NULL
       AND tf.user_id != ${viewerId}
       AND tf.total_logs_at_generation >= 10
-      AND NOT EXISTS (
-        SELECT 1 FROM follows WHERE follower_id = ${viewerId} AND followed_id = tf.user_id
-      )
       AND NOT EXISTS (
         SELECT 1 FROM blocks WHERE
           (blocker_id = ${viewerId} AND blocked_id = tf.user_id) OR
@@ -130,21 +145,42 @@ export async function getSimilarUsers(
   }>;
 
   // Steps 4-5: Score by 1 - drift, sort descending, slice to limit.
-  const scored = candidates.map((c) => ({
-    userId: c.user_id,
-    username: c.username,
-    displayName: c.display_name,
-    profilePictureUrl: c.profile_picture_url,
-    tierLogCount: c.total_logs_at_generation,
-    similarity: Math.max(
-      0,
-      1 -
-        drift(
-          { genre: fp.genre_vector, theme: fp.theme_vector, mechanic: fp.mechanic_vector, gameMode: {}, playerPerspective: {} },
-          { genre: c.genre_vector, theme: c.theme_vector, mechanic: c.mechanic_vector, gameMode: {}, playerPerspective: {} },
-        ),
-    ),
-  }));
+  const scored = candidates
+    .map((c) => ({
+      userId: c.user_id,
+      username: c.username,
+      displayName: c.display_name,
+      profilePictureUrl: c.profile_picture_url,
+      tierLogCount: c.total_logs_at_generation,
+      similarity: Math.max(
+        0,
+        1 -
+          drift(
+            { genre: fp.genre_vector, theme: fp.theme_vector, mechanic: fp.mechanic_vector, gameMode: {}, playerPerspective: {} },
+            { genre: c.genre_vector, theme: c.theme_vector, mechanic: c.mechanic_vector, gameMode: {}, playerPerspective: {} },
+          ),
+      ),
+    }))
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit);
 
-  return scored.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
+  // Step 6: Batched viewerFollows lookup. One round-trip against `follows`
+  // for the surviving (top-`limit`) candidates only — N is bounded by the
+  // page-level limit (24 on /discover/people, 4 on /discover), so the
+  // ANY($candidate_ids) array is small even for the heaviest caller.
+  // Skip the query entirely when no candidates survived to keep the empty
+  // path roundtrip-free.
+  if (scored.length === 0) return [];
+
+  const candidateIds = scored.map((c) => c.userId);
+  const rawFollows = await db.execute<{ followed_id: string }>(sql`
+    SELECT followed_id
+    FROM follows
+    WHERE follower_id = ${viewerId}
+      AND followed_id = ANY(${candidateIds}::uuid[])
+  `);
+  const followedRows = rawFollows as unknown as Array<{ followed_id: string }>;
+  const followedSet = new Set(followedRows.map((r) => r.followed_id));
+
+  return scored.map((c) => ({ ...c, viewerFollows: followedSet.has(c.userId) }));
 }

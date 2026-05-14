@@ -59,7 +59,10 @@ export function SimilarUsersRow({ users }: { users: SimilarUser[] }) {
                 )}
               </div>
             </Link>
-            <FollowButton targetUserId={u.userId} initialIsFollowing={false} />
+            <FollowButton
+              targetUserId={u.userId}
+              initialIsFollowing={u.viewerFollows}
+            />
           </li>
         );
       })}
