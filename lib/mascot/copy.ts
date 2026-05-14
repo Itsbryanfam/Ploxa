@@ -163,18 +163,6 @@ const COPY: Record<MascotScenario, string[]> = {
     "Nothing here. Either a broken link or a fever dream.",
     "Page not found. The backlog knows the feeling.",
   ],
-  "error.500": [
-    "Something broke. Not your fault. Probably.",
-    "500. Refresh, maybe?",
-    "The server's having a moment. Give it a sec.",
-    "Internal error. Classic.",
-  ],
-  "error.rate-limited": [
-    "RAWG is napping. Try in a minute.",
-    "Slow down — we're rate-limited.",
-    "Too many requests. Take a breath.",
-    "Rate-limited. Even the API needs a break.",
-  ],
 };
 
 /** Deterministic hash so the same scenario picks the same variant within a day. */

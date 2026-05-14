@@ -12,7 +12,9 @@ export type MascotScenario =
   | "log.success.wishlist"
   | "log.success.dropped"
   | "log.success.on_hold"
-  // Empty states
+  // Empty states — keyed by `library.empty.${filter}` where filter is
+  // LogStatus | "all"; library-list/library-shelf compute the key at
+  // runtime, so every LogStatus value must have a matching scenario.
   | "library.empty.all"
   | "library.empty.playing"
   | "library.empty.completed"
@@ -28,6 +30,4 @@ export type MascotScenario =
   | "dashboard.greeting.long-absence"
   | "dashboard.greeting.actively-playing"
   // Errors
-  | "error.404"
-  | "error.500"
-  | "error.rate-limited";
+  | "error.404";

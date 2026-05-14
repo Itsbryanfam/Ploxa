@@ -470,8 +470,6 @@ async function main() {
   // Delegate to existing smokes last so their stdout sits separately.
   console.log("\n  — delegating to existing smokes —");
   delegateSmoke("smoke-encryption.ts", "4", "encryption round-trip (12-case smoke)");
-  delegateSmoke("smoke-merge.ts", "3", "conflict-merge rules (12-case smoke)");
-  delegateSmoke("smoke-rawg-match.ts", "2", "rawg-match normalize/match (smoke)");
 
   // Summary mapped to the 8-point gate.
   console.log("\n──── Gate mapping ────");

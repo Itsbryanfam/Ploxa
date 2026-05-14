@@ -6,7 +6,6 @@ import { z } from "zod";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { slugifyTitle, uniqueSlugForUser } from "./slug";
-import { onListPublish } from "./triggers";
 
 const { lists, listItems, profiles } = schema;
 
@@ -140,7 +139,10 @@ export async function publishList(listId: string): Promise<{ ok: boolean }> {
     .set({ publishedAt: new Date() })
     .where(eq(lists.id, listId));
 
-  await onListPublish({ listId, authorId: user.id });
+  // List publishes are surfaced via the feed query in lib/social/feed/queries.ts
+  // which already SELECTs from lists WHERE published_at IS NOT NULL — no
+  // extra trigger needed. If Phase 6+ adds side effects here (e.g. notify
+  // followers who wishlisted a game on the list), reintroduce a helper.
 
   // Revalidate canonical list views. Username-keyed, not userId-keyed —
   // routes are /u/{username}/lists/{slug}.

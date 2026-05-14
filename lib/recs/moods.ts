@@ -13,13 +13,19 @@ export type Mood = (typeof MOODS)[number];
 export const TIMES = ["15min", "1hr", "3hr+", "multi-session"] as const;
 export type TimeBudget = (typeof TIMES)[number];
 
-/** Multi-select up to 2 — see Q7 in the spec. */
+/**
+ * Multi-select up to 2 — see Q7 in the spec.
+ *
+ * Exported (rather than internalized like the sibling sub-schemas) because
+ * scripts/verify-phase-4.ts asserts the 2-mood cap directly against this
+ * schema as part of the Phase 4 gate.
+ */
 export const moodArraySchema = z
   .array(z.enum(MOODS))
   .min(1, "pick at least one mood")
   .max(2, "pick up to two moods");
 
-export const timeSchema = z.enum(TIMES);
+const timeSchema = z.enum(TIMES);
 
 /**
  * Platform values mirror the platform_kind pgEnum from Phase 0. Sourced from
@@ -27,7 +33,7 @@ export const timeSchema = z.enum(TIMES);
  * (e.g. adding "nintendo"). Drizzle's enumValues is typed as a readonly
  * tuple literal, which Zod 4's `z.enum` accepts directly.
  */
-export const platformArraySchema = z
+const platformArraySchema = z
   .array(z.enum(platformEnum.enumValues))
   .min(1, "pick at least one platform");
 

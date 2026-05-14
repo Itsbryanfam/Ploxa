@@ -8,7 +8,6 @@ interface MascotStore {
   state: MascotState;
   setMood: (mood: MascotMood, opts?: { message?: string; durationMs?: number }) => void;
   celebrate: (message?: string) => void;
-  reset: () => void;
 }
 
 export const useMascotStore = create<MascotStore>((set, get) => {
@@ -30,12 +29,5 @@ export const useMascotStore = create<MascotStore>((set, get) => {
       }
     },
     celebrate: (message) => get().setMood("celebrating", { message, durationMs: 1500 }),
-    reset: () => {
-      if (revertTimer) {
-        clearTimeout(revertTimer);
-        revertTimer = null;
-      }
-      set({ state: DEFAULT_MASCOT_STATE });
-    },
   };
 });

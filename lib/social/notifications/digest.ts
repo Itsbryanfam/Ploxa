@@ -63,11 +63,8 @@ type CommentItem = DigestPayload["comments"][number] & { targetId: string };
  * gate on `emailComments`. Unknown types fall through (include rather than
  * silently drop — safer default for future notification types added before
  * this map updates).
- *
- * Exported so future consumers (in-app inbox filters, settings UI, etc.)
- * can reuse the same mapping without duplicating it.
  */
-export const NOTIF_TYPE_TO_PREF: Record<
+const NOTIF_TYPE_TO_PREF: Record<
   string,
   "emailFollows" | "emailReactions" | "emailComments" | "emailWishlist"
 > = {
