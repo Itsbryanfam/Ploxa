@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { relativeTime } from "@/lib/utils";
 import type { FeedRow } from "@/lib/social/feed/queries";
@@ -31,13 +32,13 @@ export function FeedItemReview(props: {
       )}
       <div className="flex-1 min-w-0">
         <p className="text-sm">
-          <a href={`/u/${props.actor.username}`} className="font-medium hover:underline">
+          <Link href={`/u/${props.actor.username}`} className="font-medium hover:underline">
             @{props.actor.username}
-          </a>{" "}
+          </Link>{" "}
           reviewed{" "}
-          <a href={`/u/${props.actor.username}/reviews/${props.game.slug}`} className="hover:underline font-medium">
+          <Link href={`/u/${props.actor.username}/reviews/${props.game.slug}`} className="hover:underline font-medium">
             {props.game.title}
-          </a>
+          </Link>
         </p>
         {hook && <p className="text-sm text-[var(--text-dim)] line-clamp-2 mt-2">{hook}</p>}
         <p className="text-xs text-[var(--text-dim)] mt-2">{relativeTime(props.item.eventAt)}</p>

@@ -82,7 +82,7 @@ export default async function HomePage() {
 
       <footer className="border-t border-[var(--border-soft)]">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 text-xs text-[var(--text-faint)]">
-          <span>Phase 0 · Foundation · v0.1.0</span>
+          <span>Made with care for people who love games.</span>
           <span className="font-mono">▓▓▓▓▓▓▓▓▓▓</span>
         </div>
       </footer>

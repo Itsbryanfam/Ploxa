@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { FeedRow } from "@/lib/social/feed/queries";
 import { FeedItemLog } from "./feed-item-log";
 import { FeedItemReview } from "./feed-item-review";
@@ -39,12 +41,12 @@ export function FeedList(props: {
 
       {props.nextCursor && (
         <div className="text-center pt-6">
-          <a
+          <Link
             href={`/home/feed?cursor=${encodeURIComponent(props.nextCursor)}`}
             className="inline-block px-4 py-2 text-sm rounded-md border border-[var(--border)] hover:border-[var(--border-hover)]"
           >
             Load more
-          </a>
+          </Link>
         </div>
       )}
     </div>

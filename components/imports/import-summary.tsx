@@ -176,7 +176,7 @@ export function ImportSummary({ importId, platform, mergedCovers = [], newCovers
           <ul className="text-xs space-y-1">
             {data.unmatched.slice(0, 20).map((u) => <li key={u.externalId}>{u.title}</li>)}
           </ul>
-          <a href="#" className="text-xs text-[var(--accent)] mt-2 inline-block opacity-60 cursor-not-allowed">Help us match these → (Phase 4)</a>
+          <p className="text-xs text-[var(--text-muted)] mt-2">We couldn&apos;t match these to our catalog yet.</p>
         </section>
       )}
 

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Mascot } from "@/components/mascot/mascot";
 
 export function FeedEmptyState(props: { mode: "no-followees" | "no-events" | "no-more" }) {
@@ -29,12 +31,12 @@ export function FeedEmptyState(props: { mode: "no-followees" | "no-events" | "no
       <p className="mt-2 text-sm text-[var(--text-dim)] max-w-md mx-auto">
         Follow people whose taste overlaps with yours to see their reviews, logs, and lists here.
       </p>
-      <a
+      <Link
         href="/discover/people"
         className="mt-6 inline-block px-4 py-2 text-sm rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90"
       >
         Find people to follow &rarr;
-      </a>
+      </Link>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getCachedUser } from "@/lib/supabase/auth-cache";
@@ -69,12 +70,12 @@ export default async function ConnectionsSettingsPage() {
                 key={row.id}
                 className="flex gap-2 items-center py-1 border-b border-[var(--border)]/40"
               >
-                <a
+                <Link
                   href={`/library/import/${row.id}`}
                   className="text-[var(--accent)] hover:underline"
                 >
                   {row.platform}
-                </a>
+                </Link>
                 <span>·</span>
                 <span>{row.status}</span>
                 <span>·</span>

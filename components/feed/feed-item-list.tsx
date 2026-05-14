@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { relativeTime } from "@/lib/utils";
 import type { FeedRow } from "@/lib/social/feed/queries";
 
@@ -30,13 +32,13 @@ export function FeedItemList(props: {
       )}
       <div className="flex-1 min-w-0">
         <p className="text-sm">
-          <a href={`/u/${props.actor.username}`} className="font-medium hover:underline">
+          <Link href={`/u/${props.actor.username}`} className="font-medium hover:underline">
             @{props.actor.username}
-          </a>{" "}
+          </Link>{" "}
           published a list:{" "}
-          <a href={`/u/${props.actor.username}/lists/${slug}`} className="hover:underline font-medium">
+          <Link href={`/u/${props.actor.username}/lists/${slug}`} className="hover:underline font-medium">
             {title}
-          </a>
+          </Link>
         </p>
         {description && <p className="text-sm text-[var(--text-dim)] line-clamp-2 mt-2">{description}</p>}
         <p className="text-xs text-[var(--text-dim)] mt-2">{relativeTime(props.item.eventAt)}</p>
