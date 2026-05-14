@@ -109,18 +109,19 @@ describe("exportUserData shape", () => {
 
 // ---------------------------------------------------------------------------
 // Test 2: PII redaction — comments_received strips all commenter metadata
-//         except { user_id, display_name }
+//         (including the commenter's internal user_id UUID) and keeps only
+//         presentational fields { username, display_name }.
 // ---------------------------------------------------------------------------
 
 describe("exportUserData PII redaction", () => {
-  it("strips authorEmail and authorIp from comments_received", async () => {
+  it("strips authorEmail, authorIp, and authorUserId from comments_received", async () => {
     // Simulate a row returned by the .select().from().innerJoin().where() chain.
     // The raw DB row has commenter PII fields that must NOT appear in the export.
     selectChainMock.mockResolvedValue([
       {
         id: "c-1",
         body: "Nice review!",
-        authorUserId: "other-user",
+        authorUserId: "11111111-2222-3333-4444-555555555555",
         authorDisplayName: "Bob",
         authorUsername: "bob",
         // PII fields — these must be scrubbed by the serializer
@@ -140,13 +141,56 @@ describe("exportUserData PII redaction", () => {
     expect(serialized).not.toContain("bob@example.com");
     expect(serialized).not.toContain("authorIp");
     expect(serialized).not.toContain("1.2.3.4");
+    // The commenter's UUID must NOT leak — it enables enumeration of valid
+    // target user IDs against server actions like getFingerprint / ensureLog.
+    expect(serialized).not.toContain("11111111-2222-3333-4444-555555555555");
+    expect(serialized).not.toContain("authorUserId");
+    expect(serialized).not.toContain("user_id");
 
     // The kept fields ARE present
     expect(result.comments_received[0]).toMatchObject({
       id: "c-1",
       body: "Nice review!",
-      author: { user_id: "other-user", display_name: "Bob" },
+      author: { username: "bob", display_name: "Bob" },
     });
+    // And the author object contains ONLY username + display_name (no user_id)
+    expect(Object.keys(result.comments_received[0]!.author).sort()).toEqual([
+      "display_name",
+      "username",
+    ]);
+  });
+
+  it("never includes any UUID-shaped string in author for any received comment", async () => {
+    // Belt-and-suspenders: regardless of how many commenters reply, none of
+    // their internal user IDs should appear anywhere in the author payload.
+    const uuidRegex =
+      /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+
+    selectChainMock.mockResolvedValue([
+      {
+        id: "c-1",
+        body: "first",
+        authorUserId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        authorDisplayName: "Alice",
+        authorUsername: "alice",
+      },
+      {
+        id: "c-2",
+        body: "second",
+        authorUserId: "11111111-2222-3333-4444-555555555555",
+        authorDisplayName: null,
+        authorUsername: "charlie",
+      },
+    ]);
+    findManyReviewsMock.mockResolvedValue([{ id: "r-1", userId: "user-1" }]);
+
+    const { exportUserData } = await import("@/lib/settings/data-export");
+    const result = await exportUserData("user-1");
+
+    for (const c of result.comments_received) {
+      const authorJson = JSON.stringify(c.author);
+      expect(authorJson).not.toMatch(uuidRegex);
+    }
   });
 
   it("falls back to username when display_name is null", async () => {

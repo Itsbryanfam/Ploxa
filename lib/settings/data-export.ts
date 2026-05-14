@@ -11,7 +11,7 @@ export type DataExport = {
   comments_received: Array<{
     id: string;
     body: string;
-    author: { user_id: string; display_name: string };
+    author: { username: string; display_name: string };
   }>;
   notifications: unknown[];
 };
@@ -73,11 +73,13 @@ export async function exportUserData(userId: string): Promise<DataExport> {
           )
       : [];
 
-  // PII redaction: keep only { user_id, display_name }. Strip everything else
-  // — emails, IPs, timestamps, and any other commenter metadata never leave
-  // the DB. Display name falls back to username if the commenter never set
-  // a display name; username is presentational and appears anywhere their
-  // public profile does.
+  // PII redaction: keep only the commenter's PRESENTATIONAL identifiers
+  // (username + display_name), which are already public via their profile URL.
+  // The internal user_id (UUID) is NEVER included — exposing it would let
+  // an export download enumerate valid target UUIDs against authenticated
+  // server actions (e.g., getFingerprint / ensureLog). Emails, IPs, and any
+  // other commenter metadata also never leave the DB. Display name falls
+  // back to username if the commenter never set a display name.
   const commentsReceived: DataExport["comments_received"] = (
     commentsReceivedRaw as Array<{
       id: string;
@@ -90,7 +92,7 @@ export async function exportUserData(userId: string): Promise<DataExport> {
     id: c.id,
     body: c.body,
     author: {
-      user_id: c.authorUserId,
+      username: c.authorUsername,
       display_name: c.authorDisplayName ?? c.authorUsername,
     },
   }));

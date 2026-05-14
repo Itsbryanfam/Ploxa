@@ -47,7 +47,7 @@ export function Avatar({ user, size, className }: AvatarProps) {
       // eslint-disable-next-line @next/next/no-img-element -- see comment above
       <img
         src={user.profilePictureUrl}
-        alt={user.username ?? user.email}
+        alt={user.username ?? "User"}
         width={px}
         height={px}
         className={cn("rounded-full object-cover", className)}
@@ -77,7 +77,7 @@ export function Avatar({ user, size, className }: AvatarProps) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
-          alt={user.username ?? user.email}
+          alt={user.username ?? "User"}
           width={px}
           height={px}
           className={cn(
@@ -97,12 +97,16 @@ export function Avatar({ user, size, className }: AvatarProps) {
   }
 
   // Initials fallback: 1 character in a colored circle.
-  const initial = (user.username ?? user.email).charAt(0).toUpperCase();
+  // Never fall back to user.email — that leaks the email's first letter
+  // (and the full email via aria-label) to anyone inspecting the DOM,
+  // and to screen readers as a spoken character. "?" is a safe sentinel
+  // for accounts with no username yet (e.g., mid-onboarding).
+  const initial = (user.username ?? "?").charAt(0).toUpperCase();
   const bg = avatarColorFor(user.id);
   return (
     <div
       role="img"
-      aria-label={user.username ?? user.email}
+      aria-label={user.username ?? "User"}
       className={cn(
         "rounded-full flex items-center justify-center text-white font-medium select-none",
         className,
