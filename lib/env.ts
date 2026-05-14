@@ -33,6 +33,15 @@ const serverSchema = z.object({
   // long-tail fallback after Steam CDN. Free key:
   // https://www.steamgriddb.com/profile/preferences/api
   SGDB_API_KEY: optionalString,
+  // IGDB v4 API access — Twitch OAuth client-credentials flow gates the
+  // mechanics + vocab refresh paths. Register at
+  // https://dev.twitch.tv/console/apps to mint an ID + Secret. Token
+  // refresh logic in lib/igdb/twitch-oauth.ts.
+  IGDB_CLIENT_ID: optionalString,
+  IGDB_CLIENT_SECRET: optionalString,
+  // OpenAI key for scripts/backfill-mechanics-ai.ts (not in serving path).
+  // https://platform.openai.com/api-keys
+  OPENAI_API_KEY: optionalString,
   UNSUBSCRIBE_SECRET: optionalString,
   RESEND_DIGEST_FROM_ADDRESS: optionalString,
   CRON_SECRET: optionalString,
@@ -76,6 +85,9 @@ const serverEnv =
         SUPABASE_FUNCTIONS_URL: process.env.SUPABASE_FUNCTIONS_URL,
         IMPORT_ENCRYPTION_KEY: process.env.IMPORT_ENCRYPTION_KEY,
         SGDB_API_KEY: process.env.SGDB_API_KEY,
+        IGDB_CLIENT_ID: process.env.IGDB_CLIENT_ID,
+        IGDB_CLIENT_SECRET: process.env.IGDB_CLIENT_SECRET,
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY,
         UNSUBSCRIBE_SECRET: process.env.UNSUBSCRIBE_SECRET,
         RESEND_DIGEST_FROM_ADDRESS: process.env.RESEND_DIGEST_FROM_ADDRESS,
         CRON_SECRET: process.env.CRON_SECRET,

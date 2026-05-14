@@ -5,6 +5,10 @@ vi.mock("@/lib/igdb/twitch-oauth", () => ({
 }));
 
 beforeEach(() => {
+  // lib/env.ts freezes its parsed env at module-evaluation time, so the
+  // stub must be in place AND the env module must be reset before each
+  // dynamic import for requireEnv("IGDB_CLIENT_ID") to pick up the value.
+  vi.resetModules();
   vi.stubEnv("IGDB_CLIENT_ID", "test_client_id");
 });
 
@@ -42,10 +46,11 @@ describe("igdbQuery", () => {
   });
 
   it("throws IgdbApiError when IGDB_CLIENT_ID is missing", async () => {
+    // Reset modules + drop the beforeEach stub so lib/env.ts re-parses
+    // process.env with no IGDB_CLIENT_ID set. requireEnv() then throws,
+    // client.ts catches it and re-throws as IgdbApiError(0, ...).
+    vi.resetModules();
     vi.unstubAllEnvs();
-    // Works because client.ts reads process.env.IGDB_CLIENT_ID at call time,
-    // not at module evaluation time. If that read is ever moved to module
-    // scope, this test must switch to vi.resetModules() + re-import.
     const { igdbQuery, IgdbApiError } = await import("@/lib/igdb/client");
     await expect(igdbQuery("games", "")).rejects.toBeInstanceOf(IgdbApiError);
   });

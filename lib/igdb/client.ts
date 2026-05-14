@@ -1,4 +1,5 @@
 import "server-only";
+import { requireEnv } from "@/lib/env";
 import { getAppAccessToken } from "./twitch-oauth";
 
 const IGDB_BASE = "https://api.igdb.com/v4";
@@ -22,11 +23,16 @@ export class IgdbApiError extends Error {
  * shape unchanged.
  */
 export async function igdbQuery<T>(endpoint: string, body: string): Promise<T> {
-  const clientId = process.env.IGDB_CLIENT_ID;
-  if (!clientId) {
+  let clientId: string;
+  try {
+    clientId = requireEnv("IGDB_CLIENT_ID");
+  } catch {
     // status 0 = not an HTTP error; signals a configuration problem before
     // any request was made. Callers checking err.status for HTTP semantics
-    // should also handle status === 0 as a config failure.
+    // should also handle status === 0 as a config failure. We translate
+    // requireEnv()'s generic message into the IGDB-specific error shape so
+    // existing catch sites (lib/igdb/resolver, supabase/_shared/igdb-engine)
+    // continue to match on `IgdbApiError`.
     throw new IgdbApiError(0, "IGDB_CLIENT_ID env var not set");
   }
   const token = await getAppAccessToken();

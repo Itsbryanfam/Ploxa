@@ -2,6 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { appSecrets } from "@/lib/db/schema";
+import { requireEnv } from "@/lib/env";
 
 const TOKEN_KEY = "igdb_app_token";
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -38,12 +39,19 @@ export async function getAppAccessToken(): Promise<string> {
     }
   }
 
-  // Refresh from Twitch.
-  const clientId = process.env.IGDB_CLIENT_ID;
-  const clientSecret = process.env.IGDB_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
+  // Refresh from Twitch. requireEnv() throws a generic missing-var error;
+  // we wrap it in TwitchTokenUnavailableError so callers (e.g. mechanics
+  // backfill, vocab refresh) can distinguish a config gap from a transient
+  // Twitch 5xx.
+  let clientId: string;
+  let clientSecret: string;
+  try {
+    clientId = requireEnv("IGDB_CLIENT_ID");
+    clientSecret = requireEnv("IGDB_CLIENT_SECRET");
+  } catch (err) {
     throw new TwitchTokenUnavailableError(
       "IGDB_CLIENT_ID / IGDB_CLIENT_SECRET not set",
+      err,
     );
   }
 

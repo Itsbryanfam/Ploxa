@@ -28,6 +28,10 @@ vi.mock("@/lib/db", () => ({
 
 beforeEach(() => {
   dbState.clear();
+  // lib/env.ts freezes its parsed env at module-evaluation time, so the
+  // stubs must be in place AND the env module must be reset before each
+  // dynamic import for requireEnv("IGDB_CLIENT_*") to see them.
+  vi.resetModules();
   vi.stubEnv("IGDB_CLIENT_ID", "test_client_id");
   vi.stubEnv("IGDB_CLIENT_SECRET", "test_secret");
   vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
