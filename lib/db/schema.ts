@@ -146,51 +146,72 @@ export const profiles = pgTable("profiles", {
 // ─────────────────────────────────────────────────────────────
 // Games (RAWG-cached catalog)
 // ─────────────────────────────────────────────────────────────
-export const games = pgTable("games", {
-  id: integer("id").primaryKey(), // RAWG id
-  slug: varchar("slug", { length: 200 }).notNull().unique(),
-  title: text("title").notNull(),
-  released: timestamp("released", { withTimezone: false, mode: "date" }),
-  // Landscape hero art from RAWG (~16:9). Drives game-detail.tsx hero strip
-  // and remains the fallback for portrait slots when posterUrl is null.
-  coverUrl: text("cover_url"),
-  // Portrait (2:3) box art. Sourced via lib/games/poster-source.ts —
-  // Steam Storefront search → Steam CDN library_600x900_2x → SGDB (if key).
-  // Populated by scripts/backfill-posters.ts (one-time) and
-  // enrichPostersForImport (per-import). Always nullable; UI must fall
-  // back to coverUrl.
-  posterUrl: text("poster_url"),
-  posterSource: text("poster_source", { enum: ["steam", "sgdb", "rawg"] }),
-  screenshotUrls: text("screenshot_urls").array(),
-  description: text("description"),
-  genres: text("genres").array(),
-  themes: text("themes").array(),
-  mechanics: text("mechanics").array(),
-  platforms: text("platforms").array(),
-  playtimeAvgHours: numeric("playtime_avg_hours", { precision: 5, scale: 1 }),
-  metacriticScore: integer("metacritic_score"),
-  rawgRating: numeric("rawg_rating", { precision: 3, scale: 2 }),
-  cachedAt: timestamp("cached_at", { withTimezone: true }).notNull().defaultNow(),
-  // ─── IGDB integration (added 2026-05-13) ───────────────────
-  // Steam appid for the IGDB external_games bridge. Filled as a
-  // side-effect of Phase 1 backfill (read from IGDB's external_games
-  // category=1) and directly from the import externalId for new
-  // post-v11 imports. Nullable — Xbox/manual imports stay null.
-  steamAppid: integer("steam_appid"),
-  // IGDB's game_modes facet (~6 canonical values: Single player,
-  // Multiplayer, Co-operative, Split screen, MMO, Battle Royale).
-  // Separate column rather than appended to mechanics so future code
-  // can weigh modes vs mechanics differently in prompts.
-  gameModes: text("game_modes").array(),
-  // IGDB's player_perspectives facet (~7 values: First person, Third
-  // person, Bird view / Isometric, Side view, Text, Auditory, VR).
-  playerPerspectives: text("player_perspectives").array(),
-  // Cached IGDB id; null = either unresolved OR resolved-and-not-found.
-  // Disambiguate via igdbResolvedAt: null = never tried; non-null with
-  // igdbId null = AI-fallback eligible.
-  igdbId: integer("igdb_id"),
-  igdbResolvedAt: timestamp("igdb_resolved_at", { withTimezone: true }),
-});
+export const games = pgTable(
+  "games",
+  {
+    id: integer("id").primaryKey(), // RAWG id
+    slug: varchar("slug", { length: 200 }).notNull().unique(),
+    title: text("title").notNull(),
+    released: timestamp("released", { withTimezone: false, mode: "date" }),
+    // Landscape hero art from RAWG (~16:9). Drives game-detail.tsx hero strip
+    // and remains the fallback for portrait slots when posterUrl is null.
+    coverUrl: text("cover_url"),
+    // Portrait (2:3) box art. Sourced via lib/games/poster-source.ts —
+    // Steam Storefront search → Steam CDN library_600x900_2x → SGDB (if key).
+    // Populated by scripts/backfill-posters.ts (one-time) and
+    // enrichPostersForImport (per-import). Always nullable; UI must fall
+    // back to coverUrl.
+    posterUrl: text("poster_url"),
+    posterSource: text("poster_source", { enum: ["steam", "sgdb", "rawg"] }),
+    screenshotUrls: text("screenshot_urls").array(),
+    description: text("description"),
+    genres: text("genres").array(),
+    themes: text("themes").array(),
+    mechanics: text("mechanics").array(),
+    platforms: text("platforms").array(),
+    playtimeAvgHours: numeric("playtime_avg_hours", { precision: 5, scale: 1 }),
+    metacriticScore: integer("metacritic_score"),
+    rawgRating: numeric("rawg_rating", { precision: 3, scale: 2 }),
+    cachedAt: timestamp("cached_at", { withTimezone: true }).notNull().defaultNow(),
+    // ─── IGDB integration (added 2026-05-13) ───────────────────
+    // Steam appid for the IGDB external_games bridge. Filled as a
+    // side-effect of Phase 1 backfill (read from IGDB's external_games
+    // category=1) and directly from the import externalId for new
+    // post-v11 imports. Nullable — Xbox/manual imports stay null.
+    steamAppid: integer("steam_appid"),
+    // IGDB's game_modes facet (~6 canonical values: Single player,
+    // Multiplayer, Co-operative, Split screen, MMO, Battle Royale).
+    // Separate column rather than appended to mechanics so future code
+    // can weigh modes vs mechanics differently in prompts.
+    gameModes: text("game_modes").array(),
+    // IGDB's player_perspectives facet (~7 values: First person, Third
+    // person, Bird view / Isometric, Side view, Text, Auditory, VR).
+    playerPerspectives: text("player_perspectives").array(),
+    // Cached IGDB id; null = either unresolved OR resolved-and-not-found.
+    // Disambiguate via igdbResolvedAt: null = never tried; non-null with
+    // igdbId null = AI-fallback eligible.
+    igdbId: integer("igdb_id"),
+    igdbResolvedAt: timestamp("igdb_resolved_at", { withTimezone: true }),
+  },
+  (table) => ({
+    // ─── T11 (audit-fixes-2026-05-14): recs perf indexes (migration 0014) ─
+    // GIN on each array column powers the `&&` array-overlap prefilter in
+    // candidatePool. Without these the prefilter falls back to a seq scan
+    // (which is what we were trying to avoid). The DB-side migration uses
+    // CREATE INDEX CONCURRENTLY because `games` is hot — Drizzle can't emit
+    // CONCURRENTLY, so the schema declaration is informational only and the
+    // actual DDL lives in 0014_recs_perf_indexes.sql.
+    genresGinIdx: index("games_genres_gin").using("gin", table.genres),
+    themesGinIdx: index("games_themes_gin").using("gin", table.themes),
+    mechanicsGinIdx: index("games_mechanics_gin").using("gin", table.mechanics),
+    // Btree DESC for the cold-start popularity fallback. NULLS LAST in the
+    // SQL matches the `ORDER BY rawg_rating DESC NULLS LAST` query shape;
+    // Drizzle's `.desc()` doesn't expose nulls ordering directly, but PG's
+    // default for `desc()` is NULLS FIRST, so the migration spells out
+    // NULLS LAST explicitly. The schema-level decl is for inventory only.
+    rawgRatingDescIdx: index("games_rawg_rating_desc").on(desc(table.rawgRating)),
+  }),
+);
 
 export const gameAliases = pgTable(
   "game_aliases",
