@@ -180,42 +180,7 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
     cached.length >= 4 && cached.every((c) => c.generatedAt > vectorsAt);
 
   if (cacheStillFresh) {
-    const gameIds = [...new Set(cached.map((c) => c.gameId))];
-    const gameRows = await db
-      .select({
-        id: games.id,
-        slug: games.slug,
-        title: games.title,
-        released: games.released,
-        posterUrl: games.posterUrl,
-        coverUrl: games.coverUrl,
-        platforms: games.platforms,
-      })
-      .from(games)
-      .where(inArray(games.id, gameIds));
-    const gameById = new Map(gameRows.map((g) => [g.id, g]));
-    const recs: RecCard[] = cached
-      .slice(0, 5)
-      .map((c): RecCard | null => {
-        const g = gameById.get(c.gameId);
-        if (!g) return null;
-        return {
-          id: c.id,
-          gameId: c.gameId,
-          slug: g.slug,
-          title: g.title,
-          releasedYear: g.released ? g.released.getFullYear() : null,
-          posterUrl: g.posterUrl,
-          coverUrl: g.coverUrl,
-          score: Number(c.score),
-          reason: c.reason ?? "",
-          platforms: g.platforms,
-          // Drizzle infers `c.algorithm` as the pgEnum union — assigns
-          // directly to `RecCard.algorithm` which mirrors the same enum.
-          algorithm: c.algorithm,
-        };
-      })
-      .filter((r): r is RecCard => r !== null);
+    const recs = await hydrateRecs(cached.slice(0, 5));
     if (recs.length >= 4) {
       return { ok: true, tier: fpReady.tier, recs, algorithm: "hybrid" };
     }
@@ -307,7 +272,6 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
 
   if (rerankOk) {
     // Re-read the rows the Edge Function just wrote atomically under cacheKey.
-    // Same shape as the cache-hit branch — join games, map to RecCard[].
     const fresh = await db
       .select({
         id: recommendations.id,
@@ -325,39 +289,7 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
         ),
       )
       .orderBy(desc(recommendations.score));
-    const freshIds = [...new Set(fresh.map((c) => c.gameId))];
-    const gameRows = await db
-      .select({
-        id: games.id,
-        slug: games.slug,
-        title: games.title,
-        released: games.released,
-        posterUrl: games.posterUrl,
-        coverUrl: games.coverUrl,
-        platforms: games.platforms,
-      })
-      .from(games)
-      .where(inArray(games.id, freshIds));
-    const gameById = new Map(gameRows.map((g) => [g.id, g]));
-    const recs: RecCard[] = fresh
-      .map((c): RecCard | null => {
-        const g = gameById.get(c.gameId);
-        if (!g) return null;
-        return {
-          id: c.id,
-          gameId: c.gameId,
-          slug: g.slug,
-          title: g.title,
-          releasedYear: g.released ? g.released.getFullYear() : null,
-          posterUrl: g.posterUrl,
-          coverUrl: g.coverUrl,
-          score: Number(c.score),
-          reason: c.reason ?? "",
-          platforms: g.platforms,
-          algorithm: c.algorithm,
-        };
-      })
-      .filter((r): r is RecCard => r !== null);
+    const recs = await hydrateRecs(fresh);
     // Symmetry with the cache-hit branch: if a catalog race deleted every
     // game between the Edge Function's INSERT and this re-read, return a
     // structured failure rather than an empty grid with no error context.
@@ -375,6 +307,64 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
     fallback.banner = "AI ranking unavailable — basic matching shown.";
   }
   return fallback;
+}
+
+/**
+ * Shared rec-row → RecCard hydration. Both the cache-hit branch and the
+ * post-rerank rehydration branch in `getRecs` produce the same shape: a list
+ * of recommendations rows joined to the games table. Encapsulating the join
+ * + map keeps the two call sites short and prevents drift between them.
+ *
+ * Caller is responsible for the SELECT (so the freshness gate on
+ * `generatedAt` can run before we pay for the games join). Caller also
+ * applies any slicing (cache-hit slices to top 5; rerank rehydration takes
+ * everything the Edge Function wrote). Rows whose game can't be joined
+ * (e.g. a catalog row was deleted between insert and read) are dropped.
+ */
+type RecHydrationRow = {
+  id: string;
+  gameId: number;
+  score: string;
+  reason: string | null;
+  algorithm: "similarity" | "ai" | "hybrid";
+};
+async function hydrateRecs(rows: RecHydrationRow[]): Promise<RecCard[]> {
+  if (rows.length === 0) return [];
+  const gameIds = [...new Set(rows.map((r) => r.gameId))];
+  const gameRows = await db
+    .select({
+      id: games.id,
+      slug: games.slug,
+      title: games.title,
+      released: games.released,
+      posterUrl: games.posterUrl,
+      coverUrl: games.coverUrl,
+      platforms: games.platforms,
+    })
+    .from(games)
+    .where(inArray(games.id, gameIds));
+  const gameById = new Map(gameRows.map((g) => [g.id, g]));
+  return rows
+    .map((c): RecCard | null => {
+      const g = gameById.get(c.gameId);
+      if (!g) return null;
+      return {
+        id: c.id,
+        gameId: c.gameId,
+        slug: g.slug,
+        title: g.title,
+        releasedYear: g.released ? g.released.getFullYear() : null,
+        posterUrl: g.posterUrl,
+        coverUrl: g.coverUrl,
+        score: Number(c.score),
+        reason: c.reason ?? "",
+        platforms: g.platforms,
+        // Drizzle infers `c.algorithm` as the pgEnum union — assigns
+        // directly to `RecCard.algorithm` which mirrors the same enum.
+        algorithm: c.algorithm,
+      };
+    })
+    .filter((r): r is RecCard => r !== null);
 }
 
 /**
