@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { Resend } from "resend";
@@ -33,9 +34,21 @@ const BATCH_CONCURRENCY = 5;
 
 export async function POST(request: Request) {
   // Gate: header secret check. 404 (not 401) hides the route's existence.
+  // Constant-time compare to match the Edge Function pattern in
+  // `supabase/functions/_shared/auth.ts`. Network jitter likely defeats
+  // timing attacks against a 32+ char secret over the public internet,
+  // but this is defense-in-depth and keeps the codebase consistent.
+  // Length-equality short-circuit is required: `timingSafeEqual` throws
+  // on byte-length mismatch.
   const cronSecret = requireEnv("CRON_SECRET");
   const supplied = request.headers.get("x-cron-secret");
-  if (!supplied || supplied !== cronSecret) {
+  const suppliedBuf = supplied ? Buffer.from(supplied) : null;
+  const expectedBuf = Buffer.from(cronSecret);
+  if (
+    !suppliedBuf ||
+    suppliedBuf.length !== expectedBuf.length ||
+    !timingSafeEqual(suppliedBuf, expectedBuf)
+  ) {
     return new NextResponse(null, { status: 404 });
   }
 

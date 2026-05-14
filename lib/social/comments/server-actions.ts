@@ -150,11 +150,17 @@ export async function editComment(input: unknown): Promise<CommentResult> {
 
   // Only author can edit. WHERE clause carries the userId predicate so a
   // non-author hitting this action gets 0 rows updated — no error leakage.
+  // `.returning({ id })` lets us detect the no-op so we can skip the
+  // moderation-report insert below: without that guard, an attacker could
+  // pollute the mod queue with `auto_flagged` reports against any comment
+  // by posting an edit with spammy content (the UPDATE no-ops on userId
+  // mismatch, but the report INSERT would still fire).
   const flagCheck = checkSpamRules(body);
-  await db
+  const result = await db
     .update(comments)
     .set({ body, editedAt: new Date(), isHidden: flagCheck.isFlagged })
-    .where(and(eq(comments.id, commentId), eq(comments.userId, user.id)));
+    .where(and(eq(comments.id, commentId), eq(comments.userId, user.id)))
+    .returning({ id: comments.id });
 
   // Auto-flag → reports row (parity with createComment). Dedupe by
   // (target_type='comment', target_id, status='auto_flagged'): without this
@@ -163,7 +169,7 @@ export async function editComment(input: unknown): Promise<CommentResult> {
   // resolves it (resolved_action_taken or resolved_no_action), a fresh
   // re-edit flagging again WILL surface as a new report, which is the
   // intended escalation path.
-  if (flagCheck.isFlagged) {
+  if (result.length > 0 && flagCheck.isFlagged) {
     const existing = await db.query.reports.findFirst({
       where: and(
         eq(schema.reports.targetType, "comment"),

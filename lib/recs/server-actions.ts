@@ -772,7 +772,15 @@ export async function refillRecs(rawFilters: FilterParams): Promise<RecResult> {
   const me = await getCachedUser();
   if (!me) return { ok: false, reason: "unauthorized" };
 
-  const filters = filterSchema.parse(rawFilters);
+  // safeParse mirrors getRecs — a malformed RPC payload returns a clean
+  // discriminated `{ ok: false, reason: "invalid-filters" }` instead of
+  // throwing a Zod error that surfaces as a 500 from the server-action
+  // boundary.
+  const filtersResult = filterSchema.safeParse(rawFilters);
+  if (!filtersResult.success) {
+    return { ok: false, reason: "invalid-filters" };
+  }
+  const filters = filtersResult.data;
   const key = cacheKey({
     userId: me.id,
     moods: filters.moods,
