@@ -21,10 +21,10 @@ export function AppHeader({ user, searchSlot }: Props) {
           <Image
             src="/logo/logo.png"
             alt="Ploxa"
-            width={120}
-            height={36}
+            width={160}
+            height={56}
             priority
-            className="pixelated h-9 w-auto"
+            className="pixelated h-14 w-auto"
           />
         </Link>
         {/* Desktop: tabs · search · profile dropdown */}
