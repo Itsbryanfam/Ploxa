@@ -4,6 +4,7 @@
 // If you change one, change both. (Edge runtime cannot import from lib/.)
 // ──────────────────────────────────────────────────────────────────────────────
 import postgres from "npm:postgres@3.4.9";
+import { enrichWithIgdb } from "./igdb-engine.ts";
 
 export interface ImportRow {
   id: string;
@@ -450,6 +451,18 @@ async function processGame(
   }
 
   const row = rows[0];
+
+  // Trigger IGDB enrichment for new Steam games. Only fires on Steam (Xbox
+  // titleId isn't a Steam appid). Best-effort: enrichWithIgdb swallows
+  // failures; if IGDB is down, the game still lands and the next backfill
+  // run picks it up.
+  if (importRow.platform === "steam") {
+    const steamAppid = Number(g.externalId);
+    if (Number.isInteger(steamAppid) && steamAppid > 0) {
+      await enrichWithIgdb(sql, gameId, steamAppid);
+    }
+  }
+
   return row.inserted
     ? { kind: "inserted", logId: row.id, gameId }
     : { kind: "merged", logId: row.id, gameId };
