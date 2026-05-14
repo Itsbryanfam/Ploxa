@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { userHasPassword } from "@/lib/auth/user-has-password";
+import { ChangeEmailForm } from "./_components/change-email-form";
 import { ChangePasswordForm } from "./_components/change-password-form";
 import { SignOutOthersButton } from "./_components/sign-out-others-button";
 
@@ -17,9 +18,9 @@ export default async function AccountSettingsPage() {
           Current:{" "}
           <span className="text-[var(--text)]">{user.email}</span>
         </p>
-        <p className="mt-2 text-xs text-[var(--text-dim)]">
-          The change-email form lands in a follow-up task.
-        </p>
+        <div className="mt-4">
+          <ChangeEmailForm hasPassword={hasPassword} cachedEmail={user.email ?? ""} />
+        </div>
       </section>
 
       <section>

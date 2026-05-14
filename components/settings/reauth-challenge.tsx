@@ -40,6 +40,11 @@ export function ReauthChallenge({
 }
 
 function OtpChallenge({ codeFieldName }: { codeFieldName: string }) {
+  // NOTE: form.reset() called by a parent form does NOT reset this
+  // component's React state (sent, sending, error). After a successful
+  // parent submit the OTP "Enter code" view stays visible. If a future
+  // consumer needs a full reset on parent-form submit, remount this
+  // component by changing its key prop rather than relying on form.reset().
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
