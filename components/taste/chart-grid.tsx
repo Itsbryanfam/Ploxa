@@ -14,15 +14,23 @@ export function ChartGrid({
   vectors,
   lengthPreference,
 }: {
-  vectors: { genre: SparseVector; theme: SparseVector; mechanic: SparseVector };
+  vectors: {
+    genre: SparseVector;
+    theme: SparseVector;
+    mechanic: SparseVector;
+    gameMode: SparseVector;
+    playerPerspective: SparseVector;
+  };
   lengthPreference: LengthPreference;
 }) {
   const genres = topN(vectors.genre, 5);
   const themes = topN(vectors.theme, 5);
   const mechanics = topN(vectors.mechanic, 5);
+  const modes = topN(vectors.gameMode, 5);
+  const perspectives = topN(vectors.playerPerspective, 5);
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       <ChartCard title="Top Genres">
         {genres.length === 0 ? (
           <Empty />
@@ -44,6 +52,22 @@ export function ChartGrid({
           <Empty />
         ) : (
           mechanics.map(([k, v]) => <ScoreBar key={k} value={v} label={k} />)
+        )}
+      </ChartCard>
+
+      <ChartCard title="Game Modes">
+        {modes.length === 0 ? (
+          <Empty />
+        ) : (
+          modes.map(([k, v]) => <ScoreBar key={k} value={v} label={k} />)
+        )}
+      </ChartCard>
+
+      <ChartCard title="Player Perspectives">
+        {perspectives.length === 0 ? (
+          <Empty />
+        ) : (
+          perspectives.map(([k, v]) => <ScoreBar key={k} value={v} label={k} />)
         )}
       </ChartCard>
 

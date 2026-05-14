@@ -23,6 +23,8 @@ export function TierSparse({
     genre: Record<string, number>;
     theme: Record<string, number>;
     mechanic: Record<string, number>;
+    gameMode: Record<string, number>;
+    playerPerspective: Record<string, number>;
   };
   lengthPreference: Record<string, number>;
 }) {
