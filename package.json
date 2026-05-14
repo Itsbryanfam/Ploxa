@@ -1,8 +1,8 @@
 {
-  "name": "letterboxd-for-games",
+  "name": "ploxa",
   "version": "0.1.0",
   "private": true,
-  "description": "AI-first game tracker with a pixel-art mascot.",
+  "description": "Ploxa — AI-first game tracker with a pixel-art mascot.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -19,11 +20,15 @@ export default async function HomePage() {
     <main className="flex min-h-screen flex-col">
       <header className="border-b border-[var(--border-soft)]">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
-            <span className="font-mono text-xs tracking-[0.2em] text-[var(--pixel)]">
-              ▓ L4G ▓
-            </span>
-            <span className="text-[var(--text-dim)]">Letterboxd for Games</span>
+          <Link href="/" className="flex items-center" aria-label="Ploxa home">
+            <Image
+              src="/logo/logo.png"
+              alt="Ploxa"
+              width={140}
+              height={40}
+              priority
+              className="pixelated h-10 w-auto"
+            />
           </Link>
           <nav className="flex items-center gap-3">
             <Link href="/login">

@@ -3,7 +3,7 @@ import { getTrendingReviews } from "@/lib/social/discovery/trending-reviews";
 import { TrendingReviewsList } from "@/components/discovery/trending-reviews-list";
 
 export const metadata = {
-  title: "Trending reviews — Letterboxd for Games",
+  title: "Trending reviews",
   description: "Reviews getting the most love this week.",
 };
 

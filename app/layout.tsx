@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Pixelify_Sans } from "next/font/google";
 
 import "./globals.css";
 import { Providers } from "./providers";
@@ -15,10 +15,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const pixelifySans = Pixelify_Sans({
+  variable: "--font-pixelify",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: {
-    default: "Letterboxd for Games",
-    template: "%s · Letterboxd for Games",
+    default: "Ploxa",
+    template: "%s · Ploxa",
   },
   description:
     "An AI-first game tracker with a pixel-art mascot. Log what you play, write reviews with help, discover what to play next.",
@@ -44,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${pixelifySans.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

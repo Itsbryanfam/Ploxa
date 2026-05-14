@@ -29,7 +29,7 @@ import { signUnsubscribeToken } from "@/lib/email/unsubscribe-token";
  */
 export const dynamic = "force-dynamic";
 
-const SUBJECT = "Your recap from Letterboxd for Games";
+const SUBJECT = "Your recap from Ploxa";
 const BATCH_CONCURRENCY = 5;
 
 export async function POST(request: Request) {
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   const now = new Date();
   const dow = now.getUTCDay(); // 0 = Sunday
   const fromAddress =
-    env.RESEND_DIGEST_FROM_ADDRESS ?? "digest@letterboxd-for-games.vercel.app";
+    env.RESEND_DIGEST_FROM_ADDRESS ?? "digest@ploxa.vercel.app";
   const baseUrl = env.NEXT_PUBLIC_APP_URL;
 
   // Candidate set: cadence='daily' OR (cadence='weekly' AND today is Sunday),

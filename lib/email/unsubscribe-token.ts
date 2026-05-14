@@ -16,7 +16,7 @@ import { requireEnv } from "@/lib/env";
  * to generate the secret; store in env as UNSUBSCRIBE_SECRET.
  */
 
-const ISSUER = "letterboxd-for-games";
+const ISSUER = "ploxa";
 const AUDIENCE = "digest-unsubscribe";
 
 function getKey(): Uint8Array {

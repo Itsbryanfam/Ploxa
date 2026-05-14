@@ -6,7 +6,7 @@ import { SimilarUsersRow } from "@/components/discovery/similar-users-row";
 import { Mascot } from "@/components/mascot/mascot";
 
 export const metadata = {
-  title: "People with similar taste — Letterboxd for Games",
+  title: "People with similar taste",
   description: "Find players whose taste overlaps with yours.",
   robots: { index: false, follow: false },
 };

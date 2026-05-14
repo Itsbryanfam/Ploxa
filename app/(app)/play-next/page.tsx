@@ -11,7 +11,7 @@ import { PlayNextClient } from "./_client";
 // level. URL state is authoritative on the client island.
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "What should I play? — Letterboxd for Games" };
+export const metadata = { title: "What should I play?" };
 
 export default async function PlayNextPage({
   searchParams,

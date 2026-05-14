@@ -107,7 +107,7 @@ const getListPageData = cache(async (username: string, listSlug: string) => {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username, listSlug } = await params;
   const data = await getListPageData(username, listSlug);
-  if (!data) return { title: "Letterboxd for Games" };
+  if (!data) return { title: "Ploxa" };
   const { profile, list, itemCount } = data;
   const subject = profile.displayName ?? profile.username;
   const title = `${list.title} · ${subject}`;

@@ -10,7 +10,7 @@ import { TrendingReviewsList } from "@/components/discovery/trending-reviews-lis
 import { SimilarUsersRow } from "@/components/discovery/similar-users-row";
 
 export const metadata = {
-  title: "Discover — Letterboxd for Games",
+  title: "Discover",
   description:
     "Find trending games, top reviews, and players whose taste overlaps with yours.",
 };
