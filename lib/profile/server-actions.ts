@@ -4,7 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireEnv } from "@/lib/env";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { usernameSchema } from "./username-schema";
 import { RESERVED_USERNAMES } from "./reserved-usernames";
@@ -25,12 +25,19 @@ export interface HeaderUser {
   profilePicturePosterUrl: string | null;
 }
 
-async function posterUrlFor(userId: string): Promise<string> {
-  const supabase = await createSupabaseServerClient();
-  const { data } = supabase.storage
-    .from("avatars")
-    .getPublicUrl(`${userId}/avatar-poster.png`);
-  return data.publicUrl;
+/**
+ * Build the public URL for a user's GIF first-frame poster.
+ *
+ * `supabase.storage.from(...).getPublicUrl(...)` is pure string concat under
+ * the hood — the bucket is public and the URL is deterministic. We were
+ * instantiating a full server client (cookie read + new SSR client) on every
+ * (app)/* render just to invoke that helper. Build the URL directly instead
+ * to avoid the cookie touch on the hot path. Bucket name + file path match
+ * lib/storage/avatar.ts:55.
+ */
+function posterUrlFor(userId: string): string {
+  const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+  return `${supabaseUrl}/storage/v1/object/public/avatars/${userId}/avatar-poster.png`;
 }
 
 /**
@@ -55,7 +62,7 @@ export async function getHeaderUser(authUser: User): Promise<HeaderUser> {
     profilePictureUrl: profile?.profilePictureUrl ?? null,
     profilePictureKind: profile?.profilePictureKind ?? null,
     profilePicturePosterUrl:
-      profile?.profilePictureKind === "gif" ? await posterUrlFor(authUser.id) : null,
+      profile?.profilePictureKind === "gif" ? posterUrlFor(authUser.id) : null,
   };
 }
 

@@ -1,6 +1,4 @@
-"use client";
-
-import { toast } from "sonner";
+import { DiscordCopyButton } from "./discord-copy-button";
 
 /**
  * Connector pills on /u/[username]. Renders a compact row of platform
@@ -15,6 +13,11 @@ import { toast } from "sonner";
  *     signed in to an Xbox account, which is unrealistic for share links).
  *   - Discord → no link; click copies the handle. Discord profile URLs
  *     require shared-server membership and aren't publicly resolvable.
+ *
+ * Server component — Steam/Xbox pills are plain anchors with no JS. Only
+ * the Discord copy-to-clipboard button ships as a small client island
+ * (<DiscordCopyButton>) so sonner doesn't get hauled into the bundle on
+ * profiles without a Discord connection.
  *
  * Brand SVGs are inlined rather than pulled from a package — lucide
  * doesn't ship brand glyphs, and pulling react-icons/simple-icons for
@@ -58,23 +61,7 @@ export function ConnectorPills({ steam, xbox, discord }: ConnectorPillsProps) {
           <span>{xbox.gamertag ?? "Xbox"}</span>
         </a>
       )}
-      {discord && (
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard
-              .writeText(discord)
-              .then(() => toast.success(`Copied ${discord}`))
-              .catch(() => toast.error("Couldn't copy handle"));
-          }}
-          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1 text-xs hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors cursor-pointer"
-          aria-label={`Copy Discord handle ${discord}`}
-          title="Click to copy"
-        >
-          <DiscordIcon />
-          <span>{discord}</span>
-        </button>
-      )}
+      {discord && <DiscordCopyButton handle={discord} />}
     </div>
   );
 }
@@ -105,20 +92,6 @@ function XboxIcon() {
       aria-hidden="true"
     >
       <path d="M4.102 21.033C6.211 22.881 8.977 24 12 24c3.026 0 5.789-1.119 7.902-2.967 1.555-1.36-4.024-7.013-7.902-10.591-3.878 3.578-9.457 9.231-7.898 10.591zm11.16-14.502c2.961 3.181 7.624 9.621 6.04 12.077C23.02 16.66 24 14.443 24 12c0-3.756-2.297-6.479-2.297-6.479s-.144-.097-.443.026c-1.674.531-3.51 1.835-5.998 4.984zM8.747 5.547C6.249 8.7 4.421 10 2.751 9.467c-.295-.123-.443-.022-.443.022C2.308 9.495 0 12.226 0 12c0 2.443.98 4.66 2.563 6.318C.939 16.181 5.722 9.605 8.747 5.547zM12 3.475c2.171 0 4.515 1.143 4.515 1.143.05.025.115.025.135-.005.012-.022.005-.055-.027-.084 0 0-2.115-2.535-4.623-2.535-2.518 0-4.626 2.535-4.626 2.535-.032.029-.039.062-.027.084.02.03.085.03.135.005 0 0 2.347-1.143 4.518-1.143z" />
-    </svg>
-  );
-}
-
-function DiscordIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419-.0190 1.3332-.9554 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
     </svg>
   );
 }

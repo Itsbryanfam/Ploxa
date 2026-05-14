@@ -1,7 +1,5 @@
-"use client";
-
+import { headers } from "next/headers";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 const SECTIONS = [
   { href: "/settings/profile", label: "Profile" },
@@ -12,8 +10,14 @@ const SECTIONS = [
   { href: "/settings/danger", label: "Danger Zone" },
 ] as const;
 
-export function SettingsSidebarNav() {
-  const pathname = usePathname();
+/**
+ * Settings left-rail nav. Server component — reads pathname from the
+ * `x-pathname` request header that middleware sets (see
+ * lib/supabase/middleware.ts). Avoids shipping the whole sidebar as a
+ * client island just for active-row styling.
+ */
+export async function SettingsSidebarNav() {
+  const pathname = (await headers()).get("x-pathname") ?? "";
   return (
     <nav className="flex flex-col gap-1 text-sm" aria-label="Settings navigation">
       {SECTIONS.map((s) => {

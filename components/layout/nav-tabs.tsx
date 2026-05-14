@@ -1,7 +1,5 @@
-"use client";
-
+import { headers } from "next/headers";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 interface Tab {
@@ -10,8 +8,18 @@ interface Tab {
   match: (pathname: string) => boolean;
 }
 
-export function NavTabs({ profileHref }: { profileHref: string }) {
-  const pathname = usePathname();
+/**
+ * Active-tab nav for the AppHeader. Server component — reads the current
+ * pathname from the `x-pathname` request header that middleware sets on
+ * every (app)/* request (see lib/supabase/middleware.ts). Avoids forcing
+ * the whole header into a client island just for active-tab styling.
+ *
+ * If the header isn't set (e.g. a request slipped past middleware), the
+ * fallback is empty-string — every tab renders inactive, which is the
+ * safe degradation for navigation chrome.
+ */
+export async function NavTabs({ profileHref }: { profileHref: string }) {
+  const pathname = (await headers()).get("x-pathname") ?? "";
   const tabs: Tab[] = [
     { label: "Home", href: "/home", match: (p) => p === "/home" || p === "/dashboard" },
     { label: "Feed", href: "/home/feed", match: (p) => p.startsWith("/home/feed") },
