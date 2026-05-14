@@ -5,6 +5,10 @@ import {
   followUpPrompt,
   regenerateSectionPrompt,
 } from "@/lib/reviews/prompts";
+import {
+  NARRATIVE_PROMPT_VERSION,
+  buildNarrativePrompt,
+} from "@/lib/taste/prompts";
 
 // These tests pin the audit #18 prompt-injection boundary in place:
 // user-supplied answers must be wrapped in <answer>...</answer> tags AND
@@ -85,5 +89,32 @@ describe("regenerateSectionPrompt", () => {
       sectionIndex: 3,
     });
     expect(out).toMatch(/Verdict/);
+  });
+});
+
+describe("buildNarrativePrompt — v2 Game Modes + Player Perspectives", () => {
+  it("includes Game Modes and Player Perspectives blocks in the user prompt", () => {
+    const { user } = buildNarrativePrompt({
+      vectors: {
+        genre: { Action: 0.5 },
+        theme: {},
+        mechanic: {},
+        gameMode: { Multiplayer: 0.7 },
+        playerPerspective: { "First person": 0.6 },
+      },
+      lengthPreference: { "<5h": 0, "5-10h": 0, "10-30h": 0, "30-60h": 0, "60h+": 0 },
+      recentLikedGames: [],
+      recentDislikedGames: [],
+      tier: "full",
+      totalLogs: 50,
+    });
+    expect(user).toContain("Game Modes:");
+    expect(user).toContain("Multiplayer");
+    expect(user).toContain("Player Perspectives:");
+    expect(user).toContain("First person");
+  });
+
+  it("NARRATIVE_PROMPT_VERSION is v2 (forces re-narration on next drift cron)", () => {
+    expect(NARRATIVE_PROMPT_VERSION).toBe("v2");
   });
 });

@@ -4,7 +4,7 @@ import type { VectorBundle, SparseVector } from "@/lib/taste/vectors";
 import type { TasteTier } from "@/lib/taste/tier";
 
 /** Bump on any prompt-text change. Logged in narrativeModelVersion for traceability. */
-export const NARRATIVE_PROMPT_VERSION = "v1";
+export const NARRATIVE_PROMPT_VERSION = "v2";
 export const RERANK_PROMPT_VERSION = "v1"; // Used by T11.
 
 export type NarrativePromptInput = {
@@ -71,7 +71,7 @@ export function buildNarrativePrompt(input: NarrativePromptInput): {
     "You write 2–3 sentence taste summaries for video-game players.",
     "Voice: playful, observant, specific. Reference 1–2 concrete genres or themes that dominate.",
     "Forbidden: emoji; hedging words like \"might\", \"perhaps\", \"tends to\"; quotation marks around game titles; the phrases \"you love\" or \"you enjoy\" (overused).",
-    "Required: name actual genres/themes/mechanics from the data; address the user as \"you\".",
+    "Required: name actual genres/themes/mechanics/modes/perspectives from the data; address the user as \"you\".",
     confidenceHint,
   ].join(" ");
 
@@ -101,6 +101,10 @@ export function buildNarrativePrompt(input: NarrativePromptInput): {
     fmtVector("Themes", input.vectors.theme),
     "",
     fmtVector("Mechanics", input.vectors.mechanic),
+    "",
+    fmtVector("Game Modes", input.vectors.gameMode),
+    "",
+    fmtVector("Player Perspectives", input.vectors.playerPerspective),
     "",
     fmtLength(input.lengthPreference),
     "",
