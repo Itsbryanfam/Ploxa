@@ -36,7 +36,13 @@ function filterAndDedup(
   // the canonical-case original as the value. This lets us match input
   // case-insensitively but emit canonical case.
   const canonicalByLower = new Map<string, string>();
-  for (const v of allowList) canonicalByLower.set(v.toLowerCase(), v);
+  // Trim both key AND canonical value so accidental whitespace in the hand-
+  // curated vocabulary.ts doesn't silently drop matches and doesn't surface
+  // padding into the normalized output.
+  for (const v of allowList) {
+    const trimmed = v.trim();
+    canonicalByLower.set(trimmed.toLowerCase(), trimmed);
+  }
 
   const seen = new Set<string>();
   const out: string[] = [];

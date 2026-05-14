@@ -25,6 +25,10 @@ describe("normalizeFacets", () => {
   });
 
   it("dedupes case-insensitively, preserving canonical case", async () => {
+    // Note: gameModes assertions provide the canonical-case-wins coverage
+    // (canonical "Single player" beats input "SINGLE PLAYER"). The mechanics
+    // mock is all-lowercase by construction (so the cap test can use 25
+    // distinct entries), so the mechanics assertion below tests dedup only.
     const { normalizeFacets } = await import("@/lib/igdb/normalize");
     const out = normalizeFacets({
       game_modes: ["Single player", "single player", "SINGLE PLAYER"],
@@ -60,5 +64,26 @@ describe("normalizeFacets", () => {
       keywords: [],
     });
     expect(out.gameModes).toEqual(["Single player"]);
+  });
+
+  it("trims whitespace in allow-list entries (defensive against hand-curated padding)", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/igdb/vocabulary", () => ({
+      IGDB_GAME_MODES: new Set(["  Single player  "]),
+      IGDB_PLAYER_PERSPECTIVES: new Set<string>(),
+      IGDB_THEMES: new Set<string>(),
+      IGDB_MECHANICS: new Set<string>(),
+    }));
+    const { normalizeFacets } = await import("@/lib/igdb/normalize");
+    const out = normalizeFacets({
+      game_modes: ["Single player"],
+      player_perspectives: [],
+      themes: [],
+      keywords: [],
+    });
+    // Vocabulary entry had padding; normalized output is the trimmed canonical.
+    expect(out.gameModes).toEqual(["Single player"]);
+    vi.doUnmock("@/lib/igdb/vocabulary");
+    vi.resetModules();
   });
 });
