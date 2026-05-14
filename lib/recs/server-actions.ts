@@ -19,6 +19,7 @@ import { ensureLog } from "@/lib/logs/server-actions";
 import { cacheKey } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
+import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
 
@@ -234,14 +235,15 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
   }
 
   const [minH, maxH] = timeWindow(filters.time);
-  const platSet = new Set<string>(filters.platforms);
   const filtered: CandidateGame[] = candidates.filter((g) => {
     if (g.playtimeAvgHours != null) {
       if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
     }
-    if (g.platforms && g.platforms.length > 0) {
-      const platMatches = g.platforms.some((p) => platSet.has(p));
-      if (!platMatches) return false;
+    // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
+    // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
+    // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
+    if (!gamePlatformsMatchUserFilter(g.platforms, filters.platforms)) {
+      return false;
     }
     return true;
   });
@@ -462,14 +464,15 @@ async function metadataOnlyRecs(
   }
 
   const [minH, maxH] = timeWindow(filters.time);
-  const platSet = new Set<string>(filters.platforms);
   const filtered: CandidateGame[] = candidates.filter((g) => {
     if (g.playtimeAvgHours != null) {
       if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
     }
-    if (g.platforms && g.platforms.length > 0) {
-      const platMatches = g.platforms.some((p) => platSet.has(p));
-      if (!platMatches) return false;
+    // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
+    // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
+    // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
+    if (!gamePlatformsMatchUserFilter(g.platforms, filters.platforms)) {
+      return false;
     }
     return true;
   });
