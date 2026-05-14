@@ -35,7 +35,7 @@ export type InboxRow = {
   createdAt: Date;
   actorUsername: string | null;
   actorDisplayName: string | null;
-  actorAvatarUrl: string | null;
+  actorProfilePictureUrl: string | null;
   /**
    * Resolved canonical URL for this notification's target. Null when:
    *   - the target was hard-deleted (cascade)
@@ -78,7 +78,7 @@ export async function getInbox(
       createdAt: notifications.createdAt,
       actorUsername: profiles.username,
       actorDisplayName: profiles.displayName,
-      actorAvatarUrl: profiles.avatarUrl,
+      actorProfilePictureUrl: profiles.profilePictureUrl,
     })
     .from(notifications)
     // Soft-delete filter on the join predicate, not the WHERE: we keep the

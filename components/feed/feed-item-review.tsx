@@ -5,17 +5,21 @@ import type { FeedRow } from "@/lib/social/feed/queries";
 
 export function FeedItemReview(props: {
   item: FeedRow;
-  actor: { username: string; displayName: string | null; avatarUrl: string | null };
+  actor: {
+    username: string;
+    displayName: string | null;
+    profilePictureUrl: string | null;
+  };
   game: { slug: string; title: string; coverUrl: string | null };
 }) {
   const hook = (props.item.payload as { bodyHook?: string }).bodyHook ?? "";
 
   return (
     <article className="flex gap-3 p-4 rounded-lg border border-[var(--border)]">
-      {props.actor.avatarUrl ? (
+      {props.actor.profilePictureUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URL not in remotePatterns; small fixed size.
         <img
-          src={props.actor.avatarUrl}
+          src={props.actor.profilePictureUrl}
           alt=""
           width={40}
           height={40}

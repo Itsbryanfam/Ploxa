@@ -120,7 +120,7 @@ export default async function CanonicalReviewPage({ params }: Props) {
       isHidden: schema.comments.isHidden,
       authorUsername: schema.profiles.username,
       authorDisplayName: schema.profiles.displayName,
-      authorAvatarUrl: schema.profiles.avatarUrl,
+      authorProfilePictureUrl: schema.profiles.profilePictureUrl,
       authorDeletedAt: schema.profiles.deletedAt,
     })
     .from(schema.comments)
@@ -174,12 +174,16 @@ export default async function CanonicalReviewPage({ params }: Props) {
       editedAt: r.editedAt,
       isHidden: r.isHidden,
       author: authorMissing
-        ? { username: "[deleted user]", displayName: null, avatarUrl: null }
+        ? {
+            username: "[deleted user]",
+            displayName: null,
+            profilePictureUrl: null,
+          }
         : {
             // Non-null: gated by authorMissing above (covers null username).
             username: r.authorUsername!,
             displayName: r.authorDisplayName,
-            avatarUrl: r.authorAvatarUrl,
+            profilePictureUrl: r.authorProfilePictureUrl,
           },
     };
   });

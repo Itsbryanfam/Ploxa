@@ -9,7 +9,7 @@ export type SimilarUser = {
   userId: string;
   username: string;
   displayName: string | null;
-  avatarUrl: string | null;
+  profilePictureUrl: string | null;
   tierLogCount: number;
   similarity: number;
 };
@@ -86,13 +86,13 @@ export async function getSimilarUsers(
     user_id: string;
     username: string;
     display_name: string | null;
-    avatar_url: string | null;
+    profile_picture_url: string | null;
     genre_vector: Record<string, number>;
     theme_vector: Record<string, number>;
     mechanic_vector: Record<string, number>;
     total_logs_at_generation: number;
   }>(sql`
-    SELECT tf.user_id, p.username, p.display_name, p.avatar_url,
+    SELECT tf.user_id, p.username, p.display_name, p.profile_picture_url,
            tf.genre_vector, tf.theme_vector, tf.mechanic_vector,
            tf.total_logs_at_generation
     FROM taste_fingerprints tf
@@ -122,7 +122,7 @@ export async function getSimilarUsers(
     user_id: string;
     username: string;
     display_name: string | null;
-    avatar_url: string | null;
+    profile_picture_url: string | null;
     genre_vector: Record<string, number>;
     theme_vector: Record<string, number>;
     mechanic_vector: Record<string, number>;
@@ -134,7 +134,7 @@ export async function getSimilarUsers(
     userId: c.user_id,
     username: c.username,
     displayName: c.display_name,
-    avatarUrl: c.avatar_url,
+    profilePictureUrl: c.profile_picture_url,
     tierLogCount: c.total_logs_at_generation,
     similarity: Math.max(
       0,

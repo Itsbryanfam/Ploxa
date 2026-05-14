@@ -92,14 +92,19 @@ export async function getFollowers(
   userId: string,
   viewerId: string | null,
 ): Promise<
-  Array<{ userId: string; username: string; displayName: string | null; avatarUrl: string | null }>
+  Array<{
+    userId: string;
+    username: string;
+    displayName: string | null;
+    profilePictureUrl: string | null;
+  }>
 > {
   const base = db
     .select({
       userId: profiles.userId,
       username: profiles.username,
       displayName: profiles.displayName,
-      avatarUrl: profiles.avatarUrl,
+      profilePictureUrl: profiles.profilePictureUrl,
     })
     .from(follows)
     .innerJoin(profiles, eq(profiles.userId, follows.followerId))
@@ -123,14 +128,19 @@ export async function getFollowing(
   userId: string,
   viewerId: string | null,
 ): Promise<
-  Array<{ userId: string; username: string; displayName: string | null; avatarUrl: string | null }>
+  Array<{
+    userId: string;
+    username: string;
+    displayName: string | null;
+    profilePictureUrl: string | null;
+  }>
 > {
   const base = db
     .select({
       userId: profiles.userId,
       username: profiles.username,
       displayName: profiles.displayName,
-      avatarUrl: profiles.avatarUrl,
+      profilePictureUrl: profiles.profilePictureUrl,
     })
     .from(follows)
     .innerJoin(profiles, eq(profiles.userId, follows.followedId))

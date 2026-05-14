@@ -3,7 +3,11 @@ import type { FeedRow } from "@/lib/social/feed/queries";
 
 export function FeedItemList(props: {
   item: FeedRow;
-  actor: { username: string; displayName: string | null; avatarUrl: string | null };
+  actor: {
+    username: string;
+    displayName: string | null;
+    profilePictureUrl: string | null;
+  };
 }) {
   const title = (props.item.payload as { title?: string }).title ?? "";
   const slug = (props.item.payload as { slug?: string }).slug ?? "";
@@ -11,10 +15,10 @@ export function FeedItemList(props: {
 
   return (
     <article className="flex gap-3 p-4 rounded-lg border border-[var(--border)]">
-      {props.actor.avatarUrl ? (
+      {props.actor.profilePictureUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URL not in remotePatterns; small fixed size.
         <img
-          src={props.actor.avatarUrl}
+          src={props.actor.profilePictureUrl}
           alt=""
           width={40}
           height={40}

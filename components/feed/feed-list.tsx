@@ -6,7 +6,15 @@ import { FeedItemList } from "./feed-item-list";
 export function FeedList(props: {
   items: FeedRow[];
   gameMap: Map<number, { id: number; slug: string; title: string; coverUrl: string | null }>;
-  actorMap: Map<string, { userId: string; username: string; displayName: string | null; avatarUrl: string | null }>;
+  actorMap: Map<
+    string,
+    {
+      userId: string;
+      username: string;
+      displayName: string | null;
+      profilePictureUrl: string | null;
+    }
+  >;
   nextCursor: string | null;
 }) {
   return (

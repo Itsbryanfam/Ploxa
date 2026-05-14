@@ -10,7 +10,7 @@ interface BlockedUser {
   userId: string;
   username: string;
   displayName: string | null;
-  avatarUrl: string | null;
+  profilePictureUrl: string | null;
   blockedAt: Date;
 }
 
@@ -85,9 +85,9 @@ export function BlockedList({ initial }: Props) {
           className="flex items-center justify-between p-3 rounded-lg border border-[var(--border)]"
         >
           <div className="flex items-center gap-3 min-w-0">
-            {b.avatarUrl ? (
+            {b.profilePictureUrl ? (
               <Image
-                src={b.avatarUrl}
+                src={b.profilePictureUrl}
                 alt=""
                 width={40}
                 height={40}

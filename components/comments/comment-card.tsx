@@ -17,7 +17,11 @@ export function CommentCard(props: {
     editedAt: Date | null;
     isHidden: boolean;
   };
-  author: { username: string; displayName: string | null; avatarUrl: string | null };
+  author: {
+    username: string;
+    displayName: string | null;
+    profilePictureUrl: string | null;
+  };
   viewerId: string | null;
   onReply?: (commentId: string) => void;
 }) {
@@ -46,10 +50,10 @@ export function CommentCard(props: {
 
   return (
     <article className="flex gap-3 py-3">
-      {props.author.avatarUrl ? (
+      {props.author.profilePictureUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URL not in remotePatterns; small fixed size.
         <img
-          src={props.author.avatarUrl}
+          src={props.author.profilePictureUrl}
           alt={props.author.username}
           width={32}
           height={32}

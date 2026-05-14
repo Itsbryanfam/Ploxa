@@ -33,10 +33,10 @@ export function SimilarUsersRow({ users }: { users: SimilarUser[] }) {
             className="flex flex-col items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4 text-center focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--bg)]"
           >
             <Link href={`/u/${u.username}`} className="contents">
-              {u.avatarUrl ? (
+              {u.profilePictureUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URLs not in remotePatterns
                 <img
-                  src={u.avatarUrl}
+                  src={u.profilePictureUrl}
                   alt=""
                   width={64}
                   height={64}

@@ -43,7 +43,7 @@ export default async function FeedPage({
 
   // Hydrate references in parallel:
   //  - gameIds from log + review payloads → game.coverUrl + title + slug
-  //  - actorIds → profile.username + avatarUrl
+  //  - actorIds → profile.username + profilePictureUrl
   const gameIds = Array.from(
     new Set(
       items
@@ -70,7 +70,7 @@ export default async function FeedPage({
         userId: schema.profiles.userId,
         username: schema.profiles.username,
         displayName: schema.profiles.displayName,
-        avatarUrl: schema.profiles.avatarUrl,
+        profilePictureUrl: schema.profiles.profilePictureUrl,
       })
       .from(schema.profiles)
       .where(inArray(schema.profiles.userId, actorIds)),

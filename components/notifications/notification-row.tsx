@@ -45,10 +45,10 @@ export function NotificationRow(props: { row: InboxRow }) {
 
   const inner = (
     <>
-      {props.row.actorAvatarUrl ? (
+      {props.row.actorProfilePictureUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URL not in remotePatterns; small fixed size.
         <img
-          src={props.row.actorAvatarUrl}
+          src={props.row.actorProfilePictureUrl}
           alt={props.row.actorUsername ?? ""}
           width={40}
           height={40}

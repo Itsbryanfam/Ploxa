@@ -7,8 +7,8 @@ import { avatarColorFor } from "@/lib/design/avatar-palette";
  * Shared 2/3/4-column responsive grid used by both /followers and /following.
  * Server component — no interactivity, the whole cell is a link.
  *
- * Source rows come from getFollowers/getFollowing which only project the
- * legacy `avatarUrl` column. If the URL is missing we fall back to a
+ * Source rows come from getFollowers/getFollowing which project the active
+ * `profilePictureUrl` column. If the URL is missing we fall back to a
  * deterministic initials chip via `avatarColorFor(userId)` — matches the
  * fallback branch of components/ui/avatar.tsx so the empty-pfp case
  * looks identical to the header avatar elsewhere in the app.
@@ -21,7 +21,7 @@ export function FollowersGrid({
     userId: string;
     username: string;
     displayName: string | null;
-    avatarUrl: string | null;
+    profilePictureUrl: string | null;
   }>;
   emptyText?: string;
 }) {
@@ -42,10 +42,10 @@ export function FollowersGrid({
             href={`/u/${u.username}`}
             className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 hover:border-[var(--border-hover)] transition"
           >
-            {u.avatarUrl ? (
+            {u.profilePictureUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URL not in remotePatterns; small fixed size.
               <img
-                src={u.avatarUrl}
+                src={u.profilePictureUrl}
                 alt={u.username}
                 width={40}
                 height={40}

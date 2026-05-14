@@ -65,7 +65,7 @@ export async function getBlocked(): Promise<
     userId: string;
     username: string;
     displayName: string | null;
-    avatarUrl: string | null;
+    profilePictureUrl: string | null;
     blockedAt: Date;
   }>
 > {
@@ -76,7 +76,7 @@ export async function getBlocked(): Promise<
       userId: profiles.userId,
       username: profiles.username,
       displayName: profiles.displayName,
-      avatarUrl: profiles.avatarUrl,
+      profilePictureUrl: profiles.profilePictureUrl,
       blockedAt: blocks.createdAt,
     })
     .from(blocks)

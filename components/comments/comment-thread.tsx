@@ -12,7 +12,11 @@ export type ThreadComment = {
   createdAt: Date;
   editedAt: Date | null;
   isHidden: boolean;
-  author: { username: string; displayName: string | null; avatarUrl: string | null };
+  author: {
+    username: string;
+    displayName: string | null;
+    profilePictureUrl: string | null;
+  };
 };
 
 export function CommentThread(props: {

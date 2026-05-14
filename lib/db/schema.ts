@@ -104,8 +104,12 @@ export const profiles = pgTable("profiles", {
   username: varchar("username", { length: 32 }).notNull().unique(),
   displayName: varchar("display_name", { length: 64 }),
   bio: text("bio"),
-  // Dormant: predates Phase 1.5's PFP feature. No callers in app code.
-  // Kept for additive-only migration safety; new code uses profilePictureUrl.
+  // Dormant: column kept for additive-only migration safety. Active reads
+  // removed in audit-fixes-2026-05-14; all consumers now use
+  // profilePictureUrl + profilePictureKind. The column is preserved
+  // (rather than dropped) so an additive-only forward migration history
+  // stays intact and any historical row that still has a value is not
+  // destroyed. There is no code path that writes to it.
   avatarUrl: text("avatar_url"),
   profilePictureUrl: text("profile_picture_url"),
   // The DB-side CHECK constraint (profile_picture_kind IN ('static','gif'))
