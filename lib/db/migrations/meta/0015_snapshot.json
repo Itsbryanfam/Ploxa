@@ -1,6 +1,6 @@
 {
-  "id": "132e0f8b-8d56-410f-9986-2b20dea49626",
-  "prevId": "519185cf-416f-4d4d-a395-3bdea436d887",
+  "id": "e008017b-bda3-4810-9011-f78af829dfd9",
+  "prevId": "e7cc8e32-a50e-47ef-915e-62ec86e3a6ef",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -702,7 +702,68 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "games_genres_gin": {
+          "name": "games_genres_gin",
+          "columns": [
+            {
+              "expression": "genres",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "games_themes_gin": {
+          "name": "games_themes_gin",
+          "columns": [
+            {
+              "expression": "themes",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "games_mechanics_gin": {
+          "name": "games_mechanics_gin",
+          "columns": [
+            {
+              "expression": "mechanics",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "games_rawg_rating_desc": {
+          "name": "games_rawg_rating_desc",
+          "columns": [
+            {
+              "expression": "\"rawg_rating\" desc",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
@@ -1836,6 +1897,40 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_follows": {
+          "name": "email_follows",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "email_reactions": {
+          "name": "email_reactions",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "email_comments": {
+          "name": "email_comments",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "email_wishlist": {
+          "name": "email_wishlist",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         }
       },
       "indexes": {},
@@ -2137,6 +2232,33 @@
               "expression": "\"created_at\" desc",
               "asc": true,
               "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "reports_target_type_id_status_idx": {
+          "name": "reports_target_type_id_status_idx",
+          "columns": [
+            {
+              "expression": "target_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],

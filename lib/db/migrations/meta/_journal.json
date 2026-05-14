@@ -92,6 +92,27 @@
       "when": 1778717587795,
       "tag": "0012_igdb_facets",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779148800000,
+      "tag": "0013_account_lifecycle_prefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779235200000,
+      "tag": "0014_recs_perf_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1779321600000,
+      "tag": "0015_audit_indexes",
+      "breakpoints": true
     }
   ]
 }
