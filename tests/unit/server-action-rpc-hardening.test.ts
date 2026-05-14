@@ -38,6 +38,14 @@ let findFirstImpl: (...args: any[]) => any = () => Promise.resolve(undefined);
 const insertMock = vi.fn();
 const updateMock = vi.fn();
 const deleteMock = vi.fn();
+// `insert(...).values(arg)` — captures the row passed to values() so tests can
+// assert the actual userId column came from the session, not a caller arg.
+const insertValuesSpy = vi.fn();
+// `select(...).from(...).where(arg)` — captures the where-clause input. With
+// the drizzle-orm mock below, `eq(col, val)` returns `[col, val]`, so each
+// where-call's first arg is shape `[col, val]` (or for `and(...)`, an array
+// of those tuples). Tests can walk this to find the userId argument.
+const selectWhereSpy = vi.fn();
 
 vi.mock("@/lib/db", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,7 +58,11 @@ vi.mock("@/lib/db", () => {
     c.leftJoin = vi.fn(() => c);
     // `where` returns a thenable that ALSO has further chain methods —
     // some callers do `.where()` then await; others do `.where().limit()`.
-    c.where = vi.fn(() => {
+    c.where = vi.fn((whereArg: unknown) => {
+      // Capture the where-clause input so tests can verify the userId
+      // passed to e.g. `where(eq(follows.followerId, viewerId))` came from
+      // the session, not a caller-supplied arg.
+      selectWhereSpy(whereArg);
       const result = selectImpl();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const obj: any = {
@@ -74,11 +86,17 @@ vi.mock("@/lib/db", () => {
     c.insert = vi.fn(() => {
       insertMock();
       return {
-        values: vi.fn(() => ({
-          onConflictDoUpdate: vi.fn(() => Promise.resolve()),
-          onConflictDoNothing: vi.fn(() => Promise.resolve()),
-          returning: vi.fn(() => Promise.resolve([{ id: "log-1" }])),
-        })),
+        // Pipe through the shared `insertValuesSpy` so tests can assert the
+        // actual row payload (and specifically that `userId` was the session
+        // user, not a caller-supplied value).
+        values: vi.fn((arg: unknown) => {
+          insertValuesSpy(arg);
+          return {
+            onConflictDoUpdate: vi.fn(() => Promise.resolve()),
+            onConflictDoNothing: vi.fn(() => Promise.resolve()),
+            returning: vi.fn(() => Promise.resolve([{ id: "log-1" }])),
+          };
+        }),
       };
     });
     c.update = vi.fn(() => {
@@ -136,6 +154,21 @@ vi.mock("@/lib/db", () => {
   };
 });
 
+// Stub drizzle operators — they're called with mock schema fields (plain
+// strings) and primitive userIds; we just need to reflect both args back so
+// `selectWhereSpy` can recover the userId from `eq(col, val)` calls.
+vi.mock("drizzle-orm", () => ({
+  and: (...args: unknown[]) => args,
+  asc: (a: unknown) => a,
+  desc: (a: unknown) => a,
+  eq: (a: unknown, b: unknown) => [a, b],
+  inArray: (a: unknown, b: unknown) => [a, b],
+  isNotNull: (a: unknown) => a,
+  isNull: (a: unknown) => a,
+  or: (...args: unknown[]) => args,
+  sql: Object.assign((s: TemplateStringsArray) => s[0], {}),
+}));
+
 // Re-importable from anywhere via a single mock object.
 const getCachedUserMock = vi.fn();
 vi.mock("@/lib/supabase/auth-cache", () => ({
@@ -191,6 +224,8 @@ beforeEach(() => {
   insertMock.mockReset();
   updateMock.mockReset();
   deleteMock.mockReset();
+  insertValuesSpy.mockReset();
+  selectWhereSpy.mockReset();
   getCachedUserMock.mockReset();
   selectImpl = () => Promise.resolve([]);
   findFirstImpl = () => Promise.resolve(undefined);
@@ -213,12 +248,22 @@ describe("ensureLog (lib/logs/server-actions)", () => {
 
   it("uses session.id, not any caller-supplied userId-like field", async () => {
     // The post-hardening signature does not accept userId. Call with the
-    // documented args; insert should still fire and reference the session.
+    // documented args; insert should still fire and the row passed to
+    // values() must carry the SESSION userId, not any caller-supplied one.
+    // This is the regression bar: a refactor that re-introduced `userId` as
+    // a caller arg (or trusted a prop on `input`) would land a row with the
+    // attacker's id here.
     getCachedUserMock.mockResolvedValue({ id: "session-user", email: "u@e.com" });
     const { ensureLog } = await import("@/lib/logs/server-actions");
     const result = await ensureLog({ gameId: 42, status: "backlog" });
     expect(result).toEqual({ ok: true });
     expect(insertMock).toHaveBeenCalled();
+    expect(insertValuesSpy).toHaveBeenCalled();
+    expect(insertValuesSpy.mock.calls[0][0]).toMatchObject({
+      userId: "session-user",
+      gameId: 42,
+      status: "backlog",
+    });
   });
 });
 
@@ -263,6 +308,24 @@ describe("getFingerprint (lib/taste/server-actions)", () => {
       });
     const { getFingerprint } = await import("@/lib/taste/server-actions");
     const result = await getFingerprint("target-user");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when owner views their own soft-deleted profile (during 30-day grace)", async () => {
+    // viewer = target = u1 AND target is soft-deleted. The intentional
+    // contract is "soft-deleted profiles surface in NO read path during the
+    // grace window" — even for the owner. A regression flipping the gate to
+    // `!isOwner && deletedAt !== null` would let the owner still see their
+    // own data here; this test pins the current "always null when deleted".
+    getCachedUserMock.mockResolvedValue({ id: "u1", email: "u@e.com" });
+    findFirstImpl = () =>
+      Promise.resolve({
+        userId: "u1",
+        isPublic: true,
+        deletedAt: new Date(),
+      });
+    const { getFingerprint } = await import("@/lib/taste/server-actions");
+    const result = await getFingerprint("u1");
     expect(result).toBeNull();
   });
 
@@ -380,6 +443,19 @@ describe("getProfileByUsername (lib/profile/server-actions)", () => {
     expect(result?.displayName).toBe("Alice Public");
     expect(result?.bio).toBe("open bio");
   });
+
+  it("returns null for a soft-deleted profile (deletedAt filter in WHERE)", async () => {
+    // The SUT filters `isNull(profiles.deletedAt)` in the WHERE clause, so
+    // findFirst returns undefined for soft-deleted rows and the function
+    // returns null. Pins the gate so a refactor that moves the deletedAt
+    // check into `redactPrivateProfile` (where it could leak the row shape
+    // even after redaction) gets caught here.
+    getCachedUserMock.mockResolvedValue({ id: "viewer", email: "v@e.com" });
+    findFirstImpl = () => Promise.resolve(undefined);
+    const { getProfileByUsername } = await import("@/lib/profile/server-actions");
+    const result = await getProfileByUsername("alice-deleted");
+    expect(result).toBeNull();
+  });
 });
 
 describe("getProfileByUserId (lib/profile/server-actions)", () => {
@@ -414,6 +490,17 @@ describe("getProfileByUserId (lib/profile/server-actions)", () => {
     expect(result?.displayName).toBe("Alice Real Name");
     expect(result?.bio).toBe("secret bio");
   });
+
+  it("returns null for a soft-deleted profile (deletedAt filter in WHERE)", async () => {
+    // Same regression bar as the username variant: the SUT filters
+    // `isNull(profiles.deletedAt)` in the WHERE clause; findFirst returns
+    // undefined for soft-deleted rows and the function returns null.
+    getCachedUserMock.mockResolvedValue({ id: "viewer", email: "v@e.com" });
+    findFirstImpl = () => Promise.resolve(undefined);
+    const { getProfileByUserId } = await import("@/lib/profile/server-actions");
+    const result = await getProfileByUserId("u1-deleted");
+    expect(result).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -434,10 +521,20 @@ describe("getFeed (lib/social/feed/server-actions)", () => {
 
   it("uses session viewerId for the followee lookup", async () => {
     getCachedUserMock.mockResolvedValue({ id: "session-viewer", email: "s@e.com" });
-    // No followees → empty feed but DB was queried with session.id
+    // No followees → empty feed, but the followee-lookup WHERE clause must
+    // have used the SESSION viewerId. With the drizzle-orm mock above,
+    // `eq(follows.followerId, viewerId)` reflects back as `[col, val]`, so
+    // the captured where-arg's second slot is the userId we want to verify.
+    // Regression bar: a refactor that re-accepts a `viewerId` arg from the
+    // caller (or trusts an option) would land the attacker's id here.
     selectImpl = () => Promise.resolve([]);
     const { getFeed } = await import("@/lib/social/feed/server-actions");
     const result = await getFeed({});
     expect(result.hasFollowees).toBe(false);
+    expect(selectWhereSpy).toHaveBeenCalled();
+    // First select chain in getFeed is the followee lookup:
+    //   db.select({id: follows.followedId}).from(follows).where(eq(follows.followerId, viewerId))
+    const firstWhereArg = selectWhereSpy.mock.calls[0][0] as unknown[];
+    expect(firstWhereArg[1]).toBe("session-viewer");
   });
 });

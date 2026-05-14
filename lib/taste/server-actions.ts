@@ -128,12 +128,20 @@ export type RefreshFingerprintResult =
 
 /**
  * Manual refresh entry point for /u/{name}/taste (owner-only) — invoked by
- * the refresh-button client island in T6. Auth is derived from the session;
- * callers cannot pass a userId. Rate-limited to 3 refreshes per 24h per
- * user so the AI router quota isn't blown by impatient clicking. The
- * empty tier short-circuits without an Edge call; sparse tier still hits
- * the Edge Function but the function itself skips the AI narrative call
- * (vectors-only persist). See supabase/functions/refresh-fingerprint.
+ * the refresh-button client island in T6. Rate-limited to 3 refreshes per
+ * 24h per user so the AI router quota isn't blown by impatient clicking.
+ * The empty tier short-circuits without an Edge call; sparse tier still
+ * hits the Edge Function but the function itself skips the AI narrative
+ * call (vectors-only persist). See supabase/functions/refresh-fingerprint.
+ *
+ * Visibility: this is a `"use server"` export — any authenticated network
+ * caller can hit it directly. Identity is ALWAYS derived from
+ * `getCachedUser()`; the function takes NO arguments, so there is no
+ * caller-supplied userId surface to spoof. The Edge Function call carries
+ * `me.id` from the session, and the recommendation cache invalidation also
+ * keys on `me.id`. A regression that re-introduced a userId parameter (or
+ * trusted one off `args`) would let one user trigger refreshes against
+ * another's fingerprint and burn their AI quota — pin this contract.
  */
 export async function refreshFingerprint(): Promise<RefreshFingerprintResult> {
   const me = await getCachedUser();
