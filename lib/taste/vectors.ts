@@ -47,17 +47,27 @@ export function cosineSim(a: SparseVector, b: SparseVector): number {
  *
  * Threshold guidance: 0.25 = significant taste shift; 0.1 = noisy churn.
  * Tune in W2 once we have a few real users to calibrate against.
+ *
+ * Per-axis semantics: an axis where BOTH current and snapshot are empty
+ * (e.g. gameMode/playerPerspective on legacy fingerprints saved before the
+ * IGDB integration) contributes 0 distance — both sides agree there's no
+ * signal yet. An axis where one side has signal and the other doesn't
+ * contributes the full max distance (1.0) — that's a real shift.
  */
 export function drift(
   current: VectorBundle,
   snapshot: VectorBundle | null,
 ): number {
   if (!snapshot) return Infinity;
+  const axisDistance = (a: SparseVector, b: SparseVector): number => {
+    if (Object.keys(a).length === 0 && Object.keys(b).length === 0) return 0;
+    return 1 - cosineSim(a, b);
+  };
   return Math.max(
-    1 - cosineSim(current.genre, snapshot.genre),
-    1 - cosineSim(current.theme, snapshot.theme),
-    1 - cosineSim(current.mechanic, snapshot.mechanic),
-    1 - cosineSim(current.gameMode, snapshot.gameMode),
-    1 - cosineSim(current.playerPerspective, snapshot.playerPerspective),
+    axisDistance(current.genre, snapshot.genre),
+    axisDistance(current.theme, snapshot.theme),
+    axisDistance(current.mechanic, snapshot.mechanic),
+    axisDistance(current.gameMode, snapshot.gameMode),
+    axisDistance(current.playerPerspective, snapshot.playerPerspective),
   );
 }

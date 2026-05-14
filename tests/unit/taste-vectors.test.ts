@@ -92,4 +92,39 @@ describe("drift — max distance across genre + theme + mechanic", () => {
     expect(d).toBeGreaterThan(0.1);
     expect(d).toBeLessThan(0.5);
   });
+
+  it("treats axes that are empty on BOTH sides as 0 distance (no signal)", () => {
+    // Use case: a legacy snapshot saved before the IGDB integration won't
+    // have gameMode/playerPerspective, and similar-users.ts still passes
+    // {} for those axes. Without this guard, drift() would always return
+    // 1.0 (cosineSim({}, {}) = 0 → 1 - 0 = 1) and dominate Math.max.
+    const empty: VectorBundle = {
+      genre: { rpg: 1 },
+      theme: { fantasy: 1 },
+      mechanic: { turn_based: 1 },
+      gameMode: {}, // legacy: no IGDB facets stored
+      playerPerspective: {},
+    };
+    expect(drift(empty, empty)).toBeCloseTo(0, 6);
+  });
+
+  it("counts an axis as max-distance when only ONE side has signal", () => {
+    // If current has gameMode signal but snapshot doesn't (or vice versa),
+    // that's a real shift and should contribute distance.
+    const current: VectorBundle = {
+      genre: { rpg: 1 },
+      theme: { fantasy: 1 },
+      mechanic: { turn_based: 1 },
+      gameMode: { multiplayer: 1 }, // gained signal
+      playerPerspective: {},
+    };
+    const snapshot: VectorBundle = {
+      genre: { rpg: 1 },
+      theme: { fantasy: 1 },
+      mechanic: { turn_based: 1 },
+      gameMode: {}, // no signal
+      playerPerspective: {},
+    };
+    expect(drift(current, snapshot)).toBeCloseTo(1, 6);
+  });
 });

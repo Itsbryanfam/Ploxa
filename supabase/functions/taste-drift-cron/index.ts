@@ -38,13 +38,21 @@ function cosineSim(a: Record<string, number>, b: Record<string, number>): number
 }
 
 function drift(current: Snapshot, snap: Snapshot): number {
+  // Per-axis: BOTH-empty contributes 0 distance (legacy snapshots written
+  // before T9 added the IGDB facets won't have game_mode/player_perspective
+  // — neither does the recomputed current vector for users whose games
+  // haven't been backfilled yet — so both sides are {} and we treat as
+  // "no signal change here" rather than max distance). Mirrors lib/taste/vectors.ts.
+  const axisDistance = (a: Record<string, number>, b: Record<string, number>): number => {
+    if (Object.keys(a).length === 0 && Object.keys(b).length === 0) return 0;
+    return 1 - cosineSim(a, b);
+  };
   return Math.max(
-    1 - cosineSim(current.genre, snap.genre),
-    1 - cosineSim(current.theme, snap.theme),
-    1 - cosineSim(current.mechanic, snap.mechanic),
-    // Use `?? {}` for backward compat with DB snapshots written before T9.
-    1 - cosineSim(current.game_mode ?? {}, snap.game_mode ?? {}),
-    1 - cosineSim(current.player_perspective ?? {}, snap.player_perspective ?? {}),
+    axisDistance(current.genre, snap.genre),
+    axisDistance(current.theme, snap.theme),
+    axisDistance(current.mechanic, snap.mechanic),
+    axisDistance(current.game_mode ?? {}, snap.game_mode ?? {}),
+    axisDistance(current.player_perspective ?? {}, snap.player_perspective ?? {}),
   );
 }
 
