@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { isBlockedBetween, withBlockedFilter } from "@/lib/social/_shared/visibility";
+import { FOLLOWS_PAGE_SIZE, type FollowsPage } from "./pagination";
 import { onFollow } from "./triggers";
 
 const { follows, profiles } = schema;
@@ -85,12 +86,16 @@ export async function unfollow(targetUserId: string): Promise<FollowResult> {
  * already resolved the viewer for their own purposes. Same convention as
  * getProfileSummary(username, viewerId) in profile-summary.ts.
  *
+ * Pagination: defaults to 100 per page (audit T12). A 1000-follower user
+ * was previously serializing the entire list on every profile-page load.
+ *
  * Backed by the follows_followed_id_idx (migration 0009) for sub-ms
  * lookup despite followed_id not being the PK leading column.
  */
 export async function getFollowers(
   userId: string,
   viewerId: string | null,
+  page: FollowsPage = {},
 ): Promise<
   Array<{
     userId: string;
@@ -99,6 +104,9 @@ export async function getFollowers(
     profilePictureUrl: string | null;
   }>
 > {
+  const limit = Math.min(Math.max(1, page.limit ?? FOLLOWS_PAGE_SIZE), FOLLOWS_PAGE_SIZE);
+  const offset = Math.max(0, page.offset ?? 0);
+
   const base = db
     .select({
       userId: profiles.userId,
@@ -111,7 +119,13 @@ export async function getFollowers(
     .where(and(eq(follows.followedId, userId), isNull(profiles.deletedAt)))
     .$dynamic();
 
-  return await withBlockedFilter(viewerId, base, profiles.userId);
+  // Block filter is in-WHERE (notExists subqueries on `blocks`), so
+  // LIMIT/OFFSET apply to the post-filter rows. Each returned page
+  // contains up to FOLLOWS_PAGE_SIZE rows that are visible to the
+  // viewer (not "100 raw follow rows that may shrink to N visible").
+  return await withBlockedFilter(viewerId, base, profiles.userId)
+    .limit(limit)
+    .offset(offset);
 }
 
 /**
@@ -121,12 +135,15 @@ export async function getFollowers(
  * `viewerId` is caller-supplied rather than session-derived — same
  * convention as getProfileSummary(username, viewerId) in profile-summary.ts.
  *
+ * Pagination: defaults to 100 per page (audit T12).
+ *
  * Backed by the follows PK (follower_id leading column) — no extra
  * index needed.
  */
 export async function getFollowing(
   userId: string,
   viewerId: string | null,
+  page: FollowsPage = {},
 ): Promise<
   Array<{
     userId: string;
@@ -135,6 +152,9 @@ export async function getFollowing(
     profilePictureUrl: string | null;
   }>
 > {
+  const limit = Math.min(Math.max(1, page.limit ?? FOLLOWS_PAGE_SIZE), FOLLOWS_PAGE_SIZE);
+  const offset = Math.max(0, page.offset ?? 0);
+
   const base = db
     .select({
       userId: profiles.userId,
@@ -147,5 +167,7 @@ export async function getFollowing(
     .where(and(eq(follows.followerId, userId), isNull(profiles.deletedAt)))
     .$dynamic();
 
-  return await withBlockedFilter(viewerId, base, profiles.userId);
+  return await withBlockedFilter(viewerId, base, profiles.userId)
+    .limit(limit)
+    .offset(offset);
 }

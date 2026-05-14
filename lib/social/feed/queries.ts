@@ -2,7 +2,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { isBlockedBetween } from "@/lib/social/_shared/visibility";
+import { getBlockedPairs } from "@/lib/social/_shared/visibility";
 import { compareFeedRows, type FeedCursor } from "@/lib/social/_shared/cursors";
 
 export type FeedRow = {
@@ -26,8 +26,11 @@ export type FeedRow = {
  *
  * Block filter is post-hoc because UNION ALL doesn't compose cleanly with
  * notExists subqueries (we'd need 3 copies of the subquery, one per branch).
- * 50-row post-filter is cheap — each isBlockedBetween call is O(1) on the
- * blocks PK + reverse index from migration 0008.
+ * 50-row post-filter goes through `getBlockedPairs` — one batched query
+ * returning the Set of blocked actor IDs, indexed via the blocks PK +
+ * blocks_blocked_blocker_idx (migration 0008). Replaces 50 sequential
+ * isBlockedBetween awaits that previously cost 250–750ms per /home/feed
+ * render.
  */
 export async function buildFeedQuery(args: {
   viewerId: string;
@@ -141,20 +144,23 @@ export async function buildFeedQuery(args: {
   }>;
 
   // Post-hoc block filter: drop rows where viewer and actor have a block
-  // edge in either direction. Sequential because we want short-circuit;
-  // for hot users we can promote to Promise.all + batched lookup later.
-  const filtered: FeedRow[] = [];
-  for (const r of rows) {
-    if (await isBlockedBetween(viewerId, r.actor_id)) continue;
-    filtered.push({
+  // edge in either direction. One batched lookup returns the Set of
+  // blocked actor IDs across all distinct actors in the rows; the filter
+  // is then a pure in-memory Set.has() check.
+  const blockedActorIds = await getBlockedPairs(
+    viewerId,
+    rows.map((r) => r.actor_id),
+  );
+  const filtered: FeedRow[] = rows
+    .filter((r) => !blockedActorIds.has(r.actor_id))
+    .map((r) => ({
       kind: r.kind,
       actorId: r.actor_id,
       eventAt: new Date(r.event_at),
       eventType: r.event_type,
       targetId: r.target_id,
       payload: r.payload,
-    });
-  }
+    }));
 
   // Maintain canonical sort after filter (cheap; max 50 rows).
   return filtered.sort(compareFeedRows);

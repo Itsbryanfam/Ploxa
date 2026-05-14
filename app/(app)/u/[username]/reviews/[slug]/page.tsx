@@ -137,11 +137,19 @@ export default async function CanonicalReviewPage({ params }: Props) {
     )
     .$dynamic();
 
+  // LIMIT 100: a viral review can attract thousands of comments and
+  // unbounded reads drag the canonical page into multi-second renders
+  // (audit T12). 100 covers virtually all real threads we've seen; the
+  // CommentThread UI doesn't paginate yet, so the cap is effectively a
+  // safety bound rather than a UX boundary. Promote to cursor-paged
+  // when we ship comment infinite scroll.
   const commentsQuery = withBlockedFilter(
     viewer?.id ?? null,
     baseCommentsQuery,
     schema.comments.userId,
-  ).orderBy(schema.comments.createdAt);
+  )
+    .orderBy(schema.comments.createdAt)
+    .limit(100);
 
   const [countResult, viewerLikedRow, commentRows] = await Promise.all([
     db

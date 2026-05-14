@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, notExists, or, sql } from "drizzle-orm";
+import { and, eq, inArray, notExists, or, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgSelect } from "drizzle-orm/pg-core";
 
 import { db, schema } from "@/lib/db";
@@ -67,6 +67,10 @@ export function withBlockedFilter<Q extends PgSelect>(
  *
  * Indexed: PK lookup on (blocker_id, blocked_id) for one direction;
  * blocks_blocked_blocker_idx for the reverse. Both are sub-ms.
+ *
+ * Prefer `getBlockedPairs` for any callsite that filters more than one
+ * candidate against the same viewer — this single-row form costs one
+ * round-trip per call and degenerates into N+1 fast.
  */
 export async function isBlockedBetween(a: string, b: string): Promise<boolean> {
   const rows = await db
@@ -80,4 +84,62 @@ export async function isBlockedBetween(a: string, b: string): Promise<boolean> {
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * Batched form: returns the Set of candidate IDs that the viewer is
+ * block-related to in EITHER direction. Replaces N sequential
+ * `isBlockedBetween` calls with a single round-trip — used by the feed
+ * (50 actor IDs per render) and trending-reviews (≤24 author IDs per
+ * cache miss).
+ *
+ * Returns an empty Set when `viewerId` is null (logged-out exception
+ * matches `withBlockedFilter`) or `candidateIds` is empty (no rows to
+ * filter).
+ *
+ * Implementation: one SELECT with two OR'd predicates — the (blocker,
+ * blocked = ANY) branch hits the (blocker_id, blocked_id) PK; the
+ * reverse (blocker = ANY, blocked) branch hits
+ * blocks_blocked_blocker_idx from migration 0008. Drizzle's `inArray`
+ * compiles to `IN ($1, $2, ...)` on postgres-js — equivalent plan to a
+ * `= ANY(...)` array bind.
+ *
+ * Caller pattern:
+ *   const blocked = await getBlockedPairs(viewerId, rows.map(r => r.actorId));
+ *   const visible = rows.filter(r => !blocked.has(r.actorId));
+ */
+export async function getBlockedPairs(
+  viewerId: string | null,
+  candidateIds: string[],
+): Promise<Set<string>> {
+  if (!viewerId || candidateIds.length === 0) return new Set();
+
+  // De-dup: a UNION-ALL feed can repeat the same actor across
+  // log/review/list rows. One IN list, no duplicate parameters.
+  const unique = Array.from(new Set(candidateIds));
+
+  const rows = await db
+    .select({
+      blockerId: blocks.blockerId,
+      blockedId: blocks.blockedId,
+    })
+    .from(blocks)
+    .where(
+      or(
+        // Viewer blocked one of the candidates.
+        and(eq(blocks.blockerId, viewerId), inArray(blocks.blockedId, unique)),
+        // One of the candidates blocked the viewer.
+        and(eq(blocks.blockedId, viewerId), inArray(blocks.blockerId, unique)),
+      ),
+    );
+
+  // Project the "other side" of each edge into the result Set: the
+  // blocked candidate from a viewer-side block, the blocker candidate
+  // from a candidate-side block. Either way the row is hidden from
+  // the viewer.
+  const blocked = new Set<string>();
+  for (const r of rows) {
+    blocked.add(r.blockerId === viewerId ? r.blockedId : r.blockerId);
+  }
+  return blocked;
 }

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 
 import { db } from "@/lib/db";
-import { isBlockedBetween } from "@/lib/social/_shared/visibility";
+import { getBlockedPairs } from "@/lib/social/_shared/visibility";
 
 const CACHE_TTL_SECONDS = 1800; // 30 minutes
 
@@ -108,9 +108,10 @@ const _getTrendingReviewsCached = unstable_cache(
  * Trending reviews with viewer-aware block filter applied post-cache.
  *
  * Architecture: the unfiltered cached set is shared across all logged-out and
- * logged-in visitors alike. The viewer-specific block check — O(n) where n ≤
- * limit — runs after the cache hit and is sub-millisecond per row because
- * `isBlockedBetween` does a single-row primary-key lookup each call.
+ * logged-in visitors alike. The viewer-specific block check — one batched
+ * `getBlockedPairs` query returning the Set of blocked author IDs — runs
+ * after the cache hit. Replaces N sequential `isBlockedBetween` round-trips
+ * (≤24 per render) with one indexed query.
  *
  * Logged-out callers (`viewerId = null`) receive the full unfiltered list;
  * this matches the spec's "no block-gating for anonymous traffic" decision
@@ -133,10 +134,12 @@ export async function getTrendingReviews(
 ): Promise<TrendingReview[]> {
   const all = await _getTrendingReviewsCached(limit);
   if (!viewerId) return all;
-  const filtered: TrendingReview[] = [];
-  for (const review of all) {
-    if (await isBlockedBetween(viewerId, review.authorUserId)) continue; // bounded by limit (≤ 24); block check is sub-ms PK lookup
-    filtered.push(review);
-  }
-  return filtered;
+  // One batched query returns the Set of blocked author IDs across all
+  // distinct authors in the cached set; the filter is then a pure
+  // in-memory Set.has() check.
+  const blockedAuthorIds = await getBlockedPairs(
+    viewerId,
+    all.map((r) => r.authorUserId),
+  );
+  return all.filter((r) => !blockedAuthorIds.has(r.authorUserId));
 }
