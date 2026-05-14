@@ -4,8 +4,14 @@ import { revalidatePath } from "next/cache";
 
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
+import {
+  buildTargetHref,
+  type CommentLookup,
+  type ListLookup,
+  type ReviewLookup,
+} from "@/lib/social/notifications/target-resolver";
 
-const { notifications } = schema;
+const { notifications, reviews, lists, comments, games, profiles } = schema;
 
 export type InboxFilter = "all" | "follows" | "reactions" | "comments" | "wishlist";
 
@@ -30,6 +36,16 @@ export type InboxRow = {
   actorUsername: string | null;
   actorDisplayName: string | null;
   actorAvatarUrl: string | null;
+  /**
+   * Resolved canonical URL for this notification's target. Null when:
+   *   - the target was hard-deleted (cascade)
+   *   - the target's author was soft-deleted (no username to slot in)
+   *   - the type has no resolved route yet (wishlist_logged_by_friend)
+   *
+   * The UI renders null-href rows as non-interactive list items rather than
+   * dead-ending on /home/feed (the pre-T05 fallback).
+   */
+  targetHref: string | null;
 };
 
 /**
@@ -52,7 +68,7 @@ export async function getInbox(
   const filter = opts.filter ?? "all";
   const types = FILTER_TYPE_MAP[filter];
 
-  return await db
+  const baseRows = await db
     .select({
       id: notifications.id,
       type: notifications.type,
@@ -60,9 +76,9 @@ export async function getInbox(
       actorId: notifications.actorId,
       readAt: notifications.readAt,
       createdAt: notifications.createdAt,
-      actorUsername: schema.profiles.username,
-      actorDisplayName: schema.profiles.displayName,
-      actorAvatarUrl: schema.profiles.avatarUrl,
+      actorUsername: profiles.username,
+      actorDisplayName: profiles.displayName,
+      actorAvatarUrl: profiles.avatarUrl,
     })
     .from(notifications)
     // Soft-delete filter on the join predicate, not the WHERE: we keep the
@@ -71,11 +87,8 @@ export async function getInbox(
     // actorUsername as "someone" with no profile link — same UX as an actor
     // whose row was hard-deleted via cascade.
     .leftJoin(
-      schema.profiles,
-      and(
-        eq(schema.profiles.userId, notifications.actorId),
-        isNull(schema.profiles.deletedAt),
-      ),
+      profiles,
+      and(eq(profiles.userId, notifications.actorId), isNull(profiles.deletedAt)),
     )
     .where(
       and(
@@ -86,6 +99,115 @@ export async function getInbox(
     .orderBy(sql`(${notifications.readAt} IS NULL) DESC`, desc(notifications.createdAt))
     .limit(limit)
     .offset(offset);
+
+  // Group target ids by what kind of row they reference, then do at most
+  // ONE batched IN-array lookup per kind. The 50-row default limit means
+  // each kind's id-list is bounded; an empty id-list short-circuits to a
+  // resolved promise so we don't waste a round-trip.
+  const reviewIds = new Set<string>();
+  const listIds = new Set<string>();
+  const commentIds = new Set<string>();
+  for (const r of baseRows) {
+    if (!r.targetId) continue;
+    if (r.type === "review_liked" || r.type === "review_commented") {
+      reviewIds.add(r.targetId);
+    } else if (r.type === "list_liked") {
+      listIds.add(r.targetId);
+    } else if (r.type === "comment_replied") {
+      commentIds.add(r.targetId);
+    }
+    // new_follower needs no extra lookup — actorUsername already comes from
+    // the leftJoin above. wishlist_logged_by_friend has no resolver yet.
+  }
+
+  // Author username comes via a leftJoin so a soft-deleted author yields a
+  // null username — buildTargetHref then returns null for the row, which the
+  // UI renders as non-interactive (no dead URL).
+  const [reviewRows, listRows, commentRows] = await Promise.all([
+    reviewIds.size > 0
+      ? db
+          .select({
+            id: reviews.id,
+            authorUsername: profiles.username,
+            gameSlug: games.slug,
+          })
+          .from(reviews)
+          .innerJoin(games, eq(games.id, reviews.gameId))
+          .leftJoin(
+            profiles,
+            and(eq(profiles.userId, reviews.userId), isNull(profiles.deletedAt)),
+          )
+          .where(inArray(reviews.id, Array.from(reviewIds)))
+      : Promise.resolve(
+          [] as { id: string; authorUsername: string | null; gameSlug: string }[],
+        ),
+    listIds.size > 0
+      ? db
+          .select({
+            id: lists.id,
+            authorUsername: profiles.username,
+            slug: lists.slug,
+          })
+          .from(lists)
+          .leftJoin(
+            profiles,
+            and(eq(profiles.userId, lists.userId), isNull(profiles.deletedAt)),
+          )
+          .where(inArray(lists.id, Array.from(listIds)))
+      : Promise.resolve(
+          [] as { id: string; authorUsername: string | null; slug: string }[],
+        ),
+    commentIds.size > 0
+      ? db
+          .select({
+            id: comments.id,
+            authorUsername: profiles.username,
+            gameSlug: games.slug,
+          })
+          .from(comments)
+          .innerJoin(reviews, eq(reviews.id, comments.reviewId))
+          .innerJoin(games, eq(games.id, reviews.gameId))
+          // For comment_replied, the link points to the parent comment's
+          // containing thread — the AUTHOR of the URL is the review's author
+          // (whose page hosts the thread), not the parent comment's author.
+          .leftJoin(
+            profiles,
+            and(eq(profiles.userId, reviews.userId), isNull(profiles.deletedAt)),
+          )
+          .where(inArray(comments.id, Array.from(commentIds)))
+      : Promise.resolve(
+          [] as { id: string; authorUsername: string | null; gameSlug: string }[],
+        ),
+  ]);
+
+  const reviewMap: ReviewLookup = new Map(
+    reviewRows.map((r) => [
+      r.id,
+      { authorUsername: r.authorUsername, gameSlug: r.gameSlug },
+    ]),
+  );
+  const listMap: ListLookup = new Map(
+    listRows.map((r) => [
+      r.id,
+      { authorUsername: r.authorUsername, slug: r.slug },
+    ]),
+  );
+  const commentMap: CommentLookup = new Map(
+    commentRows.map((r) => [
+      r.id,
+      { authorUsername: r.authorUsername, gameSlug: r.gameSlug },
+    ]),
+  );
+
+  const lookups = { reviews: reviewMap, lists: listMap, comments: commentMap };
+
+  return baseRows.map((r) => ({
+    ...r,
+    targetHref: buildTargetHref(
+      { type: r.type, targetId: r.targetId, actorUsername: r.actorUsername },
+      lookups,
+    ),
+  }));
 }
 
 /**

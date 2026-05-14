@@ -13,7 +13,8 @@ interface Props {
 /**
  * /u/[username]/lists — grid of a user's public lists (or all lists for owner).
  *
- * TODO(T26): add cursor-based pagination. For now limited to 50 lists.
+ * Capped at 50 lists; cursor-based pagination is a future enhancement once
+ * power users hit the cap (no one has yet).
  */
 export default async function UserListsPage({ params }: Props) {
   const { username } = await params;

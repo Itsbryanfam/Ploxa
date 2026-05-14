@@ -1,6 +1,6 @@
 "use client";
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { relativeTime } from "@/lib/utils";
 import { markRead, type InboxRow } from "@/lib/social/notifications/server-actions";
@@ -15,41 +15,36 @@ const COPY: Record<InboxRow["type"], (actor: string) => string> = {
 };
 
 /**
- * Target URL resolver. Phase 5 ships with new_follower routing to the actor's
- * profile (the canonical URL is known). Other notification types route to
- * /home/feed as a sane fallback until T26 (discovery routes) exposes the
- * username+slug pairs needed to resolve review/list/comment IDs to their
- * canonical pages.
+ * Notification row. Renders as a Next.js <Link> when the server-resolved
+ * targetHref is non-null (free keyboard accessibility + semantic navigation),
+ * or as a plain non-interactive <li> when the target was hard-deleted, the
+ * actor was soft-deleted, or the type has no resolved route yet.
+ *
+ * The previous implementation rendered as <li onClick> with no role or
+ * tabIndex — keyboard users could not activate notifications (WCAG 2.1.1).
+ * The fallback href-resolver also dead-ended every type except new_follower
+ * on /home/feed; that's now resolved server-side in getInbox via batched
+ * lookups. See lib/social/notifications/target-resolver.ts for the URL shape
+ * matrix.
  */
-function getTargetHref(row: InboxRow): string {
-  if (row.type === "new_follower" && row.actorUsername) {
-    return `/u/${row.actorUsername}`;
-  }
-  // TODO(T26): resolve review/list/comment targets to canonical URLs
-  // once the discovery query helpers expose username+slug pairs by id.
-  return "/home/feed";
-}
-
 export function NotificationRow(props: { row: InboxRow }) {
-  const router = useRouter();
   const [, startTransition] = useTransition();
 
-  function onClick() {
+  function markReadOnce() {
     if (!props.row.readAt) {
       startTransition(async () => {
         await markRead(props.row.id);
       });
     }
-    router.push(getTargetHref(props.row));
   }
 
-  return (
-    <li
-      onClick={onClick}
-      className={`flex items-center gap-3 p-3 rounded cursor-pointer hover:bg-[var(--bg-card)] ${
-        props.row.readAt ? "" : "border-l-2 border-[var(--accent)]"
-      }`}
-    >
+  const unreadBorderClass = props.row.readAt
+    ? ""
+    : "border-l-2 border-[var(--accent)]";
+  const baseClass = `flex items-center gap-3 p-3 rounded ${unreadBorderClass}`;
+
+  const inner = (
+    <>
       {props.row.actorAvatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage URL not in remotePatterns; small fixed size.
         <img
@@ -70,8 +65,32 @@ export function NotificationRow(props: { row: InboxRow }) {
         <p className="text-sm">
           {COPY[props.row.type](props.row.actorUsername ?? "someone")}
         </p>
-        <p className="text-xs text-[var(--text-dim)]">{relativeTime(props.row.createdAt)}</p>
+        <p className="text-xs text-[var(--text-dim)]">
+          {relativeTime(props.row.createdAt)}
+        </p>
       </div>
+    </>
+  );
+
+  // Tombstone path: target was hard-deleted, actor was soft-deleted, or the
+  // type has no resolved route. Render as a plain non-interactive list item —
+  // never as a click-able dead link.
+  if (!props.row.targetHref) {
+    return <li className={baseClass}>{inner}</li>;
+  }
+
+  // Live path: render as Next Link. The browser handles keyboard activation
+  // for free (Enter on a focused anchor); we attach mark-as-read to onClick
+  // (also fires on Enter via synthetic keyboard click).
+  return (
+    <li>
+      <Link
+        href={props.row.targetHref}
+        onClick={markReadOnce}
+        className={`${baseClass} hover:bg-[var(--bg-card)] focus-visible:bg-[var(--bg-card)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]`}
+      >
+        {inner}
+      </Link>
     </li>
   );
 }
