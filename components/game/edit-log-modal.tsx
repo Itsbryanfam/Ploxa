@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
 import type { LibraryItem } from "@/lib/logs/server-actions";
 import { updateLogFull, deleteLog } from "@/lib/logs/server-actions";
 import { LOG_STATUSES, STATUS_LABELS, type LogStatus } from "@/lib/db/schema-types";
@@ -26,6 +27,7 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
   const [isPrivate, setIsPrivate] = useState(item.isPrivate);
   const [notes, setNotes] = useState(item.notes ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -68,15 +70,16 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
   }
 
   function handleDelete() {
-    if (!confirm("Delete this log? This cannot be undone.")) return;
     startTransition(async () => {
       const result = await deleteLog(item.logId);
       if (!result.ok) {
         setError(result.error ?? "Failed to delete");
+        setConfirmDeleteOpen(false);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["library"] });
       router.refresh();
+      setConfirmDeleteOpen(false);
       onClose();
     });
   }
@@ -192,12 +195,56 @@ export function EditLogModal({ item, onClose }: { item: LibraryItem; onClose: ()
         )}
 
         <div className="flex justify-between pt-2 border-t border-[var(--border-soft)]">
-          <Button variant="ghost" onClick={handleDelete} disabled={pending}>Delete log</Button>
+          <Button
+            variant="ghost"
+            onClick={() => setConfirmDeleteOpen(true)}
+            disabled={pending}
+          >
+            Delete log
+          </Button>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
             <Button onClick={save} disabled={pending}>{pending ? "Saving..." : "Save"}</Button>
           </div>
         </div>
+
+        {/* Destructive confirm — Radix Dialog gives us focus trap, Esc, and
+            focus restore for free. The bare red button (no variant) matches
+            the BlockAction pattern: there's no destructive button variant in
+            the design system yet. */}
+        <Dialog.Root open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-[70] bg-black/60" />
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-[70] -translate-x-1/2 -translate-y-1/2 w-[min(420px,calc(100vw-32px))] rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-2xl">
+              <Dialog.Title className="text-lg font-semibold">
+                Delete this log?
+              </Dialog.Title>
+              <Dialog.Description className="mt-2 text-sm text-[var(--text-dim)]">
+                Removes the log entry, your rating, dates, hours, notes, and
+                the review if you wrote one. This cannot be undone.
+              </Dialog.Description>
+              <div className="mt-6 flex justify-end gap-2">
+                <Dialog.Close asChild>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="px-4 py-1.5 text-sm rounded-md border border-[var(--border)] hover:border-[var(--border-hover)] disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </Dialog.Close>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={pending}
+                  className="px-4 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {pending ? "Deleting…" : "Delete log"}
+                </button>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
       </div>
     </div>
   );

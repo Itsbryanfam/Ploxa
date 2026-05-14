@@ -117,17 +117,21 @@ export function UsernameInput({
     }, 300);
   }
 
+  // Text prefixes ("Available:" / "Unavailable:") make the state legible to
+  // anyone who can't see the green/red color signal — colorblind users,
+  // greyscale displays, or AT users with a CSS reset.  Color stays as a
+  // redundant cue.
   const message =
     status.kind === "checking"
       ? "…checking"
       : status.kind === "available"
-        ? `✓ @${value} is available`
+        ? `Available: @${value}`
         : status.kind === "invalid"
-          ? `✗ ${status.message}`
+          ? `Unavailable: ${status.message}`
           : status.kind === "reserved"
-            ? `✗ ${REASON_TO_MESSAGE.reserved}`
+            ? `Unavailable: ${REASON_TO_MESSAGE.reserved}`
             : status.kind === "taken"
-              ? `✗ ${REASON_TO_MESSAGE.taken}`
+              ? `Unavailable: ${REASON_TO_MESSAGE.taken}`
               : "";
 
   const messageColor =

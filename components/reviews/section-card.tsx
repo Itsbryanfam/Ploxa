@@ -66,11 +66,14 @@ export function SectionCard({
   }
 
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4 space-y-3 group">
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs uppercase tracking-wide text-[var(--text-faint)]">{label}</span>
         {!editing && (
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+          // Always-visible action buttons — the previous
+          // `opacity-0 group-hover:opacity-100` made them touch-inaccessible
+          // (no hover state) and discoverable only by accident on desktop.
+          <div className="flex gap-1">
             <Button variant="ghost" size="sm" onClick={startEdit} disabled={streaming}>
               Edit
             </Button>

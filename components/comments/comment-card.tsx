@@ -1,6 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
 
 import { relativeTime } from "@/lib/utils";
 import { editComment, softDeleteComment } from "@/lib/social/comments/server-actions";
@@ -30,6 +31,7 @@ export function CommentCard(props: {
   const isDeleted = props.comment.body === "[deleted]";
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(props.comment.body);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function onSaveEdit() {
@@ -41,9 +43,9 @@ export function CommentCard(props: {
   }
 
   function onDelete() {
-    if (!confirm("Delete this comment? The thread structure is preserved.")) return;
     startTransition(async () => {
       await softDeleteComment({ commentId: props.comment.id });
+      setConfirmDeleteOpen(false);
       router.refresh();
     });
   }
@@ -144,13 +146,55 @@ export function CommentCard(props: {
               </button>
             )}
             {isOwner && (
-              <button type="button" onClick={onDelete} className="hover:text-[var(--text)]">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteOpen(true)}
+                className="hover:text-[var(--text)]"
+              >
                 Delete
               </button>
             )}
           </footer>
         )}
       </div>
+
+      {/* Destructive confirm — Radix gives us focus trap, Esc, focus restore.
+          Soft-delete preserves replies under "[deleted]" so the thread tree
+          stays intact; we surface that explicitly so deleting feels
+          predictable rather than scary. */}
+      <Dialog.Root open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[min(420px,calc(100vw-32px))] rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-2xl">
+            <Dialog.Title className="text-lg font-semibold">
+              Delete this comment?
+            </Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm text-[var(--text-dim)]">
+              Your comment text is removed and replaced with &ldquo;[deleted]&rdquo;.
+              Replies stay so the thread reads in order. You can&apos;t undo this.
+            </Dialog.Description>
+            <div className="mt-6 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  disabled={pending}
+                  className="px-4 py-1.5 text-sm rounded-md border border-[var(--border)] hover:border-[var(--border-hover)] disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </Dialog.Close>
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={pending}
+                className="px-4 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {pending ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </article>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { updateLogStatus } from "@/lib/logs/server-actions";
 import { LOG_STATUSES, STATUS_LABELS, type LogStatus } from "@/lib/db/schema-types";
 import { STATUS_ICONS } from "@/components/pixel";
@@ -11,16 +11,33 @@ import { cn } from "@/lib/utils";
 interface Props {
   logId: string;
   currentStatus: LogStatus;
-  onClose: () => void;
+  /**
+   * Called when the user picks a status (or re-picks the current one) — the
+   * parent uses this to drop its `open` state. Radix already handles
+   * Esc + outside-click + focus restore for us, so this is only fired on
+   * intentional selection.
+   */
+  onSelected: () => void;
 }
 
-export function PosterStatusMenu({ logId, currentStatus, onClose }: Props) {
+/**
+ * Status-picker payload rendered inside `DropdownMenu.Content` from
+ * `library-poster.tsx`. The trigger lives in the parent so the Radix root
+ * sees both halves and can wire up focus trap + outside-click + Esc + focus
+ * restore for us.
+ *
+ * The previous implementation was a bespoke absolutely-positioned `<div>`
+ * with no escape, no outside-click, and no focus restore — moving to
+ * `@radix-ui/react-dropdown-menu` gives all three for free, plus arrow-key
+ * roving focus through the items.
+ */
+export function PosterStatusMenu({ logId, currentStatus, onSelected }: Props) {
   const [pending, startTransition] = useTransition();
   const queryClient = useQueryClient();
 
   function handlePick(status: LogStatus) {
     if (status === currentStatus) {
-      onClose();
+      onSelected();
       return;
     }
     startTransition(async () => {
@@ -29,41 +46,41 @@ export function PosterStatusMenu({ logId, currentStatus, onClose }: Props) {
         await queryClient.invalidateQueries({ queryKey: ["library"] });
         await queryClient.invalidateQueries({ queryKey: ["status-shelf"] });
       }
-      onClose();
+      onSelected();
     });
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.12 }}
-      className="absolute top-2 right-2 z-10 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-[var(--shadow-elev)] py-1 min-w-[140px]"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <>
       {LOG_STATUSES.map((s) => {
         const Icon = STATUS_ICONS[s];
         const isCurrent = s === currentStatus;
         return (
-          <button
+          <DropdownMenu.Item
             key={s}
-            type="button"
-            onClick={() => handlePick(s)}
+            // Radix calls this on Enter/Space/click. We use `onSelect` (not
+            // `onClick`) so keyboard activation works the same as click.
+            onSelect={(e) => {
+              // Prevent Radix from auto-closing before our async transition
+              // completes — we close manually in handlePick to keep the menu
+              // open during the in-flight write.
+              if (pending) e.preventDefault();
+              handlePick(s);
+            }}
             disabled={pending}
             className={cn(
-              "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-xs cursor-default outline-none rounded-sm",
               isCurrent
-                ? "text-[var(--accent)] cursor-default"
-                : "text-[var(--text-dim)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text)]",
+                ? "text-[var(--accent)]"
+                : "text-[var(--text-dim)] focus:bg-[var(--bg-card-hover)] focus:text-[var(--text)]",
             )}
           >
             <Icon size={12} />
             {STATUS_LABELS[s]}
             {isCurrent && <span className="ml-auto">•</span>}
-          </button>
+          </DropdownMenu.Item>
         );
       })}
-    </motion.div>
+    </>
   );
 }

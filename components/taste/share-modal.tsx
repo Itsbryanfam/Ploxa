@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 
 /**
@@ -18,6 +19,10 @@ import { toast } from "sonner";
  * The button itself is rendered only when the profile is public (see
  * `TierNarrative`); the OG endpoint also 404s for private profiles per T16,
  * so this client gate is for UX, not security.
+ *
+ * Uses Radix Dialog (rather than the previous bespoke `<div role="dialog">`)
+ * for free focus trap, Esc-to-close, focus restore, and an `aria-labelledby`
+ * link from `Dialog.Title`.
  */
 export function ShareModal({
   username,
@@ -72,68 +77,66 @@ export function ShareModal({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded border border-[var(--border)] px-3 py-1 text-xs hover:bg-[var(--bg-card-hover)]"
-      >
-        Share →
-      </button>
-      {open && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setOpen(false)}
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button
+          type="button"
+          className="rounded border border-[var(--border)] px-3 py-1 text-xs hover:bg-[var(--bg-card-hover)]"
         >
-          <div
-            className="max-w-2xl rounded-lg border border-[var(--border)] bg-[var(--bg)] p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="mb-4 font-mono text-lg">Share your taste card</h2>
-            <div className="mb-4 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-elev)]">
-              <Image
-                src={ogUrl}
-                alt="Taste card preview"
-                width={1200}
-                height={630}
-                unoptimized
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
+          Share →
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/80" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 max-w-2xl w-[calc(100vw-32px)] max-h-[calc(100vh-32px)] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--bg)] p-6">
+          <Dialog.Title className="mb-4 font-mono text-lg">
+            Share your taste card
+          </Dialog.Title>
+          <Dialog.Description className="sr-only">
+            Preview your taste card and share it on Twitter, copy the link, or download the image.
+          </Dialog.Description>
+          <div className="mb-4 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-elev)]">
+            <Image
+              src={ogUrl}
+              alt="Taste card preview"
+              width={1200}
+              height={630}
+              unoptimized
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onTweet}
+              className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent-fg)] hover:bg-[var(--accent)]/90"
+            >
+              Tweet
+            </button>
+            <button
+              type="button"
+              onClick={onCopyLink}
+              className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]"
+            >
+              Copy link
+            </button>
+            <button
+              type="button"
+              onClick={onDownload}
+              className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]"
+            >
+              Download image
+            </button>
+            <Dialog.Close asChild>
               <button
                 type="button"
-                onClick={onTweet}
-                className="rounded bg-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent-fg)] hover:bg-[var(--accent)]/90"
-              >
-                Tweet
-              </button>
-              <button
-                type="button"
-                onClick={onCopyLink}
-                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]"
-              >
-                Copy link
-              </button>
-              <button
-                type="button"
-                onClick={onDownload}
-                className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]"
-              >
-                Download image
-              </button>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
                 className="ml-auto text-xs text-[var(--text-faint)] hover:text-[var(--text)]"
               >
                 Close
               </button>
-            </div>
+            </Dialog.Close>
           </div>
-        </div>
-      )}
-    </>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
