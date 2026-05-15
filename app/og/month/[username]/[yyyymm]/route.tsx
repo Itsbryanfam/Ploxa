@@ -1,26 +1,24 @@
 /**
  * /og/month/[username]/[yyyymm] — monthly summary OG image.
  *
- * Phase 6 T15. Returns 1200×630 PNG via next/og ImageResponse.
+ * Phase 6 T15 (route), T16 (payload loading). Returns 1200×630 PNG via
+ * next/og ImageResponse.
  *
  * Privacy note: this endpoint intentionally does NOT 404 private profiles.
  * See /og/year/[username]/[year]/route.tsx for the full rationale.
  *
- * Monthly payload loading: T16 will implement `cacheOrBuildMonthly`. Until
- * then this route reads directly from the `monthly_recaps` table and renders
- * a "not enough data yet" card when no row exists. T16 replaces the
- * `getMonthlyPayload` helper below with a `cacheOrBuildMonthly` call —
- * the route handler itself stays unchanged.
- *
- * TODO(T16): replace `getMonthlyPayload` with `cacheOrBuildMonthly`.
+ * Payload loading: uses `cacheOrBuildMonthly` (implemented in T16) which
+ * follows the same cache-or-build contract as `cacheOrBuildYearly` —
+ * SELECT first, return cached when locked/fresh/past, else build + UPSERT.
+ * The too_sparse sentinel is rendered as a calm sparse card.
  */
 
 import { ImageResponse } from "next/og";
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { cacheOrBuildMonthly } from "@/lib/recaps/cache-or-build";
 import { RecapOgCard } from "@/lib/recaps/og/card";
-import type { RecapPayload } from "@/lib/recaps/types";
 
 // ─────────────────────────────────────────────────────────────
 // yyyymm parser — format YYYYMM, e.g. "202605" = May 2026.
@@ -32,28 +30,6 @@ function parseYyyymm(raw: string): { year: number; monthIndex: number } | null {
   if (year < 2020 || year > 2100) return null;
   if (monthIndex < 1 || monthIndex > 12) return null;
   return { year, monthIndex };
-}
-
-// ─────────────────────────────────────────────────────────────
-// TODO(T16): replace this helper with `cacheOrBuildMonthly`.
-// Reads from `monthly_recaps` only — returns null when no row exists.
-// T16 will add the build path (aggregate + captions + UPSERT) matching
-// the shape of cacheOrBuildYearly in lib/recaps/cache-or-build.ts.
-// ─────────────────────────────────────────────────────────────
-async function getMonthlyPayload(
-  userId: string,
-  year: number,
-  monthIndex: number,
-): Promise<RecapPayload | null> {
-  const rows = (await db.execute<{ payload: RecapPayload }>(sql`
-    SELECT payload
-    FROM monthly_recaps
-    WHERE user_id = ${userId}
-      AND year = ${year}
-      AND month_index = ${monthIndex}
-    LIMIT 1
-  `)) as unknown as Array<{ payload: RecapPayload }>;
-  return rows[0]?.payload ?? null;
 }
 
 export async function GET(
@@ -81,28 +57,11 @@ export async function GET(
 
   // Privacy: we do NOT 404 private profiles here — see module comment above.
 
-  const rawPayload = await getMonthlyPayload(profile.user_id, year, monthIndex);
-
-  // No monthly recap row yet → render a calm sparse card.
-  // This happens when the user has not generated their monthly recap yet
-  // (T16 will add the build-on-demand path).
-  const payload: RecapPayload = rawPayload ?? {
-    tier: "too_sparse",
-    mode: "monthly",
-    windowStart: new Date(Date.UTC(year, monthIndex - 1, 1)).toISOString(),
-    windowEnd: new Date(Date.UTC(year, monthIndex, 1)).toISOString(),
-    scenes: [],
-    totals: {
-      totalGames: 0,
-      totalHoursPlayed: null,
-      completedCount: 0,
-      droppedCount: 0,
-      replayingCount: 0,
-      reviewCount: 0,
-    },
-    topGames: [],
-    captions: {},
-  };
+  const payload = await cacheOrBuildMonthly({
+    userId: profile.user_id,
+    year,
+    monthIndex,
+  });
 
   return new ImageResponse(
     (

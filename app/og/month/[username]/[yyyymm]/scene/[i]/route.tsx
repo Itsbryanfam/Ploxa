@@ -1,24 +1,23 @@
 /**
  * /og/month/[username]/[yyyymm]/scene/[i] — per-scene monthly OG image.
  *
- * Phase 6 T15. Returns 1200×630 PNG via next/og ImageResponse.
+ * Phase 6 T15 (route), T16 (payload loading). Returns 1200×630 PNG via
+ * next/og ImageResponse.
  *
  * Privacy note: this endpoint intentionally does NOT 404 private profiles.
  * See /og/year/[username]/[year]/route.tsx for the full rationale.
  *
- * Monthly payload loading: T16 will implement `cacheOrBuildMonthly`. Until
- * then this route reads directly from the `monthly_recaps` table. T16
- * replaces the `getMonthlyPayload` helper below with `cacheOrBuildMonthly`.
- *
- * TODO(T16): replace `getMonthlyPayload` with `cacheOrBuildMonthly`.
+ * Payload loading: uses `cacheOrBuildMonthly` (implemented in T16) — same
+ * cache-or-build contract as the summary OG route. The too_sparse sentinel
+ * is rendered as a calm sparse card (same as summary route).
  */
 
 import { ImageResponse } from "next/og";
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { cacheOrBuildMonthly } from "@/lib/recaps/cache-or-build";
 import { RecapOgCard } from "@/lib/recaps/og/card";
-import type { RecapPayload } from "@/lib/recaps/types";
 
 // ─────────────────────────────────────────────────────────────
 // yyyymm parser — format YYYYMM, e.g. "202605" = May 2026.
@@ -36,26 +35,6 @@ function parseSceneIndex(raw: string): number | null {
   const idx = Number.parseInt(raw, 10);
   if (!Number.isInteger(idx) || idx < 0) return null;
   return idx;
-}
-
-// ─────────────────────────────────────────────────────────────
-// TODO(T16): replace this helper with `cacheOrBuildMonthly`.
-// Reads from `monthly_recaps` only — returns null when no row exists.
-// ─────────────────────────────────────────────────────────────
-async function getMonthlyPayload(
-  userId: string,
-  year: number,
-  monthIndex: number,
-): Promise<RecapPayload | null> {
-  const rows = (await db.execute<{ payload: RecapPayload }>(sql`
-    SELECT payload
-    FROM monthly_recaps
-    WHERE user_id = ${userId}
-      AND year = ${year}
-      AND month_index = ${monthIndex}
-    LIMIT 1
-  `)) as unknown as Array<{ payload: RecapPayload }>;
-  return rows[0]?.payload ?? null;
 }
 
 export async function GET(
@@ -86,26 +65,11 @@ export async function GET(
 
   // Privacy: we do NOT 404 private profiles here — see module comment above.
 
-  const rawPayload = await getMonthlyPayload(profile.user_id, year, monthIndex);
-
-  // No monthly recap row yet → render a calm sparse card (same as summary route).
-  const payload: RecapPayload = rawPayload ?? {
-    tier: "too_sparse",
-    mode: "monthly",
-    windowStart: new Date(Date.UTC(year, monthIndex - 1, 1)).toISOString(),
-    windowEnd: new Date(Date.UTC(year, monthIndex, 1)).toISOString(),
-    scenes: [],
-    totals: {
-      totalGames: 0,
-      totalHoursPlayed: null,
-      completedCount: 0,
-      droppedCount: 0,
-      replayingCount: 0,
-      reviewCount: 0,
-    },
-    topGames: [],
-    captions: {},
-  };
+  const payload = await cacheOrBuildMonthly({
+    userId: profile.user_id,
+    year,
+    monthIndex,
+  });
 
   // Out-of-range scene index: render summary card rather than 404.
   const safeSceneIndex =

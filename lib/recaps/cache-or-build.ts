@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { buildRecap } from "./aggregate";
 import { generateAllCaptions } from "./captions";
-import { yearWindow } from "./window";
+import { yearWindow, monthWindow } from "./window";
 import type { RecapPayload } from "./types";
 
 /**
@@ -133,6 +133,126 @@ export async function cacheOrBuildYearly(
       now()
     )
     ON CONFLICT (user_id, year) DO UPDATE SET
+      payload = EXCLUDED.payload,
+      share_image_hash = EXCLUDED.share_image_hash,
+      generated_at = now()
+  `);
+
+  return payload;
+}
+
+/**
+ * cacheOrBuildMonthly — Phase 6 T16.
+ *
+ * Sibling to `cacheOrBuildYearly` targeting the `monthly_recaps` table.
+ * The cache-or-build contract is identical; only the time window and the
+ * "past month" definition differ:
+ *
+ *   1. SELECT the existing `monthly_recaps` row for (user_id, year, month_index).
+ *   2. If a row exists and ANY of these holds, return its payload as-is:
+ *        - locked_at IS NOT NULL          (admin/operator pinned)
+ *        - same year+month as current month AND generated_at > now - 7 days
+ *        - past month (year < currentYear OR (year === currentYear AND monthIndex < currentMonth))
+ *   3. Otherwise: run `buildRecap` with mode "monthly".
+ *        - too_sparse → return without writing.
+ *        - ok → generateAllCaptions, stamp, UPSERT into monthly_recaps.
+ *
+ * Past-month semantics: once a month rolls over it is treated as immutable.
+ * A row generated during that month is the authoritative record. The same
+ * rationale as yearly applies (user's "memory", stale re-aggregation is a
+ * bad bargain). The cache short-circuit only applies when a row exists; if no
+ * row exists for a past month we DO build it the first time the user views it.
+ *
+ * monthIndex is 1-based (1=January … 12=December) throughout — matches the
+ * plan convention, the `monthly_recaps` schema column, and `monthWindow()`.
+ */
+
+interface CacheOrBuildMonthlyInput {
+  userId: string;
+  year: number;
+  monthIndex: number; // 1-based
+}
+
+export async function cacheOrBuildMonthly(
+  input: CacheOrBuildMonthlyInput,
+): Promise<RecapPayload> {
+  const { userId, year, monthIndex } = input;
+
+  // 1. SELECT existing row.
+  const rows = (await db.execute<{
+    payload: RecapPayload;
+    locked_at: string | null;
+    generated_at: string;
+  }>(sql`
+    SELECT payload, locked_at, generated_at::text
+    FROM monthly_recaps
+    WHERE user_id = ${userId} AND year = ${year} AND month_index = ${monthIndex}
+    LIMIT 1
+  `)) as unknown as Array<{
+    payload: RecapPayload;
+    locked_at: string | null;
+    generated_at: string;
+  }>;
+
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  // getUTCMonth() is 0-based; convert to 1-based for comparison with monthIndex.
+  const currentMonth = now.getUTCMonth() + 1;
+  const sevenDaysAgoMs = now.getTime() - ONE_WEEK_MS;
+
+  // 2. Cache short-circuit — only when a row exists.
+  if (rows[0]) {
+    const isLocked = rows[0].locked_at !== null;
+    const isFreshCurrentMonth =
+      year === currentYear &&
+      monthIndex === currentMonth &&
+      new Date(rows[0].generated_at).getTime() > sevenDaysAgoMs;
+    const isPastMonth =
+      year < currentYear ||
+      (year === currentYear && monthIndex < currentMonth);
+
+    if (isLocked || isFreshCurrentMonth || isPastMonth) {
+      return rows[0].payload;
+    }
+  }
+
+  // 3. Build path. monthWindow accepts 1-based monthIndex (see window.ts).
+  const { start, end } = monthWindow(year, monthIndex);
+  const payload = await buildRecap({
+    userId,
+    windowStart: start,
+    windowEnd: end,
+    mode: "monthly",
+  });
+
+  // 3a. Sparse short-circuit — return as-is, do NOT write a row.
+  if (payload.tier === "too_sparse") {
+    return payload;
+  }
+
+  // 3b. AI captions overlay.
+  const captions = await generateAllCaptions(payload, userId);
+  payload.captions = captions;
+
+  // Share-image hash for OG cache invalidation.
+  const hash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(payload))
+    .digest("hex")
+    .slice(0, 32);
+
+  // UPSERT. ON CONFLICT targets the unique (user_id, year, month_index) index.
+  await db.execute(sql`
+    INSERT INTO monthly_recaps (user_id, year, month_index, payload, share_image_hash, generated_at)
+    VALUES (
+      ${userId},
+      ${year},
+      ${monthIndex},
+      ${JSON.stringify(payload)}::jsonb,
+      ${hash},
+      now()
+    )
+    ON CONFLICT (user_id, year, month_index) DO UPDATE SET
       payload = EXCLUDED.payload,
       share_image_hash = EXCLUDED.share_image_hash,
       generated_at = now()
