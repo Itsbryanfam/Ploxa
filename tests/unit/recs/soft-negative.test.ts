@@ -66,4 +66,30 @@ describe("softNegativePenalty", () => {
     );
     expect(p).toBeGreaterThan(0.98);
   });
+
+  it("at the time-constant (14d) penalty is 1 - 1/e, NOT 0.5 (exponential, not half-life)", () => {
+    const p = softNegativePenalty(
+      { dismissedAt: daysAgo(14), snoozedUntil: null, neverAgain: false },
+      now,
+    );
+    expect(p).toBeCloseTo(1 - Math.exp(-1), 4); // ≈ 0.6321 — pins the curve identity
+  });
+
+  it("returns 1.0 when dismissedAt is in the future (clock skew / backfill)", () => {
+    expect(
+      softNegativePenalty(
+        { dismissedAt: daysAhead(3), snoozedUntil: null, neverAgain: false },
+        now,
+      ),
+    ).toBe(1.0);
+  });
+
+  it("at exactly now, dismissal penalty is ~0 (no decay yet)", () => {
+    expect(
+      softNegativePenalty(
+        { dismissedAt: now, snoozedUntil: null, neverAgain: false },
+        now,
+      ),
+    ).toBeCloseTo(0, 10);
+  });
 });
