@@ -94,14 +94,14 @@
     {
       "id": 15,
       "subject": "Task 15: New RecCard component",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Full rewrite — cover overlays, full reasoning, fit chips + slot badge, snooze/never split.\n\n**Files:**\n- Modify: `components/recs/rec-card.tsx`\n- Create: `tests/unit/recs/rec-card-v2.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/rec-card-v2.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/rec-card.tsx\", \"tests/unit/recs/rec-card-v2.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/rec-card-v2.test.tsx\", \"acceptanceCriteria\": [\"Full reasoning no clip\", \"Wildcard hides confidence\", \"Dismiss dropdown opens\", \"Library badge conditional\"]}\n```",
       "blockedBy": [13, 14]
     },
     {
       "id": 16,
       "subject": "Task 16: FilterChipPopover",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Interactive filter chip with inline popover for editing.\n\n**Files:**\n- Create: `components/recs/filter-chip-popover.tsx`\n- Create: `tests/unit/recs/filter-chip-popover.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/filter-chip-popover.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/filter-chip-popover.tsx\", \"tests/unit/recs/filter-chip-popover.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/filter-chip-popover.test.tsx\", \"acceptanceCriteria\": [\"3 variants (time/mood/platform)\", \"Popover opens + closes on select\", \"Mood multi-select max 2\"]}\n```"
     },
     {
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T21:00:00.000Z"
+  "lastUpdated": "2026-05-15T22:15:00.000Z"
 }
