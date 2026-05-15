@@ -7,6 +7,12 @@ type Profile = {
   lowerCap: number | null; // hard exclusion below; null = no lower cap
 };
 
+// Time-fit tuning table. peak = the session length (hours) that best fits
+// this budget; sigma = how forgiving the Gaussian is around peak (wider for
+// longer budgets, which carry looser length expectations). upperCap/lowerCap
+// are hard exclusions: a game outside them can't sensibly fill the budget and
+// is scored 0 before the Gaussian. Hand-tuned heuristics — adjust here to
+// reshape fit behavior; no other code depends on the exact numbers.
 const PROFILES: Record<TimeBudget, Profile> = {
   "15min": { peak: 0.25, sigma: 0.17, upperCap: 2.0, lowerCap: null },
   "1hr": { peak: 1.0, sigma: 0.5, upperCap: 8.0, lowerCap: null },

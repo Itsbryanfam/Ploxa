@@ -36,6 +36,17 @@ describe("timeFitScore", () => {
       }
     }
   });
+
+  it("returns 0 below the lower cap (regression guard for the feasibility delegation)", () => {
+    expect(timeFitScore(1, "3hr+")).toBe(0); // below 2.0 lowerCap
+    expect(timeFitScore(2, "multi-session")).toBe(0); // below 4.0 lowerCap
+  });
+
+  it("scores a game exactly at the upper cap as feasible (strict > boundary)", () => {
+    // 2.0 === upperCap for 15min; strict `>` means the boundary is still
+    // feasible, so the Gaussian (not 0) must apply. A >→>= change would break this.
+    expect(timeFitScore(2.0, "15min")).toBeGreaterThan(0);
+  });
 });
 
 describe("isTimeFeasible", () => {
@@ -61,5 +72,10 @@ describe("isTimeFeasible", () => {
 
   it("treats NULL hours as feasible (neutral)", () => {
     expect(isTimeFeasible(null, "1hr")).toBe(true);
+  });
+
+  it("treats the exact cap boundary as feasible (strict inequality)", () => {
+    expect(isTimeFeasible(2.0, "15min")).toBe(true); // === upperCap, > is strict
+    expect(isTimeFeasible(2.0, "3hr+")).toBe(true); // === lowerCap, < is strict
   });
 });
