@@ -49,8 +49,7 @@ export function SparseDataState({
         Not enough yet
       </h2>
       <p className="mt-2 text-sm text-[var(--text-dim)] max-w-md mx-auto">
-        Come back when you&apos;ve logged a few more. Your {surface} unlocks
-        once there&apos;s enough to look back on.
+        {`Come back when you've logged a few more. Your ${surface} unlocks once there's enough to look back on.`}
       </p>
       <Link
         href={`/u/${username}`}
