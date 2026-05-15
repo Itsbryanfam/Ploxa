@@ -110,7 +110,10 @@ test("core flow: grid, time filter, refinement add/remove, mood cap", async ({
   expect(await cards.count()).toBeGreaterThanOrEqual(1);
 
   // Time filter chip: opens an inline popover; picking a value auto-closes
-  // it and rewrites the URL (?time=<value> via router.replace).
+  // it and rewrites the URL (?time=<value> via window.history.replaceState —
+  // the client owns its own refetch, so a router.replace RSC nav would be
+  // redundant and would defer the URL commit behind the slow getRecs
+  // transition; see _client.tsx syncUrl).
   await page.getByTestId("filter-chip-time").click();
   await expect(page.getByTestId("filter-chip-option-15min")).toBeVisible();
   await page.getByTestId("filter-chip-option-15min").click();

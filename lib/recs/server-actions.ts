@@ -86,7 +86,16 @@ export type RecResult =
     }
   | {
       ok: false;
-      reason: "unauthorized" | "empty-tier" | "no-candidates" | "invalid-filters";
+      reason:
+        | "unauthorized"
+        | "empty-tier"
+        | "no-candidates"
+        | "invalid-filters"
+        // Client-set only: a thrown/timed-out getRecs|refillRecs. The action
+        // itself never returns this (it returns the specific reasons above or
+        // throws); the client maps a rejection to this so the UI shows a
+        // recoverable error instead of an infinite pending mascot.
+        | "error";
     };
 
 /** Map a TimeBudget to a [minHours, maxHours] window for filtering candidates. */
@@ -1078,16 +1087,31 @@ async function metadataOnlyRecs(
   // The AI-failure fallback path here also writes "similarity" rows that
   // a subsequent same-filter call will surface as a `"hybrid"` cache hit;
   // by design — see getRecs flow comment.
-  await db.insert(recommendations).values(
-    recs.map((r) => ({
-      userId,
-      gameId: r.gameId,
-      score: r.score.toFixed(4),
-      reason: r.reason,
-      algorithm: "similarity" as const,
-      cacheKey: key,
-    })),
-  );
+  //
+  // The cache-write is a pure optimization (next same-filter call cache-
+  // hits instead of recomputing). A failure here — transient DB error, a
+  // concurrent-cache-miss unique-constraint race, an FK race under load —
+  // must NEVER deny the user the recommendations we already computed.
+  // 2026-05-15 incident: an unguarded throw here propagated out of getRecs;
+  // the client's loadRecs transition had no catch, so /play-next hung on
+  // the pending mascot forever. Swallow + log; next call just recomputes.
+  try {
+    await db.insert(recommendations).values(
+      recs.map((r) => ({
+        userId,
+        gameId: r.gameId,
+        score: r.score.toFixed(4),
+        reason: r.reason,
+        algorithm: "similarity" as const,
+        cacheKey: key,
+      })),
+    );
+  } catch (err) {
+    console.error(
+      "metadataOnlyRecs: cache-write failed; returning recs uncached:",
+      err,
+    );
+  }
 
   return {
     ok: true,
