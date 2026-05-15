@@ -92,14 +92,21 @@ function topPositiveKeys(vec: Record<string, number>, n: number): string[] {
  */
 export async function candidatePool(
   userId: string,
-  opts: { limit?: number; vectors?: VectorBundle } = {},
+  opts: {
+    limit?: number;
+    vectors?: VectorBundle;
+    seed?: number; // reserved: Task 12 passes this for reproducible tie-ordering; unused here
+  } = {},
 ): Promise<CandidateGame[]> {
   // Defense-in-depth: every caller derives userId from getCachedUser(),
   // but a stray empty string would still cost a full catalog scan
   // that returns []. Short-circuit before any DB work.
   if (!userId) return [];
 
-  const limit = opts.limit ?? 50;
+  // Pool size expanded 50 → 100 for /play-next v2: the new scoring +
+  // MMR-diversity + bucketing stages (Tasks 6-9) need more material to
+  // work with. Spec: docs/superpowers/specs/2026-05-15-play-next-redesign-design.md
+  const limit = opts.limit ?? 100;
 
   let genreVec: Record<string, number>;
   let themeVec: Record<string, number>;
