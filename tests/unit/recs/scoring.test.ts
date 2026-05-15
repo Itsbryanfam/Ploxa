@@ -65,3 +65,41 @@ describe("composeScore", () => {
     expect(half).toBeCloseTo(full * 0.5, 5);
   });
 });
+
+describe("composeScore axis weight isolation", () => {
+  const zeroed = {
+    taste: 0,
+    mood: 0,
+    timeFit: 0,
+    social: 0,
+    libraryBonus: 0,
+    softNegPenalty: 1,
+  };
+
+  it.each([
+    "taste",
+    "mood",
+    "timeFit",
+    "social",
+    "libraryBonus",
+  ] as const)("applies %s at exactly its SCORE_WEIGHTS value", (axis) => {
+    const only = composeScore({ ...zeroed, [axis]: 1 });
+    expect(only).toBeCloseTo(SCORE_WEIGHTS[axis], 5);
+  });
+
+  it("clamps negative axis inputs to 0 (lower-bound clamp)", () => {
+    // taste(-5) & mood(-10) floor to 0; timeFit+social+libraryBonus = 0.2+0.1+0.1
+    const s = composeScore({
+      taste: -5,
+      mood: -10,
+      timeFit: 1,
+      social: 1,
+      libraryBonus: 1,
+      softNegPenalty: 1,
+    });
+    expect(s).toBeCloseTo(
+      SCORE_WEIGHTS.timeFit + SCORE_WEIGHTS.social + SCORE_WEIGHTS.libraryBonus,
+      5,
+    );
+  });
+});
