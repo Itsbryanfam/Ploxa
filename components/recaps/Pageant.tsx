@@ -13,6 +13,11 @@ import { getScene } from "@/lib/recaps/scenes";
 
 import { PageantControls } from "./PageantControls";
 import { PageantProgressBar } from "./PageantProgressBar";
+import { LongestGameScene } from "./scenes/LongestGameScene";
+import { OpeningScene } from "./scenes/OpeningScene";
+import { ReviewsScene } from "./scenes/ReviewsScene";
+import { StatsTotalScene } from "./scenes/StatsTotalScene";
+import { TopGamesScene } from "./scenes/TopGamesScene";
 
 /**
  * Pageant — Phase 6 T12.
@@ -288,9 +293,16 @@ export function Pageant({ payload, mode, initialSceneIndex = 0 }: PageantProps) 
 }
 
 // -----------------------------------------------------------------------
-// Placeholder SceneRenderer — T13/T14 will replace this with per-scene
-// components. We keep it minimal so the page renders end-to-end and the
-// state machine + gestures can be smoke-tested before scenes exist.
+// SceneRenderer — switches on sceneId and renders the matching scene
+// component. T13 wires up the five data scenes (opening, stats_total,
+// top_games, longest_game, reviews). T14 will add the AI-captioned
+// scenes (goty, genre_dominance, mechanic_love, surprise,
+// taste_evolution, closing) and the four substitute scenes
+// (most_replayed, top_theme, completion_ratio, mood_themes).
+//
+// Until T14 lands, scenes not yet covered fall through to the
+// placeholder so the Pageant remains navigable end-to-end even for
+// payloads that include AI-captioned scenes.
 // -----------------------------------------------------------------------
 
 interface SceneRendererProps {
@@ -300,7 +312,71 @@ interface SceneRendererProps {
   isActive: boolean;
 }
 
-function SceneRenderer({ sceneId, caption }: SceneRendererProps) {
+function SceneRenderer({
+  sceneId,
+  payload,
+  caption,
+  isActive,
+}: SceneRendererProps) {
+  switch (sceneId) {
+    case "opening":
+      return (
+        <OpeningScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "stats_total":
+      return (
+        <StatsTotalScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "top_games":
+      return (
+        <TopGamesScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "longest_game":
+      return (
+        <LongestGameScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "reviews":
+      return (
+        <ReviewsScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    // T14: goty, genre_dominance, mechanic_love, surprise,
+    // taste_evolution, closing, most_replayed, top_theme,
+    // completion_ratio, mood_themes.
+    default:
+      return <ScenePlaceholder sceneId={sceneId} caption={caption} />;
+  }
+}
+
+/**
+ * Placeholder for scenes not yet implemented. Removed once T14 lands.
+ */
+function ScenePlaceholder({
+  sceneId,
+  caption,
+}: {
+  sceneId: SceneId;
+  caption: string;
+}) {
   return (
     <div className="max-w-xl text-center">
       <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-dim)]">
@@ -310,7 +386,7 @@ function SceneRenderer({ sceneId, caption }: SceneRendererProps) {
         {caption || `[scene ${sceneId} placeholder]`}
       </p>
       <p className="mt-4 text-xs text-[var(--text-dim)]">
-        T13/T14 will render the actual scene UI for this beat.
+        T14 will render the actual scene UI for this beat.
       </p>
     </div>
   );
