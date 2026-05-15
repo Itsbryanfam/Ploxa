@@ -431,6 +431,10 @@ export const recommendations = pgTable(
     userCacheGameUniq: uniqueIndex("recommendations_user_cache_game_uniq")
       .on(table.userId, table.cacheKey, table.gameId)
       .where(sql`${table.dismissed} = false`),
+    // NOTE: `recommendations_neg_lookup_idx` (soft-negative rerank lookup) is
+    // intentionally defined SQL-only in migration 0018 and is deliberately
+    // absent here. Do NOT add it to this builder: drizzle-kit generate would
+    // then try to re-create it, producing spurious `db:check` drift.
   }),
 );
 
