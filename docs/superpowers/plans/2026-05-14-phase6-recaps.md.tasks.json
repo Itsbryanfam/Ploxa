@@ -4,27 +4,27 @@
     {
       "id": 1,
       "subject": "Task 1: Migrations 0016 + 0017 + schema types",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Land schema delta — new tables `monthly_recaps` + `featured_lists`, columns on `year_in_reviews` + `profiles`, and `monthly` enum value on `email_digest_cadence`.\n\n**Files:** lib/db/migrations/0016_phase6_recaps.sql, lib/db/migrations/0017_phase6_enum.sql, lib/db/schema.ts, tests/unit/recaps/schema.test.ts\n\n**Verify:** `pnpm tsc --noEmit && pnpm vitest run tests/unit/recaps/schema.test.ts && pnpm db:check`\n\n```json:metadata\n{\"files\":[\"lib/db/migrations/0016_phase6_recaps.sql\",\"lib/db/migrations/0017_phase6_enum.sql\",\"lib/db/schema.ts\",\"tests/unit/recaps/schema.test.ts\"],\"verifyCommand\":\"pnpm tsc --noEmit && pnpm vitest run tests/unit/recaps/schema.test.ts && pnpm db:check\",\"acceptanceCriteria\":[\"0016 SQL applies cleanly\",\"0017 SQL applies (separate file for ALTER TYPE ADD VALUE)\",\"Drizzle exports monthlyRecaps + featuredLists\",\"yearInReviews has shareImageHash + lockedAt\",\"profiles has lastRecapSentAt\",\"email_digest_cadence enum has monthly value\",\"Drizzle snapshot chain valid (db:check passes)\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Types + scene catalog + window helpers",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Foundation types (RecapPayload, Scene, SceneId, RecapMode); 11-entry scene catalog with yearOnly flags + fallback templates; date-window helpers.\n\n**Files:** lib/recaps/types.ts, lib/recaps/scenes.ts, lib/recaps/window.ts, tests/unit/recaps/scenes.test.ts, tests/unit/recaps/window.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/scenes.test.ts tests/unit/recaps/window.test.ts && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"lib/recaps/types.ts\",\"lib/recaps/scenes.ts\",\"lib/recaps/window.ts\",\"tests/unit/recaps/scenes.test.ts\",\"tests/unit/recaps/window.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/scenes.test.ts tests/unit/recaps/window.test.ts && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"11 scene entries with yearOnly flags\",\"filterScenes monthly returns 7, yearly returns 11\",\"7 AI-tagged scenes in yearly\",\"yearWindow and monthWindow return half-open intervals\",\"monthWindow Feb 2024 ends Mar 1 UTC\",\"all fallback templates accept payload arg\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Aggregator (buildRecap) with sparse-data sentinel",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Pure buildRecap function — queries logs/reviews/lists/taste; returns `{tier: 'too_sparse'}` for <10 logs or full payload otherwise.\n\n**Files:** lib/recaps/aggregate.ts, tests/unit/recaps/aggregate.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/aggregate.test.ts && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"lib/recaps/aggregate.ts\",\"tests/unit/recaps/aggregate.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/aggregate.test.ts && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"sparse-data sentinel for <10 logs (no further queries)\",\"totals: totalGames/totalHoursPlayed/completedCount/droppedCount/replayingCount/reviewCount\",\"topGames sorted by rating DESC ties broken by last_event_at\",\"topGenre with percentage + secondGenre\",\"topMechanic from IGDB facets\",\"longestGame by hours_played\",\"favoriteReviewSnippet 60-char slice\",\"all queries parameterized\",\"half-open [start,end) window\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Substitution map in aggregator",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** Apply substitution rules — no-Steam → most_replayed, <3 mechanics → top_theme, no quarter variance → completion_ratio, no surprise → mood_themes, 0 reviews → drop reviews scene.\n\n**Files:** lib/recaps/aggregate.ts (extend), tests/unit/recaps/substitutions.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/substitutions.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/aggregate.ts\",\"tests/unit/recaps/substitutions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/substitutions.test.ts\",\"acceptanceCriteria\":[\"no-Steam → most_replayed substitute\",\"<3 mechanics → top_theme substitute\",\"single-quarter → completion_ratio substitute\",\"no surprise → mood_themes substitute\",\"0 reviews → drop reviews scene (no substitute)\",\"≥10 logs always produces ≥8 scenes\"]}\n```"
     },
@@ -162,5 +162,5 @@
       "description": "**Goal:** Document steps the operator takes to bring Phase 6 live in prod.\n\n**Files:** docs/superpowers/operator-close-out/2026-05-14-phase6.md\n\n**Verify:** Manual read-through.\n\n```json:metadata\n{\"files\":[\"docs/superpowers/operator-close-out/2026-05-14-phase6.md\"],\"verifyCommand\":\"echo 'manual review'\",\"acceptanceCriteria\":[\"apply 0016 + 0017 + cron migration steps\",\"verify Vault phase6_cron_secret\",\"set RECAP_CRON_SECRET env\",\"smoke-test annual_preview cron via curl\",\"M1-M5 manual gates\",\"no PII no real secrets in doc\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-14T00:00:00Z"
+  "lastUpdated": "2026-05-14T20:30:00Z"
 }

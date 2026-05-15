@@ -304,11 +304,12 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
       }
     : undefined;
 
-  // Base scene list (no substitution yet — that's T4). filterScenes drops
-  // yearOnly entries when mode === 'monthly'.
+  // Base scene list. filterScenes drops yearOnly entries when mode ===
+  // 'monthly'. T4's applySubstitutions then rewrites the array in place
+  // (and possibly populates substitute payload fields).
   const baseScenes = filterScenes(SCENE_CATALOG, mode).map((s) => s.id);
 
-  return {
+  const payload: RecapPayload = {
     tier: "ok",
     mode,
     windowStart: startIso,
@@ -324,7 +325,10 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
     },
     topGames,
     // Same reference, not a copy. Aggregator consumers that compare via
-    // === (e.g. the scene catalog substitution check in T4) rely on this.
+    // === (e.g. tests asserting goty === topGames[0]) rely on this. The
+    // substitution pass below mutates `payload.scenes` in place and adds
+    // optional fields, but never reassigns topGames or goty, so this
+    // reference identity survives substitution.
     goty: topGames[0],
     topGenre,
     topMechanic,
@@ -332,4 +336,179 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
     favoriteReviewSnippet,
     captions: {},
   };
+
+  await applySubstitutions(payload, userId, startIso, endIso);
+  return payload;
+}
+
+/**
+ * applySubstitutions — rewrites `payload.scenes` and populates
+ * substitute payload fields in place. Five rules:
+ *
+ *   1. !longestGame             → most_replayed (if user has any replays)
+ *   2. !topMechanic             → top_theme (if any themes in window)
+ *   3. yearly + !tasteEvolution → completion_ratio (math only, no DB)
+ *   4. yearly + !surprise       → mood_themes (if any themes in window)
+ *   5. reviewCount === 0        → drop reviews scene (no substitute)
+ *
+ * Mutates payload in place. We return void rather than a fresh object so
+ * `topGames` / `goty` reference identity is trivially preserved (see
+ * T3's test asserting `r.goty === r.topGames[0]`).
+ *
+ * Schema corrections vs. plan (T3 carried these forward to T4):
+ *   - `g.background_image` → `g.cover_url`
+ *   - `l.played_at`        → COALESCE(started_at, last_event_at)
+ *   - `status = 'replaying'` → `is_replay = true` (no log_events table)
+ *   - status cast → `as LogStatus`
+ *
+ * `tasteEvolution` and `surprise` aggregator computation is a stretch
+ * goal not implemented in T3, so substitutions 3 + 4 always fire in
+ * yearly mode — by design for the soft-launch path.
+ */
+async function applySubstitutions(
+  payload: RecapPayload,
+  userId: string,
+  startIso: string,
+  endIso: string,
+): Promise<void> {
+  const scenes = payload.scenes;
+
+  // 1. longest_game → most_replayed. Plan's spec used a log_events table
+  // that doesn't exist in our schema; we count rows in `logs` where
+  // is_replay = true grouped by game.
+  if (!payload.longestGame) {
+    const idx = scenes.indexOf("longest_game");
+    if (idx >= 0) {
+      const rows = (await db.execute<{
+        game_id: string;
+        rawg_id: number | null;
+        title: string;
+        cover_url: string | null;
+        rating: string | null;
+        status: string;
+        replay_count: string;
+      }>(sql`
+        SELECT
+          l.game_id::text as game_id,
+          g.id as rawg_id,
+          g.title,
+          g.cover_url,
+          l.rating::text as rating,
+          l.status::text as status,
+          (
+            SELECT COUNT(*)::text
+            FROM logs l2
+            WHERE l2.user_id = ${userId}
+              AND l2.game_id = l.game_id
+              AND l2.is_replay = true
+              AND COALESCE(l2.started_at, l2.last_event_at) >= ${startIso}
+              AND COALESCE(l2.started_at, l2.last_event_at) <  ${endIso}
+          ) as replay_count
+        FROM logs l JOIN games g ON g.id = l.game_id
+        WHERE l.user_id = ${userId}
+          AND l.is_replay = true
+          AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
+          AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
+        ORDER BY replay_count DESC NULLS LAST, l.last_event_at DESC NULLS LAST
+        LIMIT 1
+      `)) as unknown as Array<{
+        game_id: string;
+        rawg_id: number | null;
+        title: string;
+        cover_url: string | null;
+        rating: string | null;
+        status: string;
+        replay_count: string;
+      }>;
+      const row = rows[0];
+      if (row && parseInt(row.replay_count, 10) > 0) {
+        scenes[idx] = "most_replayed";
+        payload.mostReplayed = {
+          game: {
+            gameId: row.game_id,
+            rawgId: row.rawg_id,
+            title: row.title,
+            coverUrl: row.cover_url,
+            rating: row.rating !== null ? parseFloat(row.rating) : 0,
+            status: row.status as LogStatus,
+          },
+          replayCount: parseInt(row.replay_count, 10),
+        };
+      } else {
+        scenes.splice(idx, 1);
+      }
+    }
+  }
+
+  // 2. mechanic_love → top_theme. games.themes is text[] (confirmed in
+  // schema.ts L173 + GIN index on L209).
+  if (!payload.topMechanic) {
+    const idx = scenes.indexOf("mechanic_love");
+    if (idx >= 0) {
+      const rows = (await db.execute<{ theme: string; count: string }>(sql`
+        SELECT unnest(g.themes) as theme, COUNT(*)::text as count
+        FROM logs l JOIN games g ON g.id = l.game_id
+        WHERE l.user_id = ${userId}
+          AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
+          AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
+          AND g.themes IS NOT NULL
+        GROUP BY theme
+        ORDER BY count DESC
+        LIMIT 1
+      `)) as unknown as Array<{ theme: string; count: string }>;
+      if (rows[0]) {
+        scenes[idx] = "top_theme";
+        payload.topTheme = { name: rows[0].theme };
+      } else {
+        scenes.splice(idx, 1);
+      }
+    }
+  }
+
+  // 3. taste_evolution → completion_ratio. Pure math from totals; no DB.
+  // Yearly-only since taste_evolution is yearOnly in the catalog.
+  if (payload.mode === "yearly" && !payload.tasteEvolution) {
+    const idx = scenes.indexOf("taste_evolution");
+    if (idx >= 0) {
+      scenes[idx] = "completion_ratio";
+      const total = Math.max(payload.totals.totalGames, 1);
+      payload.completionRatio = {
+        completedPct: Math.round((payload.totals.completedCount / total) * 100),
+        droppedPct: Math.round((payload.totals.droppedCount / total) * 100),
+      };
+    }
+  }
+
+  // 4. surprise → mood_themes. Same themes column as top_theme but
+  // returns up to 3 distinct themes (no count needed in payload).
+  if (payload.mode === "yearly" && !payload.surprise) {
+    const idx = scenes.indexOf("surprise");
+    if (idx >= 0) {
+      const rows = (await db.execute<{ theme: string }>(sql`
+        SELECT unnest(g.themes) as theme
+        FROM logs l JOIN games g ON g.id = l.game_id
+        WHERE l.user_id = ${userId}
+          AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
+          AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
+          AND g.themes IS NOT NULL
+        GROUP BY theme
+        ORDER BY COUNT(*) DESC
+        LIMIT 3
+      `)) as unknown as Array<{ theme: string }>;
+      if (rows.length > 0) {
+        scenes[idx] = "mood_themes";
+        payload.moodThemes = { themes: rows.map((r) => r.theme) };
+      } else {
+        scenes.splice(idx, 1);
+      }
+    }
+  }
+
+  // 5. reviews → drop if 0 (no substitute). In monthly mode, reviews is
+  // yearOnly so filterScenes already removed it — indexOf returns -1 and
+  // the splice is a no-op.
+  if (payload.totals.reviewCount === 0) {
+    const idx = scenes.indexOf("reviews");
+    if (idx >= 0) scenes.splice(idx, 1);
+  }
 }

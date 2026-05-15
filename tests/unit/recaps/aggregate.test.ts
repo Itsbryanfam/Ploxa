@@ -105,7 +105,11 @@ describe("buildRecap", () => {
           game_title: "Game A",
           body: "This game owned my year, full stop. Highly recommended.",
         },
-      ] as never);
+      ] as never)
+      // T4 substitutions: longestGame + topMechanic both present → only the
+      // yearly mood_themes substitution fires (taste_evolution → completion_ratio
+      // is pure math, no DB query). One extra DB call.
+      .mockResolvedValueOnce([{ theme: "Atmospheric" }] as never);
 
     const { start, end } = yearWindow(2026);
     const result = await buildRecap({
@@ -135,8 +139,8 @@ describe("buildRecap", () => {
     expect(result.longestGame?.game.title).toBe("Game A");
     expect(result.favoriteReviewSnippet?.snippet.length).toBeLessThanOrEqual(60);
     expect(result.favoriteReviewSnippet?.gameTitle).toBe("Game A");
-    // Sparse-gate query + 6 parallel queries
-    expect(mockExecute).toHaveBeenCalledTimes(7);
+    // Sparse-gate query + 6 parallel queries + 1 mood_themes substitution query
+    expect(mockExecute).toHaveBeenCalledTimes(8);
   });
 
   it("handles empty optional sections gracefully", async () => {
@@ -157,6 +161,12 @@ describe("buildRecap", () => {
       ] as never)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      // T4: longestGame empty → most_replayed query (returns empty → scene dropped);
+      // topMechanic empty → top_theme query (returns empty → scene dropped);
+      // mood_themes query (returns empty → surprise scene dropped).
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never);
@@ -199,7 +209,12 @@ describe("buildRecap", () => {
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([
         { review_id: "r-2", game_title: "Long Game", body: longBody },
-      ] as never);
+      ] as never)
+      // T4 substitutions: same as the empty-sections test — no longestGame /
+      // topMechanic / surprise → all three DB-backed sub queries fire.
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
 
     const { start, end } = yearWindow(2026);
     const result = await buildRecap({
