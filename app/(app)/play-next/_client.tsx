@@ -5,28 +5,28 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 
-import { FilterChips } from "@/components/recs/filter-chips";
+import { FilterChipPopover } from "@/components/recs/filter-chip-popover";
 import { MascotPrompt } from "@/components/recs/mascot-prompt";
 import { RecCard } from "@/components/recs/rec-card";
+import { RefinementInput } from "@/components/recs/refinement-input";
 import { MOODS, TIMES, type Mood, type TimeBudget } from "@/lib/recs/moods";
 import { getRecs, refillRecs, type RecResult } from "@/lib/recs/server-actions";
 
 type Platform = "steam" | "xbox" | "psn";
-type Step = "time" | "mood" | "platform" | "done";
 
 /**
- * 3-step filter flow + results renderer for /play-next.
+ * Live recommendation page for /play-next (play-next redesign, T18).
  *
- * Step transitions (time → mood → platform → done) advance via URL
- * params so a deep link like `/play-next?time=1hr&moods=chill&platforms=steam`
- * lands directly on the results view. `editingStep` is computed from
- * the URL on first mount; click on any pill in the results view sends
- * the user back to that step.
- *
- * Recs are fetched when the user enters the `done` step — either by
- * clicking "Show me what to play →" or by mounting with all three URL
- * params already set (the effect below catches the latter). T11/T12
- * will route this through an AI rerank for sharpening/full tiers.
+ * Replaces the old 4-step wizard with a single always-live screen: an
+ * always-visible filter-chip row (time / mood / platform) + a freeform
+ * `RefinementInput`, above an always-rendered results grid. Filters AND
+ * refinements are mirrored to the URL (`?time=&moods=&platforms=&refine=`)
+ * so a deep link reproduces the exact view; the grid auto-fetches on mount
+ * (filters always have defaults) and re-fetches on any filter/refinement
+ * mutation. Every other behavior (empty-tier short-circuit, optimistic
+ * dismissal, refill, the RecResult ok/banner/!ok states, pending mascot)
+ * is preserved from the pre-redesign client. T11/T12 route sharpening/full
+ * tiers through the AI rerank inside getRecs.
  */
 export function PlayNextClient({
   initialParams,
@@ -51,21 +51,20 @@ export function PlayNextClient({
   const initPlatforms = parseCsv(initialParams.platforms).filter(
     (p): p is Platform => p === "steam" || p === "xbox" || p === "psn",
   );
+  const initRefine = parseCsv(initialParams.refine).slice(0, 5);
 
-  const [time, setTime] = useState<TimeBudget | "">(initTime);
-  const [moods, setMoods] = useState<Mood[]>(initMoods);
+  // Default filters when absent so the page is always live (acceptance:
+  // time="1hr", moods=["chill"], platforms=userConnectedPlatforms). The
+  // chip popovers require concrete non-empty values; the URL only carries
+  // explicitly-set filters (an unset filter falls back to the default).
+  const [time, setTime] = useState<TimeBudget | "">(initTime || "1hr");
+  const [moods, setMoods] = useState<Mood[]>(
+    initMoods.length > 0 ? initMoods : ["chill"],
+  );
   const [platforms, setPlatforms] = useState<Platform[]>(
     initPlatforms.length > 0 ? initPlatforms : userConnectedPlatforms,
   );
-
-  // Initial-step heuristic: if all three are present, jump straight to
-  // results; otherwise resume at the first missing step.
-  const [editingStep, setEditingStep] = useState<Step>(() => {
-    if (initTime && initMoods.length > 0 && initPlatforms.length > 0) return "done";
-    if (!initTime) return "time";
-    if (initMoods.length === 0) return "mood";
-    return "platform";
-  });
+  const [refinements, setRefinements] = useState<string[]>(initRefine);
 
   const [recsState, setRecsState] = useState<RecResult | null>(null);
   const [pending, startTransition] = useTransition();
@@ -76,9 +75,12 @@ export function PlayNextClient({
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   const loadRecs = useCallback(
-    (t: TimeBudget, m: Mood[], p: Platform[]) => {
+    (t: TimeBudget, m: Mood[], p: Platform[], r: string[]) => {
       startTransition(async () => {
-        const result = await getRecs({ time: t, moods: m, platforms: p });
+        const result = await getRecs(
+          { time: t, moods: m, platforms: p },
+          { refinements: r },
+        );
         setRecsState(result);
         setDismissedIds(new Set());
       });
@@ -94,6 +96,11 @@ export function PlayNextClient({
     });
   }, []);
 
+  // Refill = "Show me more like these →". refillRecs only accepts filters
+  // (it wipes the non-dismissed cache rows for this filter key and re-runs
+  // getRecs WITHOUT refinements — the cumulative dismissed history feeds the
+  // rerank's negative context server-side instead). So refill is
+  // intentionally filters-only; an active refinement is not re-applied here.
   const onRefill = useCallback(() => {
     if (!time || moods.length === 0 || platforms.length === 0) return;
     startTransition(async () => {
@@ -103,19 +110,13 @@ export function PlayNextClient({
     });
   }, [time, moods, platforms]);
 
-  // Auto-fetch on deep-link mount: when the user lands directly in `done`
-  // (all three URL params present), kick the action once. The exhaustive
-  // deps eslint rule wants every dep but we intentionally fire-once here;
-  // subsequent results refresh happens via the editing-step button flow.
+  // Auto-fetch on mount: filters always resolve to defaults, so unlike the
+  // old deep-link gate this always fires once. The exhaustive-deps rule
+  // wants every dep but we intentionally fire-once here; subsequent
+  // refreshes happen via the filter-chip / refinement onChange handlers.
   useEffect(() => {
-    if (
-      editingStep === "done" &&
-      recsState === null &&
-      time &&
-      moods.length > 0 &&
-      platforms.length > 0
-    ) {
-      loadRecs(time, moods, platforms);
+    if (time && moods.length > 0 && platforms.length > 0) {
+      loadRecs(time, moods, platforms, refinements);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -136,125 +137,88 @@ export function PlayNextClient({
     );
   }
 
+  // Mirror current filter + refinement state to the URL so a deep link
+  // reproduces the view. `next` overrides let an onChange push the just-set
+  // value without waiting for the async setState to flush.
   function syncUrl(next: {
     time?: TimeBudget | "";
     moods?: Mood[];
     platforms?: Platform[];
+    refinements?: string[];
   }) {
     const sp = new URLSearchParams();
     const t = next.time ?? time;
     const m = next.moods ?? moods;
     const p = next.platforms ?? platforms;
+    const r = next.refinements ?? refinements;
     if (t) sp.set("time", t);
     if (m.length > 0) sp.set("moods", m.join(","));
     if (p.length > 0) sp.set("platforms", p.join(","));
+    if (r.length > 0) sp.set("refine", r.map(encodeURIComponent).join(","));
     router.replace(`${pathname}?${sp.toString()}`);
   }
 
-  // Step 1 — TIME
-  if (editingStep === "time") {
-    return (
-      <MascotPrompt mood="pointing">
-        <p className="mb-4 text-sm">How long do you have?</p>
-        <FilterChips
-          options={TIMES}
-          selected={time ? [time] : []}
-          onChange={(next) => {
-            const t = next[0];
-            if (!t) return;
-            setTime(t);
-            syncUrl({ time: t });
-            setEditingStep("mood");
-          }}
-        />
-      </MascotPrompt>
-    );
-  }
+  // Resolved non-empty values for the chip popovers + refetch calls. `time`
+  // state can be "" in principle (init parsing); the default keeps it
+  // concrete, but resolve again here so a chip never receives an empty value.
+  const timeOrDefault: TimeBudget = time || "1hr";
+  const moodsOrDefault: Mood[] = moods.length > 0 ? moods : ["chill"];
+  const platformsOrDefault: Platform[] =
+    platforms.length > 0 ? platforms : userConnectedPlatforms;
 
-  // Step 2 — MOOD
-  if (editingStep === "mood") {
-    return (
-      <>
-        <FilterPills
-          time={time}
-          moods={moods}
-          platforms={platforms}
-          onEdit={setEditingStep}
-        />
-        <MascotPrompt mood="pointing">
-          <p className="mb-4 text-sm">Mood? (pick up to 2)</p>
-          <FilterChips
-            options={MOODS}
-            selected={moods}
-            onChange={(next) => {
-              setMoods(next);
-              syncUrl({ moods: next });
-            }}
-            multi
-            max={2}
-          />
-          <button
-            type="button"
-            disabled={moods.length === 0}
-            onClick={() => setEditingStep("platform")}
-            className="mt-4 rounded bg-[var(--accent)] px-4 py-2 font-mono text-sm text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
-          >
-            Continue →
-          </button>
-        </MascotPrompt>
-      </>
-    );
-  }
-
-  // Step 3 — PLATFORM
-  if (editingStep === "platform") {
-    return (
-      <>
-        <FilterPills
-          time={time}
-          moods={moods}
-          platforms={platforms}
-          onEdit={setEditingStep}
-        />
-        <MascotPrompt mood="pointing">
-          <p className="mb-4 text-sm">Platform?</p>
-          <FilterChips
-            options={userConnectedPlatforms}
-            selected={platforms}
-            onChange={(next) => {
-              setPlatforms(next);
-              syncUrl({ platforms: next });
-            }}
-            multi
-            max={userConnectedPlatforms.length}
-          />
-          <button
-            type="button"
-            disabled={platforms.length === 0 || !time || moods.length === 0}
-            onClick={() => {
-              setEditingStep("done");
-              if (time && moods.length > 0 && platforms.length > 0) {
-                loadRecs(time, moods, platforms);
-              }
-            }}
-            className="mt-4 rounded bg-[var(--accent)] px-4 py-2 font-mono text-sm text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
-          >
-            Show me what to play →
-          </button>
-        </MascotPrompt>
-      </>
-    );
-  }
-
-  // Results view
   return (
     <>
-      <FilterPills
-        time={time}
-        moods={moods}
-        platforms={platforms}
-        onEdit={setEditingStep}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <FilterChipPopover
+          variant="time"
+          value={timeOrDefault}
+          onChange={(t) => {
+            setTime(t);
+            syncUrl({ time: t });
+            loadRecs(t, moodsOrDefault, platformsOrDefault, refinements);
+          }}
+        />
+        <FilterChipPopover
+          variant="mood"
+          value={moodsOrDefault}
+          onChange={(m) => {
+            setMoods(m);
+            syncUrl({ moods: m });
+            if (m.length > 0) {
+              loadRecs(timeOrDefault, m, platformsOrDefault, refinements);
+            }
+          }}
+        />
+        <FilterChipPopover
+          variant="platform"
+          value={platforms}
+          options={userConnectedPlatforms}
+          onChange={(p) => {
+            setPlatforms(p);
+            syncUrl({ platforms: p });
+            if (p.length > 0) {
+              loadRecs(timeOrDefault, moodsOrDefault, p, refinements);
+            }
+          }}
+        />
+      </div>
+
+      <RefinementInput
+        active={refinements}
+        onChange={(nextRefine) => {
+          // T17: RefinementInput emits the full set on every mutation
+          // (remove/clearAll included) and only skips onChange on a no-op
+          // commit. Value-dedupe here so an identical array doesn't trigger
+          // a redundant getRecs + URL push (refetch loop guard).
+          if (nextRefine.join("") === refinements.join("")) return;
+          setRefinements(nextRefine);
+          // syncUrl reads `refinements` from closure (stale until the async
+          // setState flushes) — pass the override so the URL is correct now.
+          syncUrl({ refinements: nextRefine });
+          loadRecs(timeOrDefault, moodsOrDefault, platformsOrDefault, nextRefine);
+        }}
       />
+
       {pending && (
         <MascotPrompt mood="thinking">
           <p className="text-sm">{pendingCopyFor(time)}</p>
@@ -273,7 +237,7 @@ export function PlayNextClient({
               {recsState.recs.length === 1 ? "pick" : "picks"} for you.
             </p>
           </MascotPrompt>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <AnimatePresence mode="popLayout">
               {recsState.recs
                 .filter((r) => !dismissedIds.has(r.id))
@@ -318,50 +282,12 @@ export function PlayNextClient({
             {recsState.reason === "empty-tier"
               ? "You don’t have any logs yet — log a game first."
               : recsState.reason === "no-candidates"
-                ? "Couldn’t find a fit for that exact combo. Try widening the time window or different platforms."
+                ? "No picks match — try widening your filters or removing a refinement."
                 : "Something went wrong."}
           </p>
         </MascotPrompt>
       )}
     </>
-  );
-}
-
-function FilterPills({
-  time,
-  moods,
-  platforms,
-  onEdit,
-}: {
-  time: TimeBudget | "";
-  moods: Mood[];
-  platforms: Platform[];
-  onEdit: (step: Step) => void;
-}) {
-  return (
-    <div className="mb-6 flex flex-wrap gap-2 text-xs">
-      <Pill label={`Time: ${time || "—"}`} onClick={() => onEdit("time")} />
-      <Pill
-        label={`Mood: ${moods.length > 0 ? moods.join(" + ") : "—"}`}
-        onClick={() => onEdit("mood")}
-      />
-      <Pill
-        label={`Platform: ${platforms.length > 0 ? platforms.join(", ") : "—"}`}
-        onClick={() => onEdit("platform")}
-      />
-    </div>
-  );
-}
-
-function Pill({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-full border border-[var(--border)] px-3 py-1 hover:border-[var(--border-hover)]"
-    >
-      {label} <span className="ml-1 opacity-50">✎</span>
-    </button>
   );
 }
 
