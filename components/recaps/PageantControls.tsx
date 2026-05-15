@@ -1,6 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
+
+// Lazy-loaded so the server-action import chain (refresh-action → rate-limit
+// → Redis) doesn't execute at module-load time. Matters for the
+// pageant-state reducer test, which imports Pageant → PageantControls.
+const RefreshButton = dynamic(
+  () => import("./RefreshButton").then((m) => ({ default: m.RefreshButton })),
+  { ssr: false },
+);
 
 /**
  * PageantControls — Phase 6 T12.
@@ -41,6 +50,10 @@ interface PageantControlsProps {
   isClosingScene: boolean;
   /** Used for Twitter/Discord intent text. Falls back to a generic pitch. */
   sharePitch?: string;
+  /** Owner-only current-year recaps get the Refresh button inline with shares. */
+  canRefresh?: boolean;
+  /** Required when canRefresh is true. */
+  refreshYear?: number;
 }
 
 export function PageantControls({
@@ -52,9 +65,17 @@ export function PageantControls({
   canForward,
   isClosingScene,
   sharePitch,
+  canRefresh = false,
+  refreshYear,
 }: PageantControlsProps) {
   if (isClosingScene) {
-    return <ClosingShareRow sharePitch={sharePitch} />;
+    return (
+      <ClosingShareRow
+        sharePitch={sharePitch}
+        canRefresh={canRefresh && refreshYear !== undefined}
+        refreshYear={refreshYear}
+      />
+    );
   }
 
   return (
@@ -99,8 +120,17 @@ export function PageantControls({
  * resolves its URL lazily at click time from `window.location.href` so
  * deep-linked positions are preserved in the share intent.
  */
-function ClosingShareRow({ sharePitch }: { sharePitch?: string }) {
+function ClosingShareRow({
+  sharePitch,
+  canRefresh,
+  refreshYear,
+}: {
+  sharePitch?: string;
+  canRefresh: boolean;
+  refreshYear?: number;
+}) {
   const [copied, setCopied] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const pitch = sharePitch ?? "My year in games";
 
@@ -164,6 +194,9 @@ function ClosingShareRow({ sharePitch }: { sharePitch?: string }) {
         >
           {copied ? "Copied" : "Copy link"}
         </button>
+        {canRefresh && refreshYear !== undefined && (
+          <RefreshButton year={refreshYear} onError={setRefreshError} />
+        )}
       </div>
       {/*
         Polite live region so AT announces the copy result without
@@ -173,6 +206,11 @@ function ClosingShareRow({ sharePitch }: { sharePitch?: string }) {
       <p aria-live="polite" className="sr-only">
         {copied ? "Link copied to clipboard" : ""}
       </p>
+      {refreshError && (
+        <p role="alert" className="pointer-events-auto text-xs text-[var(--text-dim)]">
+          {refreshError}
+        </p>
+      )}
     </div>
   );
 }

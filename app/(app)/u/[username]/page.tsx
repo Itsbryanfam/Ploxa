@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { Sparkles } from "lucide-react";
 
 import { LibraryShelf } from "@/components/library/library-shelf";
 import { ShelfFrame } from "@/components/pixel/shelf-frame";
@@ -122,6 +123,13 @@ export default async function ProfilePage({
 
       <StatsStrip stats={stats} />
 
+      <YearRecapCard
+        username={profile.username}
+        displayName={profile.displayName ?? profile.username}
+        totalLogs={stats.total}
+        isOwner={isOwner}
+      />
+
       {currentlyPlaying.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold mb-3">Currently playing</h2>
@@ -225,5 +233,48 @@ function SectionHeader({ title, href }: { title: string; href: string }) {
         See all →
       </Link>
     </div>
+  );
+}
+
+/**
+ * Entry-point card for the year-in-review pageant. Always rendered (privacy
+ * gate lives on the destination page, not here). Current year is fixed at
+ * render time — past-year exploration is via direct URL, not an in-app
+ * year-switcher (matches the explicit out-of-scope decision in the Phase 6
+ * spec).
+ */
+function YearRecapCard({
+  username,
+  displayName,
+  totalLogs,
+  isOwner,
+}: {
+  username: string;
+  displayName: string;
+  totalLogs: number;
+  isOwner: boolean;
+}) {
+  const currentYear = new Date().getUTCFullYear();
+  const heading = isOwner ? "Your year in games" : `${displayName}'s year in games`;
+  return (
+    <Link
+      href={`/u/${username}/year/${currentYear}`}
+      className="group flex items-center justify-between gap-4 rounded-xl border border-[var(--accent-soft)] bg-gradient-to-br from-[var(--accent)]/10 via-[var(--bg-card)] to-[var(--bg-card)] p-5 transition-colors hover:border-[var(--accent)]"
+    >
+      <div className="flex items-center gap-4">
+        <div className="rounded-lg bg-[var(--accent)]/20 p-2.5 text-[var(--accent)]">
+          <Sparkles className="h-6 w-6" />
+        </div>
+        <div>
+          <p className="text-lg font-semibold text-[var(--text)]">{heading}</p>
+          <p className="text-sm text-[var(--text-dim)]">
+            {currentYear} recap · {totalLogs.toLocaleString()} games logged
+          </p>
+        </div>
+      </div>
+      <span className="text-sm text-[var(--text-dim)] transition-colors group-hover:text-[var(--accent)]">
+        View →
+      </span>
+    </Link>
   );
 }
