@@ -4,6 +4,10 @@ export type WildcardCandidate = {
   genres: string[];
 };
 
+// PRECONDITION: `exploredGenres` members and `genreFrequency` keys MUST be
+// lowercased by the caller. Lookups here lowercase the candidate genre, but
+// games.genres is mixed-case (RAWG/IGDB) — a mixed-case Set/Map silently
+// misclassifies every genre as unexplored and Bucket A swallows the pool.
 type WildcardOpts = {
   exploredGenres: Set<string>;
   genreFrequency?: Map<string, number>; // user's log count per genre
@@ -42,7 +46,10 @@ export function pickWildcard(
   if (unexplored.length > 0) {
     pool = unexplored;
   } else if (opts.genreFrequency) {
-    // Score each candidate by inverse of min(genreFreq for its genres)
+    // Rank by each candidate's least-explored genre (min log-frequency
+    // across its genres), then keep only the globally-least-explored.
+    // `?? Infinity` is a sentinel: a genre absent from genreFrequency
+    // (caller-inconsistent with exploredGenres) sorts as most-explored.
     const scored = filtered.map((c) => {
       const freqs = c.genres.map((g) => opts.genreFrequency!.get(g.toLowerCase()) ?? Infinity);
       const minFreq = Math.min(...freqs);
@@ -54,7 +61,9 @@ export function pickWildcard(
     pool = filtered;
   }
 
-  // Constrained random within pool, deterministic via seed
+  // Constrained random within pool. With a seed → deterministic (Task 12
+  // passes a per-request seed for reproducible recs). No seed → wall-clock
+  // entropy by design: a fresh wildcard each call. Not for client/SSR paths.
   const rand = mulberry32(opts.seed ?? Date.now());
   const idx = Math.floor(rand() * pool.length);
   return pool[idx];

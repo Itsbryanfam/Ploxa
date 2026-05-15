@@ -56,4 +56,34 @@ describe("pickWildcard", () => {
     const b = pickWildcard(cands, { exploredGenres: new Set(), seed: 7 });
     expect(a?.gameId).toBe(b?.gameId);
   });
+
+  it("pins the PRNG: seed 7 selects a fixed index (golden value, guards Task 12 reproducibility)", () => {
+    const cands = [
+      mkCand(1, 0.5, ["a"]),
+      mkCand(2, 0.5, ["b"]),
+      mkCand(3, 0.5, ["c"]),
+    ];
+    const pick = pickWildcard(cands, { exploredGenres: new Set(), seed: 7 });
+    // Golden value: empirically observed output of mulberry32(7) on a 3-item
+    // pool. If this changes, the PRNG contract Task 12 depends on broke.
+    expect(pick?.gameId).toBe(1);
+  });
+
+  it("falls back to the full filtered pool when all genres explored and no frequency map", () => {
+    const cands = [mkCand(1, 0.6, ["puzzle"]), mkCand(2, 0.6, ["puzzle"])];
+    const pick = pickWildcard(cands, { exploredGenres: new Set(["puzzle"]), seed: 42 });
+    expect(pick).not.toBeNull();
+    expect([1, 2]).toContain(pick?.gameId);
+  });
+
+  it("picks among multiple unexplored candidates and excludes explored ones", () => {
+    const cands = [
+      mkCand(1, 0.9, ["puzzle"]), // explored — must be excluded despite top score
+      mkCand(2, 0.6, ["roguelike"]),
+      mkCand(3, 0.6, ["metroidvania"]),
+    ];
+    const pick = pickWildcard(cands, { exploredGenres: new Set(["puzzle"]), seed: 42 });
+    expect([2, 3]).toContain(pick?.gameId);
+    expect(pick?.gameId).not.toBe(1);
+  });
 });
