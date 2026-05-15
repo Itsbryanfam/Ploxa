@@ -83,7 +83,9 @@ Deno.serve(async (req) => {
   // step to skip — it always reranks the supplied set. Validate + default.
   const mode = body.mode === "rerank-only" ? "rerank-only" : "full";
   const userRefinements = Array.isArray(body.userRefinements)
-    ? body.userRefinements.filter((x): x is string => typeof x === "string").slice(0, 5)
+    ? body.userRefinements
+        .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        .slice(0, 5)
     : [];
 
   const databaseUrl = Deno.env.get("DATABASE_URL")!;
@@ -144,10 +146,11 @@ Deno.serve(async (req) => {
         LIMIT 5
       `,
       sql<Array<{ title: string }>>`
-        SELECT DISTINCT g.title
+        SELECT g.title
         FROM logs l JOIN games g ON g.id = l.game_id
         WHERE l.user_id = ${userId}
-        ORDER BY g.title
+        GROUP BY g.title
+        ORDER BY MAX(l.updated_at) DESC
         LIMIT 30
       `,
     ]);

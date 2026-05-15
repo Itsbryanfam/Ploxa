@@ -163,10 +163,16 @@ export type RerankPromptInput = {
  */
 const REFINEMENT_MAX = 5;
 const REFINEMENT_CHAR_CAP = 140;
-// Sanitize a free-text refinement: collapse newlines (the prompt is line-
-// structured), trim, hard-cap length so one entry can't blow the token budget.
+// Strip ALL line/control chars (not just \n) and collapse whitespace runs:
+// userRefinements is user-controlled free text injected into a line-
+// structured prompt. A surviving \r / \v /   etc. could forge prompt
+// structure; the delimited block + "filter wins" framing is the next layer.
 function sanitizeRefinement(s: string): string {
-  return s.replace(/\n/g, " ").trim().slice(0, REFINEMENT_CHAR_CAP);
+  return s
+    .replace(/[\r\n\t\v\f  ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, REFINEMENT_CHAR_CAP);
 }
 
 export function buildRerankPrompt(input: RerankPromptInput): {
@@ -208,6 +214,9 @@ export function buildRerankPrompt(input: RerankPromptInput): {
     userBlocks.push("Their taste read:", input.narrative, "");
   }
 
+  // Top-5 genre signal (compressed). Reuses the same sort-by-|v| ordering
+  // as topN() above but inlines it here because we need a comma-joined
+  // single-line representation rather than the multi-line fmtVector form.
   const topGenres = Object.entries(input.vectors.genre)
     .filter(([, v]) => Math.abs(v) >= 0.05)
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
