@@ -1594,32 +1594,39 @@ describe("candidatePool v2 surface", () => {
 
 - [ ] **Step 3: Modify the source**
 
-In `lib/recs/candidate-pool.ts`, change the top-N default and add the optional seed:
+> **Execution note (2026-05-15):** The illustrative code originally shown
+> here was wrong vs the real file (it guessed `topN`/inline-vectors). The
+> ACTUAL signature uses `limit` + `VectorBundle`, with `50` appearing once
+> at `const limit = opts.limit ?? 50;`. Shipped commit `9672ab1` makes the
+> minimal correct adaptation below — param stays `limit` (NOT renamed),
+> `VectorBundle` import preserved, only `?? 50`→`?? 100` + the `seed?` type
+> member + comments. **Carry-forward to Task 12:** the two real callers at
+> `lib/recs/server-actions.ts:204` and `:416` pin explicit `limit: 50` —
+> Task 12 must drop/raise those to actually get the 100 pool, and re-confirm
+> the downstream time/platform `.filter()` + final slice handle the larger
+> input. `seed` is added to the opts type but intentionally UNWIRED here
+> (plan-mandated forward hook; Task 12 wires + behaviorally tests it).
+
+In `lib/recs/candidate-pool.ts`, adapt the real signature (do NOT follow the wrong illustrative code; do NOT rename `limit`→`topN`, do NOT inline the `VectorBundle` type):
 
 ```ts
-// Find the existing function signature, e.g.:
-// export async function candidatePool(userId: string, opts?: { vectors?: ...; topN?: number })
-
-// Update to:
 export async function candidatePool(
   userId: string,
-  opts?: {
-    vectors?: { genres: string[]; themes: string[]; mechanics: string[] };
-    topN?: number;
-    seed?: number; // for deterministic test ordering when scores tie
-  },
+  opts: {
+    limit?: number;
+    vectors?: VectorBundle;
+    seed?: number; // reserved: Task 12 passes this for reproducible tie-ordering; unused here
+  } = {},
 ): Promise<CandidateGame[]> {
-  const topN = opts?.topN ?? 100; // was 50
-  // ... existing body, use `topN` where 50 was used ...
+  if (!userId) return [];
+
+  // Pool size expanded 50 → 100 for /play-next v2: the new scoring +
+  // MMR-diversity + bucketing stages (Tasks 6-9) need more material to
+  // work with. Spec: docs/superpowers/specs/2026-05-15-play-next-redesign-design.md
+  const limit = opts.limit ?? 100;
+  // ... existing body unchanged; `limit` already flows to the cold-start
+  // `break` and the final `scored.slice(0, limit)` ...
 }
-```
-
-Add a comment above the topN declaration:
-
-```ts
-// Top-N expanded from 50 to 100 in /play-next v2 to give the
-// scoring + diversity stages more material to work with. Spec:
-// docs/superpowers/specs/2026-05-15-play-next-redesign-design.md
 ```
 
 - [ ] **Step 4: Verify nothing broke**
@@ -1729,6 +1736,15 @@ describe("buildRerankPrompt — v2 additions", () => {
 
 Run: `pnpm vitest run tests/unit/recs/rerank-prompt.test.ts`
 Expected: FAIL — `userRefinements` not in builder signature.
+
+> **Execution note (2026-05-15) — the Step 4/5 code below is FICTIONAL; do NOT follow it verbatim.** It was written against an imagined API. Reality (verified, shipped in commits `b1126da` + `7630aaa`):
+> - `RERANK_PROMPT_VERSION` is a **string** (`"v1"` → bumped to `"v2"`), not numeric. There is no `BuildRerankPromptArgs`; the real exported type is `RerankPromptInput` and `buildRerankPrompt(input): { system: string; user: string }` (returns a pair, not a string). The new blocks are pushed into the existing `userBlocks` array immediately before the final `userBlocks.push("Return the JSON object now.")` — pre-existing blocks (narrative, candidate list, dismissed, currently-playing) are untouched.
+> - `RerankPromptInput` gained `libraryTitles?: string[]` + `userRefinements?: string[]`. `sanitizeRefinement` strips ALL line/control chars (`[\r\n\t\v\f …]`) + collapses whitespace (not just `\n` — security: user-controlled text in a line-structured LLM prompt), capped 140 chars, max 5 entries.
+> - The Edge Function uses **manual body parsing, NOT Zod**. It gained `mode`/`userRefinements` body fields. `mode` is accepted+validated+echoed but has **no behavioral branch** — the Edge Function is given `candidateIds` and never retrieves a pool, so "rerank-only skips re-retrieve" is *inherently* satisfied; the full-vs-rerank-only teeth are Task 12's (Next side).
+> - The library-sample query is recency-ordered: `SELECT g.title FROM logs l JOIN games g ON g.id=l.game_id WHERE l.user_id=$1 GROUP BY g.title ORDER BY MAX(l.updated_at) DESC LIMIT 30`.
+> - `lib/taste/prompts.ts` ⇄ `supabase/functions/_shared/prompts.ts` rerank region is byte-identical, **enforced by a mirror-equality unit test** (it already caught + fixed a pre-existing one-sided comment drift). The Vitest suite only loads the lib copy; the test reads both files and asserts the region matches.
+> - **Step 7 (Edge deploy) is DEFERRED to operator close-out** — not run during execution (live `rerank-recs` is still v5/"v1").
+> - **Carry-forward to Task 12:** pass `userRefinements` (the refinement input) + `mode: "rerank-only"` (when refining an existing shortlist) into the Edge call; Task 12 owns the actual full-vs-rerank-only retrieval decision.
 
 - [ ] **Step 4: Update buildRerankPrompt + version bump**
 

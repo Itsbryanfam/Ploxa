@@ -62,13 +62,13 @@
     {
       "id": 10,
       "subject": "Task 10: Widen candidate pool",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Bump topN default 50 → 100, add optional seed parameter.\n\n**Files:**\n- Modify: `lib/recs/candidate-pool.ts`\n- Create: `tests/unit/recs/candidate-pool-v2.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/`\n\n```json:metadata\n{\"files\": [\"lib/recs/candidate-pool.ts\", \"tests/unit/recs/candidate-pool-v2.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/\", \"acceptanceCriteria\": [\"Default topN is 100\", \"Optional seed accepted\", \"No regression in existing tests\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 11: Edge Function rerank-only mode + userRefinements + prompt v2",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add `mode: full|rerank-only`, `userRefinements` field, library-citing prompt, version bump.\n\n**Files:**\n- Modify: `supabase/functions/rerank-recs/index.ts`\n- Modify: `supabase/functions/_shared/prompts.ts`\n- Modify: `lib/taste/prompts.ts`\n- Create: `tests/unit/recs/rerank-prompt.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/rerank-prompt.test.ts`\n\n```json:metadata\n{\"files\": [\"supabase/functions/rerank-recs/index.ts\", \"supabase/functions/_shared/prompts.ts\", \"lib/taste/prompts.ts\", \"tests/unit/recs/rerank-prompt.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/rerank-prompt.test.ts\", \"acceptanceCriteria\": [\"mode parameter accepted\", \"userRefinements block in prompt\", \"libraryTitles cited\", \"VERSION bumped\"]}\n```"
     },
     {
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T17:00:00.000Z"
+  "lastUpdated": "2026-05-15T18:30:00.000Z"
 }
