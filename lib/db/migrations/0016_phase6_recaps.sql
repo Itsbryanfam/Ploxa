@@ -28,9 +28,15 @@ CREATE TABLE featured_lists (
   pinned_until timestamptz,
   pinned_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT
 );
+-- Partial unique index: at most one indefinite pin per surface at any time.
+-- Predicate is narrow (just IS NULL) because Postgres requires IMMUTABLE
+-- predicates and now() is STABLE. Time-bounded pin races (two admins clicking
+-- "Pin" with an expiry simultaneously when no prior pin exists) are handled
+-- application-side by the close-then-insert pattern in pinFeaturedList — see
+-- lib/recaps/featured.ts (T7).
 CREATE UNIQUE INDEX featured_lists_surface_active_uniq
   ON featured_lists(surface)
-  WHERE pinned_until IS NULL OR pinned_until > now();
+  WHERE pinned_until IS NULL;
 
 ALTER TABLE profiles
   ADD COLUMN last_recap_sent_at timestamptz;

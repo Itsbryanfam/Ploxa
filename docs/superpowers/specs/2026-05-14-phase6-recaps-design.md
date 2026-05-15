@@ -125,7 +125,8 @@ ALTER TABLE year_in_reviews
   ADD COLUMN share_image_hash varchar(32),
   ADD COLUMN locked_at timestamptz;
 
--- featured_lists: single-active-row-per-surface pin
+-- featured_lists: active pins are managed by close-then-insert with a
+-- unique-index race guard for indefinite pins.
 CREATE TABLE featured_lists (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   list_id uuid NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
@@ -134,9 +135,15 @@ CREATE TABLE featured_lists (
   pinned_until timestamptz,             -- NULL = indefinite
   pinned_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT
 );
+-- Partial unique index: at most one indefinite pin per surface at any time.
+-- Predicate is narrow (just IS NULL) because Postgres requires IMMUTABLE
+-- predicates and now() is STABLE. Time-bounded pin races (two admins clicking
+-- "Pin" with an expiry simultaneously when no prior pin exists) are handled
+-- application-side by the close-then-insert pattern in pinFeaturedList — see
+-- lib/recaps/featured.ts (T7).
 CREATE UNIQUE INDEX featured_lists_surface_active_uniq
   ON featured_lists(surface)
-  WHERE pinned_until IS NULL OR pinned_until > now();
+  WHERE pinned_until IS NULL;
 
 -- profiles: dupe-prevention for recap email cron
 ALTER TABLE profiles

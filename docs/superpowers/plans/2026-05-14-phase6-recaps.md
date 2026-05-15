@@ -25,7 +25,7 @@
 - [ ] 0017 SQL applies cleanly (separate file because `ALTER TYPE ADD VALUE` can't run in a transaction with the migration harness)
 - [ ] Drizzle schema exports `monthlyRecaps`, `featuredLists`; `yearInReviews` has `shareImageHash` + `lockedAt`; `profiles` has `lastRecapSentAt`
 - [ ] `monthly_recaps_user_year_month_uniq` unique index on `(user_id, year, month_index)`
-- [ ] `featured_lists_surface_active_uniq` partial unique index on `(surface)` WHERE `pinned_until IS NULL OR pinned_until > now()`
+- [ ] `featured_lists_surface_active_uniq` partial unique index on `(surface)` WHERE `pinned_until IS NULL` (predicate is narrow because Postgres requires IMMUTABLE predicates and `now()` is STABLE; time-bounded pin races are handled application-side by the close-then-insert pattern in `pinFeaturedList` — see Task 7)
 - [ ] `email_digest_cadence` enum includes `'monthly'`
 - [ ] `pnpm tsc --noEmit` clean
 - [ ] Drizzle snapshot chain remains valid (grep for `CREATE TABLE "auth"."users"` and strip per `feedback_drizzle_auth_users_gotcha.md`; verify with `pnpm db:check` per audit T17)
@@ -100,9 +100,15 @@ CREATE TABLE featured_lists (
   pinned_until timestamptz,
   pinned_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT
 );
+-- Partial unique index: at most one indefinite pin per surface at any time.
+-- Predicate is narrow (just IS NULL) because Postgres requires IMMUTABLE
+-- predicates and now() is STABLE. Time-bounded pin races (two admins clicking
+-- "Pin" with an expiry simultaneously when no prior pin exists) are handled
+-- application-side by the close-then-insert pattern in pinFeaturedList — see
+-- lib/recaps/featured.ts (T7).
 CREATE UNIQUE INDEX featured_lists_surface_active_uniq
   ON featured_lists(surface)
-  WHERE pinned_until IS NULL OR pinned_until > now();
+  WHERE pinned_until IS NULL;
 
 ALTER TABLE profiles
   ADD COLUMN last_recap_sent_at timestamptz;
