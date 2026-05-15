@@ -134,6 +134,7 @@ export function RecCard({
     <motion.div
       layout
       data-testid="rec-card"
+      data-slot={rec.slot}
       initial={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
       className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg)]"
