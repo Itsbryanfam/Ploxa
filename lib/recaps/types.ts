@@ -1,3 +1,5 @@
+import type { LogStatus } from "@/lib/db/schema-types";
+
 export type RecapMode = "yearly" | "monthly";
 
 export type SceneId =
@@ -33,7 +35,7 @@ export interface TopGameRef {
   title: string;
   coverUrl: string | null;
   rating: number; // 0-5
-  status: "completed" | "playing" | "dropped" | "replaying" | "backlog";
+  status: LogStatus;
 }
 
 export interface RecapPayload {

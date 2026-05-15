@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import type { LogStatus } from "@/lib/db/schema-types";
 import type { RecapMode, RecapPayload, TopGameRef } from "./types";
 import { SCENE_CATALOG, filterScenes } from "./scenes";
 
@@ -258,7 +259,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
     title: r.title,
     coverUrl: r.cover_url,
     rating: parseFloat(r.rating),
-    status: r.status as TopGameRef["status"],
+    status: r.status as LogStatus,
   }));
 
   // Genre percentages are taken against the sum of unnested genre
@@ -289,7 +290,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
           // rated the game — coerce to 0 since TopGameRef.rating is not
           // nullable.
           rating: longestRaw[0].rating !== null ? parseFloat(longestRaw[0].rating) : 0,
-          status: longestRaw[0].status as TopGameRef["status"],
+          status: longestRaw[0].status as LogStatus,
         },
         hoursPlayed: parseFloat(longestRaw[0].hours_played),
       }
