@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { FilterChipPopover } from "@/components/recs/filter-chip-popover";
 import { MascotPrompt } from "@/components/recs/mascot-prompt";
 import { RecCard } from "@/components/recs/rec-card";
-import { RefinementInput } from "@/components/recs/refinement-input";
+import { RefinementInput, MAX_ACTIVE } from "@/components/recs/refinement-input";
 import { MOODS, TIMES, type Mood, type TimeBudget } from "@/lib/recs/moods";
 import { getRecs, refillRecs, type RecResult } from "@/lib/recs/server-actions";
 
@@ -51,7 +51,16 @@ export function PlayNextClient({
   const initPlatforms = parseCsv(initialParams.platforms).filter(
     (p): p is Platform => p === "steam" || p === "xbox" || p === "psn",
   );
-  const initRefine = parseCsv(initialParams.refine).slice(0, 5);
+  // refine is free-text (commas/spaces valid) — read repeated `refine` keys
+  // (collision-proof), already decoded once by Next. Do NOT parseCsv here:
+  // its `.split(",")` would re-introduce the comma-split bug.
+  const rawRefine = initialParams.refine;
+  const initRefine = (
+    Array.isArray(rawRefine) ? rawRefine : rawRefine ? [rawRefine] : []
+  )
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, MAX_ACTIVE);
 
   // Default filters when absent so the page is always live (acceptance:
   // time="1hr", moods=["chill"], platforms=userConnectedPlatforms). The
@@ -154,7 +163,10 @@ export function PlayNextClient({
     if (t) sp.set("time", t);
     if (m.length > 0) sp.set("moods", m.join(","));
     if (p.length > 0) sp.set("platforms", p.join(","));
-    if (r.length > 0) sp.set("refine", r.map(encodeURIComponent).join(","));
+    // Repeated `refine` keys: collision-proof for free-text (commas valid).
+    // URLSearchParams owns all percent-encoding — never manually encode.
+    sp.delete("refine");
+    for (const item of r) sp.append("refine", item);
     router.replace(`${pathname}?${sp.toString()}`);
   }
 
@@ -173,6 +185,7 @@ export function PlayNextClient({
           variant="time"
           value={timeOrDefault}
           onChange={(t) => {
+            if (t === timeOrDefault) return; // skip redundant rerank on same-time re-click
             setTime(t);
             syncUrl({ time: t });
             loadRecs(t, moodsOrDefault, platformsOrDefault, refinements);
@@ -210,7 +223,7 @@ export function PlayNextClient({
           // (remove/clearAll included) and only skips onChange on a no-op
           // commit. Value-dedupe here so an identical array doesn't trigger
           // a redundant getRecs + URL push (refetch loop guard).
-          if (nextRefine.join("") === refinements.join("")) return;
+          if (nextRefine.join("\n") === refinements.join("\n")) return;
           setRefinements(nextRefine);
           // syncUrl reads `refinements` from closure (stale until the async
           // setState flushes) — pass the override so the URL is correct now.
@@ -219,7 +232,7 @@ export function PlayNextClient({
         }}
       />
 
-      {pending && (
+      {(pending || recsState === null) && (
         <MascotPrompt mood="thinking">
           <p className="text-sm">{pendingCopyFor(time)}</p>
         </MascotPrompt>
