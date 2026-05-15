@@ -4,7 +4,7 @@
 |---|---|
 | **Date** | 2026-05-15 |
 | **Status** | Approved (brainstormed 2026-05-15) |
-| **Goal** | Turn `/play-next` from a thin AI-rerank wrapper into a *robust* recommendation surface. Better picks (composite scoring across taste/mood/time/social/library, MMR diversity, wildcard slot), better cards (3×2 grid with full reasoning, slot labels, qualitative confidence), and a conversational refinement layer ("less grindy", "more story") that re-ranks the existing shortlist without a second retrieve. Cheap-to-run via a free-tier-first AI provider chain (Gemini Flash → Groq → gpt-4o-mini paid fallback). Stratified buckets (3 Comfort + 1 Backlog + 1 Friends + 1 Wildcard) replace the flat ranked list — picks become self-explanatory by category. |
+| **Goal** | Turn `/play-next` from a thin AI-rerank wrapper into a *robust* recommendation surface. Better picks (composite scoring across taste/mood/time/social/library, MMR diversity, wildcard slot), better cards (3×2 grid with full reasoning, slot labels, qualitative confidence), and a conversational refinement layer ("less grindy", "more story") that re-ranks the existing shortlist without a second retrieve. Reuses the existing free-tier-first `lib/ai/router.ts` chain (Cerebras → Groq → Cloudflare → DeepSeek) — no new provider plumbing. Stratified buckets (3 Comfort + 1 Backlog + 1 Friends + 1 Wildcard) replace the flat ranked list — picks become self-explanatory by category. |
 | **Verification gate** | Grid always renders 6 cards in a stable 3×2 layout for any user with ≥1 candidate; full reasoning text shows without clip; filter chips edit in-place without wizard re-entry; refinement input appends to URL state and re-runs in <2s p95; wildcard slot is genuinely OOD (genre cluster user has never logged from); all three AI providers in the chain are exercised under simulated failure; soft-negative dismissal decay verified via a forced-stale fixture; rate limits enforced (10 refinement/min/user); feature flag kill-switch returns the page to the existing implementation in one toggle. 12 automated + 4 manual criteria, see verify-gate table at end. |
 | **Plan reference** | New scope, not on the original 7-phase plan. Slotted as a `/play-next` quality sweep between Phase 6 (Recaps) and Phase 7 (Polish). |
 | **Companion HTML** | None — pure code change, no companion artifact needed. |
@@ -48,7 +48,7 @@ Brainstorm research (2026-05-15) pulled patterns from Spotify Discover Weekly, N
 
 6. **Soft negatives, not blacklists.** Dismissed games are time-decayed (14-day half-life) instead of hard-excluded. A game dismissed once may re-surface in ~30 days. *Never again* is a separate action that does hard-exclude. *Snooze 30 days* is the explicit short-term option. Users get three distinct exit valves on the X button.
 
-7. **AI providers tier from free → paid.** Rerank chain: Gemini 2.0 Flash (free tier, 1500 req/day) → Groq Llama 3.3 70B (free tier, 30 RPM) → gpt-4o-mini (paid, no daily cap). One attempt per tier with timeouts 2s/2s/3s (total chain budget 7s, inside the 8s Edge Function wall-clock). Any failure falls through to the next tier immediately. If all three fail, fall through to metadata-only templated reasoning — the deterministic scoring/buckets/chips still render. Page never blanks because of provider noise.
+7. **Reuse the existing AI provider chain.** Rerank calls go through the existing `lib/ai/router.ts` (Cerebras → Groq → Cloudflare → DeepSeek) and its `supabase/functions/_shared/` mirror — no new provider implementations. The router already handles per-provider rate limits, telemetry, and fall-through. If all configured providers are exhausted/down, the rerank call throws `AIProvidersExhaustedError`, which we catch and fall through to metadata-only templated reasoning — the deterministic scoring/buckets/chips still render. Page never blanks because of provider noise.
 
 8. **All new behavior behind a feature flag during rollout.** Single kill-switch (`recsv2`) returns the page to the existing implementation in one toggle. Once stable in production, the flag is removed in a follow-up cleanup.
 
@@ -69,7 +69,7 @@ Six decisions made during the 2026-05-15 brainstorm. Each table entry: question 
 | 3 | Mood treatment | (A) Stay prompt-context only · (B) Convert to scoring axis via affinity table | **B — Scoring axis.** The original "mood doesn't filter" gap is the largest single picker-quality complaint. Fixed lookup table (`lib/recs/mood-affinity.ts`) — no learned weights, easy to tune. |
 | 4 | Diversity enforcement | (A) Simple ≤2-per-genre rule · (B) MMR (λ=0.7) · (C) DPP | **B — MMR.** Research convergent recommendation. ~30 lines of code. DPP deferred until MMR is measurably inadequate. |
 | 5 | Confidence presentation | (A) Numeric % match · (B) Qualitative tiers only · (C) Both | **B — Qualitative tiers only.** Netflix is backing away from % match for user-misread reasons. Three pills (Strong / Good / Worth a try). |
-| 6 | AI provider | (A) Keep gpt-4o-mini · (B) Free-tier chain → paid fallback · (C) Swap to bge-reranker | **B — Free-tier chain.** Drops AI cost ~zero at current scale. bge-reranker swap deferred until free-tier telemetry justifies it. |
+| 6 | AI provider | (A) Build new Gemini chain · (B) Reuse existing `lib/ai/router.ts` chain · (C) Swap to bge-reranker | **B — Reuse existing chain.** Cerebras (1M tokens/day free) → Groq (14,400 RPD free) → Cloudflare (10K neurons/day free) → DeepSeek (paid) is already implemented, rate-limited, and telemetered. Building a parallel Gemini chain for one feature is unnecessary engineering. Gemini key reserved in `.env` for future use. bge-reranker swap deferred until existing chain telemetry justifies a change. |
 
 ---
 
@@ -98,7 +98,7 @@ Six decisions made during the 2026-05-15 brainstorm. Each table entry: question 
 |---|---|
 | `lib/recs/server-actions.ts` | `getRecs()` orchestration — calls expanded `candidatePool()`, applies new scoring + buckets + MMR + wildcard. Adds `refinements: string[]` parameter routed straight to the Edge Function. New cache key includes filter combo only (refinements bypass cache). |
 | `lib/recs/candidate-pool.ts` | `candidatePool()` top-N widens from 50 to 100. Adds optional `seed` parameter for deterministic test runs. Vector math unchanged. |
-| `supabase/functions/rerank-recs/index.ts` | Adds `mode: "full" \| "rerank-only"` switch. In rerank-only mode, skips re-retrieve and just re-orders the supplied shortlist. Adds `userRefinements: string[]` field to prompt input. Provider chain: Gemini Flash (2s) → Groq (2s) → gpt-4o-mini (3s). One attempt per tier, immediate fall-through on any failure. |
+| `supabase/functions/rerank-recs/index.ts` | Adds `mode: "full" \| "rerank-only"` switch. In rerank-only mode, skips re-retrieve and just re-orders the supplied shortlist. Adds `userRefinements: string[]` field to prompt input. AI call uses the existing `_shared/ai-router.ts` chain (Cerebras → Groq → Cloudflare → DeepSeek) unchanged. |
 | `supabase/functions/_shared/prompts.ts` | `buildRerankPrompt()` adds: (1) `userRefinements` rendered as `ADDITIONAL USER REQUESTS:` block, (2) instruction to cite library titles in reasoning when honest, (3) `RERANK_PROMPT_VERSION` bumps to invalidate cached recs. |
 | `components/recs/rec-card.tsx` | Full rewrite to new layout. Cover with library overlay + confidence pill overlay, title, full reasoning (no clamp), fit chip row + slot badge, condensed action row (primary CTA + 2 icon buttons), Snooze/Never-again split on dismiss. |
 | `app/(app)/play-next/_client.tsx` | Filter chips swap to `<FilterChipPopover>`. Mascot row swaps to `<RefinementInput>`. Grid swaps to 3×2 (CSS grid `grid-cols-3` on `md+`, `grid-cols-1` on mobile). "Show 6 more" pagination button below grid. |
@@ -360,31 +360,38 @@ The model still picks 6, still writes one-sentence reasons, still returns scores
 
 ## AI Provider Chain + Cost Posture
 
-Existing `lib/ai/router.ts` is multi-provider. This spec adds an ordered chain specifically for the rerank-recs path:
+**Decision: reuse the existing `lib/ai/router.ts` provider chain unchanged.** No new provider implementations.
 
-```typescript
-const REC_PROVIDER_CHAIN = [
-  { provider: "gemini", model: "gemini-2.0-flash", timeoutMs: 2000 },
-  { provider: "groq",   model: "llama-3.3-70b",    timeoutMs: 2000 },
-  { provider: "openai", model: "gpt-4o-mini",      timeoutMs: 3000 },
-];
-```
+The existing chain is already tiered free → paid and is the same chain that powers Phase 2 AI Reviews and Phase 4 rerank:
 
-| Provider | Free-tier limit | Daily ceiling | Notes |
+| Tier | Provider | Free-tier limit | Notes |
 |---|---|---|---|
-| Gemini 2.0 Flash | 1500 req/day, 15 RPM | 1500 | Frontier-class, no card required |
-| Groq Llama 3.3 70B | 30 RPM, no daily cap on free tier | (rate-only) | Sub-second latency typical |
-| gpt-4o-mini | Paid only | (no cap, but $$) | Existing default — paid fallback |
+| 1 | Cerebras | 1M tokens/day free | Llama 3.x; sub-second latency typical |
+| 2 | Groq | 14,400 req/day free | Llama 3.x; sub-second latency typical |
+| 3 | Cloudflare Workers AI | 10K neurons/day free | Smaller models — fallback quality |
+| 4 | DeepSeek V3 | Paid (~$0.14/$0.28 per M tokens) | Overflow only — should rarely engage |
 
-**Provider switch logic:** one attempt per provider, no per-provider retries. Any failure (timeout, 429, 5xx) falls through to the next tier immediately. A 4xx other than 429 fails fast and short-circuits the chain — no fall-through, because something is wrong with the request itself.
+The router already handles: per-provider rate-limit reservation (atomic, fail-forward on cap miss), 30s per-attempt timeout, telemetry to the `ai_calls` table, configurable-via-env (skips unconfigured providers).
 
-**Total chain budget:** 2s + 2s + 3s = 7s worst case if all three time out, leaving ~1s headroom inside the 8s Edge Function wall-clock budget for DB queries and JSON marshalling. Typical hit on tier 1 (Gemini Flash) completes in ~800ms — total request ~1.2s end-to-end.
+**What this spec adds to the AI surface:**
+1. New `mode: "rerank-only"` parameter on the rerank-recs Edge Function — when set, skips re-retrieve and just re-orders the supplied shortlist.
+2. New `userRefinements: string[]` field in the prompt input (sanitized + clamped).
+3. Prompt update to cite specific library titles in reasoning when honest (`buildRerankPrompt()` in `_shared/prompts.ts`).
+4. `RERANK_PROMPT_VERSION` bump so old cached recs invalidate cleanly.
 
-**Telemetry:** every rerank call writes a row to the existing `ai_calls` table including `provider`, `model`, `tier_used` (1, 2, or 3), `success`, `latency_ms`. Lets us measure how often we touch the paid fallback once telemetry is in.
+**What this spec does NOT change:**
+- Provider list, ordering, or rate limits
+- Per-provider timeouts
+- `lib/ai/router.ts` orchestration logic
+- AI features other than rerank-recs
 
-**Expected cost trajectory at current scale:** 0$/month. Gemini Flash free tier handles all current traffic with 100x headroom. Even if traffic 50x, Groq picks up the overflow. gpt-4o-mini only engages on simultaneous Gemini + Groq outage — measured in hours/year, not days.
+**Gemini key in `.env`:** A `GEMINI_API_KEY` slot was added 2026-05-15 reserved for possible future use. No code in this spec reads it; introducing Gemini as a 5th-tier provider is a separate change, separate spec.
 
-**When to revisit:** Phase B+ telemetry will show real provider usage. If we see paid-tier engagement >5% of runs, audit retry budgets and consider Cohere Rerank or a self-hosted bge-reranker.
+**Telemetry already in place:** every rerank call writes `provider`, `latency_ms`, `tokens_in`, `tokens_out` to `ai_calls`. After 2-4 weeks of `/play-next` v2 traffic, audit which tier actually serves most calls. If DeepSeek paid-tier engagement >5% of runs, that's the signal to either add Gemini or audit upstream quality.
+
+**Expected cost trajectory:** $0/month at current scale. Cerebras alone has ~50x headroom for the recommendation feature at observed traffic. If Cerebras hits its 1M-token cap on a big day, Groq's 14,400 req/day picks up. DeepSeek paid only engages on simultaneous Cerebras + Groq + Cloudflare exhaustion — measured in hours/year if at all.
+
+**When to revisit:** if telemetry shows DeepSeek hitting >5% of rerank calls, or if quality-eval shows the chain producing bad rankings, then revisit (add Gemini, swap to bge-reranker, or audit the prompt).
 
 ---
 
@@ -434,8 +441,7 @@ The hero ship. All of the following in one branch:
 - Wildcard via unexplored-cluster random sampling
 - Soft-negative dismissal decay (14-day half-life)
 - Snooze 30d / Never-again split on dismiss action
-- AI provider chain (Gemini Flash → Groq → gpt-4o-mini)
-- `rerank-only` mode in Edge Function
+- `rerank-only` mode in Edge Function (reuses existing `lib/ai/router.ts` chain — no new provider plumbing)
 - Conversational refinement input + quick chips + URL state
 - Library-citing reasoning prompt update
 - New rec card UI (3×2 grid, full reasoning, slot badges, fit chips, confidence pill, condensed actions)
@@ -492,7 +498,7 @@ The hero ship. All of the following in one branch:
 7. `lib/recs/soft-negative.test.ts` — dismissed-yesterday penalty <0.1, dismissed-15-days-ago penalty >0.65, never-again returns 0
 8. `lib/recs/buckets.test.ts` — empty source slots demote to Comfort, never blank the grid
 9. `getRecs()` integration test (Vitest) — full pipeline returns 6 BucketedRecs for a fixture user
-10. `rerank-recs` Edge Function test — provider-chain simulation: tier 1 fails → tier 2 succeeds; tier 1+2 fail → tier 3 succeeds; all fail → metadata fallback
+10. `rerank-recs` Edge Function test — provider-chain simulation (using the existing router's `isConfigured()` skip): Cerebras unconfigured → Groq serves; Cerebras + Groq unconfigured → Cloudflare serves; all four providers unconfigured → `AIProvidersExhaustedError` caught → metadata fallback renders
 11. Playwright `/play-next` end-to-end — filter chip popover edits in-place; refinement input commits via URL state; wildcard card visually distinct
 12. `RERANK_PROMPT_VERSION` bump verified — old cached recs invalidated correctly
 
@@ -501,7 +507,7 @@ The hero ship. All of the following in one branch:
 1. Visual review against current screenshot: 3×2 grid renders, reasoning text shows in full (no clip), confidence pill renders, slot badges render, all action buttons render
 2. Refinement input UX: "less grindy" → grid changes meaningfully in <2s; refinement pill appears in active row; clearing the pill restores base picks
 3. Wildcard sanity check (3 users with different play histories): wildcard pick is genuinely surprising in each case, not just the next-ranked candidate
-4. Provider-failover smoke: temporarily yank Gemini API key in dev env, verify page still renders via Groq fallback within 2x normal latency
+4. Provider-failover smoke: temporarily yank `CEREBRAS_API_KEY` in dev env, verify page still renders via Groq fallback within 2× normal latency. Then yank Groq too — verify Cloudflare picks up. Then verify the all-providers-exhausted path renders metadata-only reasoning with the banner.
 
 ---
 
