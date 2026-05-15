@@ -85,12 +85,21 @@ export function PlayNextClient({
   const loadRecs = useCallback(
     (t: TimeBudget, m: Mood[], p: Platform[], r: string[]) => {
       startTransition(async () => {
-        const result = await getRecs(
-          { time: t, moods: m, platforms: p },
-          { refinements: r },
-        );
-        setRecsState(result);
-        setDismissedIds(new Set());
+        try {
+          const result = await getRecs(
+            { time: t, moods: m, platforms: p },
+            { refinements: r },
+          );
+          setRecsState(result);
+          setDismissedIds(new Set());
+        } catch {
+          // A thrown/timed-out server action (transient Edge 5xx, a
+          // serverless timeout, a DB race) must NOT leave the page pinned
+          // on the pending mascot forever. Surface a recoverable error —
+          // changing any filter/refinement re-invokes loadRecs.
+          setRecsState({ ok: false, reason: "error" });
+          setDismissedIds(new Set());
+        }
       });
     },
     [],
@@ -112,9 +121,16 @@ export function PlayNextClient({
   const onRefill = useCallback(() => {
     if (!time || moods.length === 0 || platforms.length === 0) return;
     startTransition(async () => {
-      const next = await refillRecs({ time, moods, platforms });
-      setRecsState(next);
-      setDismissedIds(new Set());
+      try {
+        const next = await refillRecs({ time, moods, platforms });
+        setRecsState(next);
+        setDismissedIds(new Set());
+      } catch {
+        // Same dead-end guard as loadRecs: a thrown refill must not pin the
+        // page on the pending mascot. Show the recoverable error state.
+        setRecsState({ ok: false, reason: "error" });
+        setDismissedIds(new Set());
+      }
     });
   }, [time, moods, platforms]);
 
@@ -302,7 +318,9 @@ export function PlayNextClient({
               ? "You don’t have any logs yet — log a game first."
               : recsState.reason === "no-candidates"
                 ? "No picks match — try widening your filters or removing a refinement."
-                : "Something went wrong."}
+                : recsState.reason === "error"
+                  ? "Couldn’t load picks just now — change a filter to try again."
+                  : "Something went wrong."}
           </p>
         </MascotPrompt>
       )}
