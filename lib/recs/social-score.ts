@@ -2,22 +2,20 @@ import "server-only";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 
+import { db } from "@/lib/db";
 import { follows, logs } from "@/lib/db/schema";
+
+export type SocialSignals = { friendsPlayed: number; friendsLiked: number };
 
 export function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
 
-export function computeSocialScore(input: {
-  friendsPlayed: number;
-  friendsLiked: number;
-}): number {
+export function computeSocialScore(input: SocialSignals): number {
   if (input.friendsPlayed === 0 && input.friendsLiked === 0) return 0;
-  // ×2 maps the shifted sigmoid to the full [0,1) the axis contract wants.
-  // Coefficients are scaled down (0.03/0.05, same 3:5 play:like ratio as the
-  // plan's original 0.3/0.5) so the argument stays well below float64 sigmoid
-  // saturation (~36) even at large friend counts — otherwise high inputs
-  // collapse to exactly 1.0 and the strict (0,1) bound breaks.
+  // Shift by 0.5 so zero-input anchors at 0; ×2 expands to the [0,1) the
+  // axis contract wants. Coeffs (0.03/0.05) keep the sigmoid arg well below
+  // float64 saturation so the strict <1 bound holds at realistic counts.
   return 2 * (sigmoid(0.03 * input.friendsPlayed + 0.05 * input.friendsLiked) - 0.5);
 }
 
@@ -29,13 +27,8 @@ export function computeSocialScore(input: {
 export async function fetchSocialSignals(
   userId: string,
   gameIds: number[],
-): Promise<Map<number, { friendsPlayed: number; friendsLiked: number }>> {
+): Promise<Map<number, SocialSignals>> {
   if (gameIds.length === 0) return new Map();
-
-  // db is dynamically imported so the pure exports (sigmoid /
-  // computeSocialScore) stay unit-testable: eagerly importing @/lib/db
-  // instantiates a postgres-js client that throws under Vitest (no db mock).
-  const { db } = await import("@/lib/db");
 
   // Step 1: get followed user IDs
   const followedRows = await db
@@ -56,7 +49,7 @@ export async function fetchSocialSignals(
     .where(and(inArray(logs.userId, followed), inArray(logs.gameId, gameIds)))
     .groupBy(logs.gameId);
 
-  const out = new Map<number, { friendsPlayed: number; friendsLiked: number }>();
+  const out = new Map<number, SocialSignals>();
   for (const r of rows) {
     out.set(r.gameId, { friendsPlayed: r.friendsPlayed, friendsLiked: r.friendsLiked });
   }

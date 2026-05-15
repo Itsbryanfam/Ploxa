@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { computeSocialScore, sigmoid } from "@/lib/recs/social-score";
+import { describe, expect, it, vi } from "vitest";
+
+// social-score.ts eagerly does `import { db } from "@/lib/db"` (same
+// convention as its sibling candidate-pool.ts). Importing the real module
+// would instantiate a postgres-js client. Mock @/lib/db to a minimal stub
+// so the eager import resolves — these tests only exercise the pure
+// computeSocialScore/sigmoid exports, so the stub's methods are never
+// called. `server-only` is already aliased to a no-op by vitest.config.ts.
+vi.mock("@/lib/db", () => {
+  return {
+    db: {
+      select: vi.fn(),
+    },
+  };
+});
+
+const { computeSocialScore, sigmoid } = await import("@/lib/recs/social-score");
 
 describe("sigmoid", () => {
   it("returns 0.5 at 0", () => {
@@ -33,5 +48,15 @@ describe("computeSocialScore", () => {
     const a = computeSocialScore({ friendsPlayed: 1, friendsLiked: 0 });
     const b = computeSocialScore({ friendsPlayed: 5, friendsLiked: 0 });
     expect(b).toBeGreaterThan(a);
+  });
+
+  it("is a small positive for a single weak signal (sign guard at the contract boundary)", () => {
+    const s = computeSocialScore({ friendsPlayed: 1, friendsLiked: 0 });
+    expect(s).toBeGreaterThan(0);
+    expect(s).toBeLessThan(0.1);
+  });
+
+  it("stays strictly below 1 even at extreme counts (guards the saturation fix)", () => {
+    expect(computeSocialScore({ friendsPlayed: 0, friendsLiked: 500 })).toBeLessThan(1);
   });
 });
