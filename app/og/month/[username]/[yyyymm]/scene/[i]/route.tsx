@@ -4,8 +4,9 @@
  * Phase 6 T15 (route), T16 (payload loading). Returns 1200×630 PNG via
  * next/og ImageResponse.
  *
- * Privacy note: this endpoint intentionally does NOT 404 private profiles.
- * See /og/year/[username]/[year]/route.tsx for the full rationale.
+ * Privacy: 404s private profiles (F-001). The URL is enumerable (username
+ * is public, year/month/scene guessable), so "sharing is consent" doesn't
+ * hold — matches /og/profile/[username], which also 404s private profiles.
  *
  * Payload loading: uses `cacheOrBuildMonthly` (implemented in T16) — same
  * cache-or-build contract as the summary OG route. The too_sparse sentinel
@@ -52,18 +53,20 @@ export async function GET(
 
   // Load profile directly — skip getProfileByUsername because that helper
   // calls getCachedUser() (auth cookie) which is unavailable in OG routes.
-  const rows = (await db.execute<{ user_id: string }>(sql`
-    SELECT p.user_id
+  const rows = (await db.execute<{ user_id: string; is_public: boolean }>(sql`
+    SELECT p.user_id, p.is_public
     FROM profiles p
     WHERE p.username = ${username}
       AND p.deleted_at IS NULL
     LIMIT 1
-  `)) as unknown as Array<{ user_id: string }>;
+  `)) as unknown as Array<{ user_id: string; is_public: boolean }>;
 
   const profile = rows[0];
   if (!profile) return new Response("Not found", { status: 404 });
 
-  // Privacy: we do NOT 404 private profiles here — see module comment above.
+  // Private profiles 404 here too — the URL is enumerable, so "sharing is
+  // consent" doesn't hold. Matches /og/profile/[username].
+  if (!profile.is_public) return new Response("Not found", { status: 404 });
 
   const { payload } = await cacheOrBuildMonthly({
     userId: profile.user_id,

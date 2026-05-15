@@ -32,6 +32,21 @@ import { yearWindow } from "@/lib/recaps/window";
 
 const mockExecute = vi.mocked(db.execute);
 
+// Walk a drizzle SQL object's static chunks to recover the literal SQL
+// skeleton (param values omitted) so we can assert on predicates without a
+// real DB. drizzle-orm is NOT mocked in this file, so db.execute receives a
+// real SQL instance whose `queryChunks` carry the cooked string parts.
+function sqlText(arg: unknown): string {
+  const chunks = (arg as { queryChunks?: unknown[] })?.queryChunks ?? [];
+  let out = "";
+  for (const c of chunks) {
+    const v = (c as { value?: unknown }).value;
+    if (Array.isArray(v)) out += v.join(" ");
+    else if (typeof v === "string") out += v;
+  }
+  return out.replace(/\s+/g, " ");
+}
+
 beforeEach(() => {
   mockExecute.mockReset();
 });
@@ -225,5 +240,55 @@ describe("buildRecap", () => {
     });
     expect(result.favoriteReviewSnippet?.snippet).toHaveLength(60);
     expect(result.favoriteReviewSnippet?.snippet).toBe("x".repeat(60));
+  });
+
+  it("excludes private logs from every logs aggregate (F-001)", async () => {
+    // Prime enough rows to run past the sparse gate and through the parallel
+    // block + substitution queries. We assert on emitted SQL, not results.
+    mockExecute
+      .mockResolvedValueOnce([{ count: "15" }] as never) // count gate
+      .mockResolvedValueOnce([
+        {
+          total_games: 15,
+          total_hours: "1",
+          completed: 0,
+          dropped: 0,
+          replaying: 0,
+          reviews: 0,
+        },
+      ] as never) // totals
+      .mockResolvedValueOnce([] as never) // top_games
+      .mockResolvedValueOnce([] as never) // top_genre
+      .mockResolvedValueOnce([] as never) // top_mechanic
+      .mockResolvedValueOnce([] as never) // longest_game
+      .mockResolvedValueOnce([] as never) // favorite_review
+      .mockResolvedValueOnce([] as never) // most_replayed sub
+      .mockResolvedValueOnce([] as never) // top_theme sub
+      .mockResolvedValueOnce([] as never); // mood_themes sub
+
+    const { start, end } = yearWindow(2026);
+    await buildRecap({
+      userId: "u-1",
+      windowStart: start,
+      windowEnd: end,
+      mode: "yearly",
+    });
+
+    const calls = mockExecute.mock.calls.map((c) => sqlText(c[0]));
+    const countSql = calls[0];
+    const totalsSql = calls[1];
+    const topGamesSql = calls[2];
+    const topGenreSql = calls[3];
+    const topMechanicSql = calls[4];
+    const longestSql = calls[5];
+
+    // Unaliased logs queries
+    expect(countSql).toContain("is_private = false");
+    expect(totalsSql).toContain("is_private = false");
+    // logs joined as `l`
+    expect(topGamesSql).toContain("l.is_private = false");
+    expect(topGenreSql).toContain("l.is_private = false");
+    expect(topMechanicSql).toContain("l.is_private = false");
+    expect(longestSql).toContain("l.is_private = false");
   });
 });

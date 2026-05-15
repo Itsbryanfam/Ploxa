@@ -288,6 +288,25 @@ vi.mock("@/lib/recs/social-score", async () => {
   return { ...actual, fetchSocialSignals: fetchSocialSignalsMock };
 });
 
+// ── security/rate-limit mock (F-005) ─────────────────────────────────
+// Default: no-op resolve so the existing pipeline tests are unaffected.
+// The refinement-rate-limit test makes it reject once.
+const enforceRateLimitMock = vi.fn(async () => undefined);
+class RateLimitedError extends Error {
+  constructor(
+    public scope: string,
+    public retryAfterSeconds: number,
+  ) {
+    super("rl");
+    this.name = "RateLimitedError";
+  }
+}
+vi.mock("@/lib/security/rate-limit", () => ({
+  enforceRateLimit: enforceRateLimitMock,
+  RateLimitedError,
+  clientIpForRateLimit: vi.fn(async () => "127.0.0.1"),
+}));
+
 // ── fetch (Edge) mock ────────────────────────────────────────────────
 let lastFetchBody: Record<string, unknown> | null = null;
 const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -313,6 +332,8 @@ beforeEach(() => {
     vectors: VECTORS,
   }));
   fetchSocialSignalsMock.mockClear();
+  enforceRateLimitMock.mockClear();
+  enforceRateLimitMock.mockResolvedValue(undefined);
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("SUPABASE_FUNCTIONS_URL", "https://edge.test/functions/v1");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "svc-role-test-key");
@@ -518,5 +539,35 @@ describe("getRecs v2 — refinements", () => {
     // All 12 fixtures clear the 1hr/platform/neg filters; the grid caps at
     // 6. A refinement-aware pool must exceed that (here: all 12 diversified).
     expect(ids.length).toBeGreaterThan(6);
+  });
+
+  it("truncates each refinement to 120 chars before the Edge call (F-005)", async () => {
+    queueFullRun({ refinements: true });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS, {
+      refinements: ["x".repeat(500)],
+    });
+
+    expect(result.ok).toBe(true);
+    const refs = lastFetchBody?.userRefinements as string[];
+    expect(refs).toHaveLength(1);
+    expect(refs[0].length).toBe(120);
+  });
+
+  it("rate-limits the refinement path → { ok:false, reason:'rate-limited' }, no Edge call (F-005)", async () => {
+    queueFullRun({ refinements: true });
+    enforceRateLimitMock.mockRejectedValueOnce(
+      new RateLimitedError("recs:refine", 30),
+    );
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS, { refinements: ["less grindy"] });
+
+    expect(result).toEqual({ ok: false, reason: "rate-limited" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(enforceRateLimitMock).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "recs:refine", identifier: "u1" }),
+    );
   });
 });

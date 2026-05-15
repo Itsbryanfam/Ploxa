@@ -244,9 +244,10 @@ export const gameAliases = pgTable(
 // ─────────────────────────────────────────────────────────────
 // App-level secret cache (Twitch OAuth tokens, etc.)
 // ─────────────────────────────────────────────────────────────
-// Service-role-only; never exposed via PostgREST. RLS not enabled
-// because the table is touched only by lib/igdb/twitch-oauth.ts
-// and the Edge mirror via DATABASE_URL (service-role connection).
+// RLS ENABLED with NO policy ⇒ deny-all for anon/authenticated, plus an
+// explicit REVOKE from those roles (see lib/db/policies/0003_rls_hygiene.sql).
+// The service-role connection (DATABASE_URL) bypasses RLS — that is the only
+// access path (lib/igdb/twitch-oauth.ts + the Edge mirror).
 export const appSecrets = pgTable("app_secrets", {
   key: varchar("key", { length: 64 }).primaryKey(),
   value: text("value").notNull(),

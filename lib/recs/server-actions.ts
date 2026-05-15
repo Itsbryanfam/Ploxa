@@ -28,6 +28,7 @@ import { composeScore } from "@/lib/recs/scoring";
 import { computeSocialScore, fetchSocialSignals } from "@/lib/recs/social-score";
 import { softNegativePenalty } from "@/lib/recs/soft-negative";
 import { timeFitScore } from "@/lib/recs/time-fit";
+import { enforceRateLimit, RateLimitedError } from "@/lib/security/rate-limit";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
 
@@ -91,6 +92,8 @@ export type RecResult =
         | "empty-tier"
         | "no-candidates"
         | "invalid-filters"
+        // Refinement path exceeded the per-user rate limit (F-005).
+        | "rate-limited"
         // Client-set only: a thrown/timed-out getRecs|refillRecs. The action
         // itself never returns this (it returns the specific reasons above or
         // throws); the client maps a rejection to this so the UI shows a
@@ -406,9 +409,32 @@ export async function getRecs(
   // the snooze gate so a single call can't straddle a tick boundary.
   const now = new Date();
   // Sanitize free-text refinements at the boundary (wire-deserialized).
+  // Count-capped at 5; each string length-capped at 120 so a hostile caller
+  // can't inflate the host-paid Edge prompt (F-005).
   const refinements = (options?.refinements ?? [])
     .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-    .slice(0, 5);
+    .slice(0, 5)
+    .map((s) => s.trim().slice(0, 120));
+
+  // F-005: a non-empty refinement set bypasses the cache and forces a
+  // host-paid Edge rerank on every call. Gate it per-user (the no-refinement
+  // path is cached and unaffected). 20 / 10min is far above any human tweak
+  // cadence but caps scripted abuse.
+  if (refinements.length > 0) {
+    try {
+      await enforceRateLimit({
+        scope: "recs:refine",
+        identifier: me.id,
+        limit: 20,
+        windowSeconds: 600,
+      });
+    } catch (e) {
+      if (e instanceof RateLimitedError) {
+        return { ok: false, reason: "rate-limited" };
+      }
+      throw e;
+    }
+  }
 
   // Re-validate at the boundary — the action receives raw deserialized
   // values from the wire and the TS signature alone is not a barrier.

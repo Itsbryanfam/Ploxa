@@ -17,7 +17,10 @@ export type FeedRow = {
 /**
  * Pull-on-read activity feed query. UNION ALL across logs (material status/
  * rating events), reviews (publish events), lists (publish events) filtered
- * to followees, with cursor predicate.
+ * to followees, with cursor predicate. Every branch additionally requires
+ * the actor's profile to be public (F-006): going private hides activity
+ * from existing followers, matching profile/library/recap. Enforced
+ * read-side rather than severing follow edges on the privacy toggle.
  *
  * Why UNION ALL instead of three sequential queries: postgres plans this
  * as a single tree, hits each table's (user_id, event_at DESC) partial
@@ -85,7 +88,7 @@ export async function buildFeedQuery(args: {
          AND last_event_at IS NOT NULL
          AND is_private = false
          AND EXISTS (
-           SELECT 1 FROM profiles WHERE user_id = logs.user_id AND deleted_at IS NULL
+           SELECT 1 FROM profiles WHERE user_id = logs.user_id AND deleted_at IS NULL AND is_public = true
          )
          ${cursorClause})
       UNION ALL
@@ -105,7 +108,7 @@ export async function buildFeedQuery(args: {
          AND published_at IS NOT NULL
          AND is_public = true
          AND EXISTS (
-           SELECT 1 FROM profiles WHERE user_id = reviews.user_id AND deleted_at IS NULL
+           SELECT 1 FROM profiles WHERE user_id = reviews.user_id AND deleted_at IS NULL AND is_public = true
          )
          ${cursorClause})
       UNION ALL
@@ -125,7 +128,7 @@ export async function buildFeedQuery(args: {
          AND published_at IS NOT NULL
          AND is_public = true
          AND EXISTS (
-           SELECT 1 FROM profiles WHERE user_id = lists.user_id AND deleted_at IS NULL
+           SELECT 1 FROM profiles WHERE user_id = lists.user_id AND deleted_at IS NULL AND is_public = true
          )
          ${cursorClause})
     ) AS feed

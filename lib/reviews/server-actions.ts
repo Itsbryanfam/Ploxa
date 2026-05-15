@@ -11,6 +11,7 @@ import {
   incrementUserDailyReviews,
 } from "@/lib/ai/rate-limit";
 import { RateLimitExceededError, AIProvidersExhaustedError } from "@/lib/ai/errors";
+import { enforceRateLimit, RateLimitedError } from "@/lib/security/rate-limit";
 import { triggerOnLogWrite } from "@/lib/taste/triggers";
 import { revalidatePath } from "next/cache";
 import {
@@ -91,6 +92,30 @@ const SECTION_BY_TURN: Record<2 | 3 | 4, SectionTarget> = {
   3: "Lows",
   4: "Verdict",
 };
+
+// Per-user throttle on every host-paid generate() entry point. startInterview
+// burns one DAILY_REVIEW_CAP slot; without this, submitAnswer / generateDraft /
+// regenerateSection could loop generate() unbounded after one slot (F-004).
+// 40 / 10min is ~8× a full interview — never trips for humans, caps loop abuse.
+const REVIEW_AI_RL = {
+  scope: "ai:review:gen",
+  limit: 40,
+  windowSeconds: 600,
+} as const;
+
+async function guardReviewAiRate(
+  userId: string,
+): Promise<{ ok: false; error: string } | null> {
+  try {
+    await enforceRateLimit({ ...REVIEW_AI_RL, identifier: userId });
+    return null;
+  } catch (e) {
+    if (e instanceof RateLimitedError) {
+      return { ok: false, error: "Slow down a sec — try again in a moment." };
+    }
+    throw e;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // startInterview
@@ -178,6 +203,11 @@ export async function submitAnswer(input: unknown): Promise<SubmitAnswerResult> 
   if (parsed.data.turn === 4) {
     return { ok: true, ready: true };
   }
+
+  // Turn 1-3 each fire a host-paid generate() for the next question — gate
+  // per-user before that (the turn-4 path above returns without calling AI).
+  const rl = await guardReviewAiRate(user.id);
+  if (rl) return rl;
 
   const nextTurn = (parsed.data.turn + 1) as 2 | 3 | 4;
   const game = await db.query.games.findFirst({
@@ -278,6 +308,9 @@ export async function generateDraft(input: unknown): Promise<GenerateDraftResult
       .delete(schema.reviews)
       .where(and(eq(schema.reviews.id, existing.id), eq(schema.reviews.userId, user.id)));
   }
+
+  const rl = await guardReviewAiRate(user.id);
+  if (rl) return rl;
 
   const game = await db.query.games.findFirst({
     where: eq(schema.games.id, session.gameId),
@@ -402,6 +435,9 @@ export async function regenerateSection(input: unknown): Promise<RegenerateSecti
   });
   if (!review) return { ok: false, error: "Review not found" };
   const lockToken = review.updatedAt;
+
+  const rl = await guardReviewAiRate(user.id);
+  if (rl) return rl;
 
   const game = await db.query.games.findFirst({
     where: eq(schema.games.id, review.gameId),

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { isBlockedBetween } from "@/lib/social/_shared/visibility";
+import { loadVisibleReview } from "@/lib/social/_shared/review-visibility";
 import { checkSpamRules } from "@/lib/social/moderation/rules";
 import { onComment } from "./triggers";
 
@@ -58,11 +59,11 @@ export async function createComment(input: unknown): Promise<CommentResult> {
   const user = await getCachedUser();
   if (!user) return { ok: false, reason: "not-authenticated" };
 
-  // Load the review to verify it exists + get its author for block check.
-  const review = await db.query.reviews.findFirst({
-    where: eq(reviews.id, reviewId),
-    columns: { id: true, userId: true },
-  });
+  // F-007: only act on a review the caller may see (owner, or a published
+  // public review by a public, non-deleted author). loadVisibleReview also
+  // returns the author id for the block check below. Indistinguishable
+  // not-found — don't reveal a private/unpublished review's existence.
+  const review = await loadVisibleReview(reviewId, user.id);
   if (!review) return { ok: false, reason: "review-not-found" };
 
   // Block check both directions.
