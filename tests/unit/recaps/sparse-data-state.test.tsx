@@ -69,3 +69,34 @@ describe("SparseDataState — accessibility", () => {
     expect(html).toMatch(/<h2\b/);
   });
 });
+
+describe("SparseDataState — mode-aware copy (T11 extension)", () => {
+  it("defaults to yearly tone when no mode is passed", () => {
+    const html = renderToStaticMarkup(<SparseDataState username="alice" />);
+    expect(html).toContain("year-in-review");
+    expect(html).not.toContain("monthly recap");
+  });
+
+  it("uses yearly tone when mode='yearly' is explicit", () => {
+    const html = renderToStaticMarkup(
+      <SparseDataState username="alice" mode="yearly" />,
+    );
+    expect(html).toContain("year-in-review");
+    expect(html).not.toContain("monthly recap");
+  });
+
+  it("uses monthly tone when mode='monthly' is passed", () => {
+    const html = renderToStaticMarkup(
+      <SparseDataState username="alice" mode="monthly" />,
+    );
+    expect(html).toContain("monthly recap");
+    expect(html).not.toContain("year-in-review");
+  });
+
+  it("still uses calm copy (no exclamation marks) in monthly mode", () => {
+    const html = renderToStaticMarkup(
+      <SparseDataState username="alice" mode="monthly" />,
+    );
+    expect(html).not.toMatch(/!/);
+  });
+});

@@ -31,42 +31,42 @@
     {
       "id": 5,
       "subject": "Task 5: AI prompts",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Seven scene-specific prompt builders in lib/recaps/prompts.ts — strict shape, no emojis, no exclamation marks, voice locked.\n\n**Files:** lib/recaps/prompts.ts, tests/unit/recaps/prompts.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/prompts.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/prompts.ts\",\"tests/unit/recaps/prompts.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/prompts.test.ts\",\"acceptanceCriteria\":[\"7 builder functions exported\",\"shared constraint suffix appended\",\"no emojis in prompt body\",\"no exclamation marks in prompt body\",\"each accepts the relevant payload slice\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: Captions module with retry/fallback",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 5],
       "description": "**Goal:** generateCaption(scene, payload) → string. Calls lib/ai/router.ts with zod schema; falls back to scene.fallbackTemplate on any failure; logs to ai_calls.\n\n**Files:** lib/recaps/captions.ts, tests/unit/recaps/captions.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/captions.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/captions.ts\",\"tests/unit/recaps/captions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/captions.test.ts\",\"acceptanceCriteria\":[\"success path returns AI caption\",\"zod validation failure retries once then fallback\",\"AiProviderError → fallback no throw\",\"ai_calls row written every attempt\",\"generateAllCaptions parallelizes via Promise.all\",\"non-AI scenes use fallbackTemplate directly\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: Featured-list server actions",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** getActiveFeaturedList + pinFeaturedList + unpinFeaturedList in lib/recaps/featured.ts (server actions) + lib/recaps/featured-read.ts (cached reader). Admin-only writes.\n\n**Files:** lib/recaps/featured.ts, lib/recaps/featured-read.ts, tests/unit/recaps/featured.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/featured.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/featured.ts\",\"lib/recaps/featured-read.ts\",\"tests/unit/recaps/featured.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/featured.test.ts\",\"acceptanceCriteria\":[\"getActiveFeaturedList returns summary or null\",\"pin closes existing pin via UPDATE then INSERT in transaction\",\"non-admin caller throws NotAdminError\",\"list-not-found rejected\",\"private-list rejected\",\"revalidatePath /discover + /admin/featured\",\"reader uses React cache()\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: Admin /admin/featured page",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7],
       "description": "**Goal:** Pin affordance UI — current pin + Unpin button + Pin form. Env-gated by ADMIN_USER_IDS.\n\n**Files:** app/(app)/admin/featured/page.tsx, components/admin/featured-pin-form.tsx, components/admin/featured-current-pin.tsx\n\n**Verify:** `pnpm tsc --noEmit && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/(app)/admin/featured/page.tsx\",\"components/admin/featured-pin-form.tsx\",\"components/admin/featured-current-pin.tsx\"],\"verifyCommand\":\"pnpm tsc --noEmit && pnpm build\",\"acceptanceCriteria\":[\"non-admin viewer 404\",\"current pin renders with Unpin button\",\"Pin form with list input + optional expiry\",\"successful pin revalidates and reflects\",\"build clean (Next.js 16 use-server validation)\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: /discover featured-list render + FeaturedListCard",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7],
       "description": "**Goal:** Render active pin (if any) above existing trending sections on /discover landing.\n\n**Files:** app/(app)/discover/page.tsx, components/recaps/FeaturedListCard.tsx, tests/unit/recaps/featured-list-card.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/featured-list-card.test.tsx && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"app/(app)/discover/page.tsx\",\"components/recaps/FeaturedListCard.tsx\",\"tests/unit/recaps/featured-list-card.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/featured-list-card.test.tsx && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"null pin → section absent (no empty state)\",\"active pin renders card above Popular this week\",\"card title + Picked by us + count + cover composite\",\"link routes to /u/{author}/lists/{slug}\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 10: SparseDataState component",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Mascot empty state for users with <10 logs in window.\n\n**Files:** components/recaps/SparseDataState.tsx, tests/unit/recaps/sparse-data-state.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/sparse-data-state.test.tsx`\n\n```json:metadata\n{\"files\":[\"components/recaps/SparseDataState.tsx\",\"tests/unit/recaps/sparse-data-state.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/sparse-data-state.test.tsx\",\"acceptanceCriteria\":[\"renders mascot + heading + neutral copy\",\"no emojis no exclamation marks\",\"CTA back to /u/{username}\",\"prefers-reduced-motion respected\"]}\n```"
     },
