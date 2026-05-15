@@ -145,7 +145,11 @@ async function collectStream(stream: AsyncIterable<string>): Promise<string> {
 function parseCaption(raw: string): { caption: string } | null {
   const direct = tryParse(raw);
   if (direct) return direct;
-  // Fallback: find the first balanced JSON object substring.
+  // Greedy {...} match — spans from the first { to the last }. If the model emits
+  // multiple objects with prose between them, JSON.parse will fail on the joined
+  // span and we fall back to the template, which is the safe behavior. We
+  // intentionally don't reach for a brace-counting balanced-match here because
+  // LLM JSON output rarely has nested objects worth recovering.
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) return null;
   return tryParse(match[0]);
@@ -276,18 +280,29 @@ export async function generateCaption(
 /**
  * Build a caption for every scene in payload.scenes in parallel.
  * Non-AI scenes go through `generateCaption` too, which short-circuits
- * to their template — that way the returned record always covers
- * payload.scenes 1:1.
+ * to their template — that way the returned record covers every scene id
+ * that has a SCENE_CATALOG entry.
  *
- * If a scene id in payload.scenes has no SCENE_CATALOG entry (drift bug),
- * it's silently skipped from the result rather than throwing. The caller
- * (T11 render path) treats missing captions as fallbacks via the scene
- * lookup anyway.
+ * Return type is `Partial<Record<SceneId, string>>` (not full Record)
+ * because substitution scene IDs (`most_replayed`, `top_theme`,
+ * `completion_ratio`, `mood_themes`) are NOT in SCENE_CATALOG yet and
+ * therefore get silently filtered out by the `.filter` below. Those keys
+ * will not appear in the returned object until T14 adds catalog entries
+ * for the 4 substitute scenes.
+ *
+ * If a scene id in payload.scenes has no SCENE_CATALOG entry (drift bug
+ * or unimplemented substitution scene), it's silently skipped from the
+ * result rather than throwing. The caller (T11 render path) treats
+ * missing captions as fallbacks via the scene lookup anyway.
  */
 export async function generateAllCaptions(
   payload: RecapPayload,
   userId: string,
-): Promise<Record<SceneId, string>> {
+): Promise<Partial<Record<SceneId, string>>> {
+  // TODO(T14): substitution scene IDs (most_replayed/top_theme/completion_ratio/
+  // mood_themes) have no SCENE_CATALOG entry yet, so they're silently filtered out.
+  // T14 should add catalog entries for the 4 substitute scenes so this filter
+  // covers every key in payload.scenes 1:1.
   const scenes = payload.scenes
     .map((id) => SCENE_CATALOG.find((s) => s.id === id))
     .filter((s): s is SceneDefinition => s !== undefined);
@@ -295,5 +310,5 @@ export async function generateAllCaptions(
   const entries = await Promise.all(
     scenes.map(async (s) => [s.id, await generateCaption(s, payload, userId)] as const),
   );
-  return Object.fromEntries(entries) as Record<SceneId, string>;
+  return Object.fromEntries(entries) as Partial<Record<SceneId, string>>;
 }
