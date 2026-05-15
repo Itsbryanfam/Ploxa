@@ -127,6 +127,13 @@
       "when": 1779408001000,
       "tag": "0017_phase6_enum",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779494400000,
+      "tag": "0018_play_next_redesign",
+      "breakpoints": true
     }
   ]
 }
