@@ -2,7 +2,7 @@
 
 import { AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 
 import { FilterChipPopover } from "@/components/recs/filter-chip-popover";
@@ -37,7 +37,6 @@ export function PlayNextClient({
   tier: "empty" | "sparse" | "sharpening" | "full";
   userConnectedPlatforms: Platform[];
 }) {
-  const router = useRouter();
   const pathname = usePathname();
 
   const initTime = ((): TimeBudget | "" => {
@@ -167,7 +166,14 @@ export function PlayNextClient({
     // URLSearchParams owns all percent-encoding — never manually encode.
     sp.delete("refine");
     for (const item of r) sp.append("refine", item);
-    router.replace(`${pathname}?${sp.toString()}`);
+    // history.replaceState, not router.replace: this component owns its own
+    // data refetch (loadRecs runs in the same handler), so a router.replace
+    // RSC navigation is redundant — and worse, App Router defers the URL-bar
+    // commit until that navigation's transition settles, which here sits
+    // behind the slow AI-backed getRecs transition. replaceState updates the
+    // URL synchronously for deep-link/share parity without a server round
+    // trip; page.tsx still reads searchParams on a fresh load/reload.
+    window.history.replaceState(null, "", `${pathname}?${sp.toString()}`);
   }
 
   // Resolved non-empty values for the chip popovers + refetch calls. `time`

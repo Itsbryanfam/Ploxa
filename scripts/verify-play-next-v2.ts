@@ -482,10 +482,13 @@ async function group5(sql: ReturnType<typeof postgres>) {
     return;
   }
 
-  // Migration is applied — run the real browser flow.
+  // Migration is applied — run the real browser flow. Generous timeout:
+  // Playwright cold-starts `next dev` (first-compile of this app is
+  // ~60-120s) before the ~50s of serial tests even begin; 120s caps below
+  // the cold-start floor and spuriously fails a gate whose tests pass.
   const { ok, detail } = runPnpm(
     ["playwright", "test", "play-next-v2"],
-    120000,
+    360000,
   );
   record({
     group,
