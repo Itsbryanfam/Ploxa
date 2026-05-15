@@ -3,11 +3,9 @@
  *
  * Phase 6 T15. Returns 1200×630 PNG via next/og ImageResponse.
  *
- * Privacy note: this endpoint intentionally does NOT 404 private profiles.
- * Contrast with /og/profile/[username] which does 404 private profiles.
- * Rationale: if a user shares their recap URL (e.g. posts it to social media),
- * the OG unfurler hitting this endpoint is their intent — sharing is consent.
- * A user who hasn't shared won't have their URL discovered by crawlers.
+ * Privacy: 404s private profiles (F-001). The URL is enumerable (username
+ * is public, year guessable), so "sharing is consent" doesn't hold —
+ * matches /og/profile/[username], which also 404s private profiles.
  */
 
 import { ImageResponse } from "next/og";
@@ -38,19 +36,21 @@ export async function GET(
   // Load profile directly — skip getProfileByUsername because that helper
   // calls getCachedUser() (auth cookie) which is unavailable in OG routes
   // (no session cookie from unfurlers). We only need userId + existence check.
-  const rows = (await db.execute<{ user_id: string }>(sql`
-    SELECT p.user_id
+  const rows = (await db.execute<{ user_id: string; is_public: boolean }>(sql`
+    SELECT p.user_id, p.is_public
     FROM profiles p
     WHERE p.username = ${username}
       AND p.deleted_at IS NULL
     LIMIT 1
-  `)) as unknown as Array<{ user_id: string }>;
+  `)) as unknown as Array<{ user_id: string; is_public: boolean }>;
 
   const profile = rows[0];
   // No profile at all → 404. A non-existent user has nothing to show.
   if (!profile) return new Response("Not found", { status: 404 });
 
-  // Privacy: we do NOT 404 private profiles here — see module comment above.
+  // Private profiles 404 here too — the URL is enumerable, so "sharing is
+  // consent" doesn't hold. Matches /og/profile/[username].
+  if (!profile.is_public) return new Response("Not found", { status: 404 });
 
   const { payload } = await cacheOrBuildYearly({ userId: profile.user_id, year });
 

@@ -27,6 +27,11 @@ import { SCENE_CATALOG, filterScenes } from "./scenes";
  * Replays come from `is_replay = true` (the logs.status enum has no
  * 'replaying' value — that's a UI affordance, not a DB state).
  *
+ * PRIVACY INVARIANT (F-001): every `logs` aggregate filters
+ * `is_private = false`. The recap is a shareable artifact — the page, the
+ * OG image, and the persisted cache row all read this one payload — so
+ * private logs never appear, even in the owner's own view.
+ *
  * Review like-count comes from the `likes` table (one row per
  * user×review). We aggregate via LEFT JOIN + COUNT in the
  * favorite-review query rather than maintaining a denormalized
@@ -58,6 +63,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
   const countRows = (await db.execute<{ count: string }>(sql`
     SELECT COUNT(*)::text as count FROM logs
     WHERE user_id = ${userId}
+      AND is_private = false
       AND COALESCE(started_at, last_event_at) >= ${startIso}
       AND COALESCE(started_at, last_event_at) <  ${endIso}
   `)) as unknown as Array<{ count: string }>;
@@ -119,6 +125,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
         ) as reviews
       FROM logs
       WHERE user_id = ${userId}
+        AND is_private = false
         AND COALESCE(started_at, last_event_at) >= ${startIso}
         AND COALESCE(started_at, last_event_at) <  ${endIso}
     `),
@@ -140,6 +147,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
         l.status::text as status
       FROM logs l JOIN games g ON g.id = l.game_id
       WHERE l.user_id = ${userId}
+        AND l.is_private = false
         AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
         AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
         AND l.rating IS NOT NULL
@@ -151,6 +159,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
       SELECT unnest(g.genres) as genre, COUNT(*)::text as count
       FROM logs l JOIN games g ON g.id = l.game_id
       WHERE l.user_id = ${userId}
+        AND l.is_private = false
         AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
         AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
         AND g.genres IS NOT NULL
@@ -163,6 +172,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
       SELECT unnest(g.mechanics) as mechanic, COUNT(*)::text as count
       FROM logs l JOIN games g ON g.id = l.game_id
       WHERE l.user_id = ${userId}
+        AND l.is_private = false
         AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
         AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
         AND g.mechanics IS NOT NULL
@@ -188,6 +198,7 @@ export async function buildRecap(input: BuildRecapInput): Promise<RecapPayload> 
         l.hours_played::text as hours_played
       FROM logs l JOIN games g ON g.id = l.game_id
       WHERE l.user_id = ${userId}
+        AND l.is_private = false
         AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
         AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
         AND l.hours_played IS NOT NULL
@@ -399,6 +410,7 @@ async function applySubstitutions(
             SELECT COUNT(*)::text
             FROM logs l2
             WHERE l2.user_id = ${userId}
+              AND l2.is_private = false
               AND l2.game_id = l.game_id
               AND l2.is_replay = true
               AND COALESCE(l2.started_at, l2.last_event_at) >= ${startIso}
@@ -406,6 +418,7 @@ async function applySubstitutions(
           ) as replay_count
         FROM logs l JOIN games g ON g.id = l.game_id
         WHERE l.user_id = ${userId}
+          AND l.is_private = false
           AND l.is_replay = true
           AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
           AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
@@ -449,6 +462,7 @@ async function applySubstitutions(
         SELECT unnest(g.themes) as theme, COUNT(*)::text as count
         FROM logs l JOIN games g ON g.id = l.game_id
         WHERE l.user_id = ${userId}
+          AND l.is_private = false
           AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
           AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
           AND g.themes IS NOT NULL
@@ -488,6 +502,7 @@ async function applySubstitutions(
         SELECT unnest(g.themes) as theme
         FROM logs l JOIN games g ON g.id = l.game_id
         WHERE l.user_id = ${userId}
+          AND l.is_private = false
           AND COALESCE(l.started_at, l.last_event_at) >= ${startIso}
           AND COALESCE(l.started_at, l.last_event_at) <  ${endIso}
           AND g.themes IS NOT NULL
