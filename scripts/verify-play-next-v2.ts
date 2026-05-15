@@ -409,6 +409,40 @@ async function group4() {
     detail: tasksDetail,
     gate: "4",
   });
+
+  // G4.8 — getRecsLegacy (the recsv2-OFF / rollback kill-switch path) must be
+  // schema-independent of migration 0018. Migration 0018 (rec_slot enum +
+  // recommendations.slot/dismissed_at/…) is a deferred operator step that is
+  // NOT applied in production. If the legacy path projects
+  // `slot: recommendations.slot`, Drizzle emits SELECT … "recommendations"."slot"
+  // against a table without that column → Postgres 42703 → 500 for every real
+  // user when the flag is OFF, making "flip the flag off to recover" a false
+  // safety net. Slice ONLY the getRecsLegacy body (start anchor → next
+  // top-level function decl) so the legitimate v2-path `slot:
+  // recommendations.slot` projections don't trip this. (saSrc read at G4.3.)
+  const legacyStart = saSrc.indexOf("async function getRecsLegacy(");
+  let legacyBody = "";
+  if (legacyStart !== -1) {
+    const afterStart = saSrc.slice(legacyStart + 1);
+    const nextDecl = afterStart.search(/\n(?:export )?(?:async )?function /);
+    legacyBody =
+      nextDecl === -1 ? afterStart : afterStart.slice(0, nextDecl);
+  }
+  const legacyHasSlotProjection = /slot:\s*recommendations\.slot/.test(
+    legacyBody,
+  );
+  const legacySchemaIndependent = legacyStart !== -1 && !legacyHasSlotProjection;
+  record({
+    group,
+    name: "G4.8 — getRecsLegacy is schema-independent of migration 0018 (no recommendations.slot projection on the OFF/rollback path)",
+    status: legacySchemaIndependent ? "pass" : "fail",
+    detail: legacySchemaIndependent
+      ? "getRecsLegacy body does not project recommendations.slot — recsv2-OFF rollback works pre-0018"
+      : legacyStart === -1
+        ? "getRecsLegacy not found in lib/recs/server-actions.ts"
+        : "getRecsLegacy body still contains `slot: recommendations.slot` — couples the rollback path to unapplied migration 0018 (42703 → 500 for every user when flag OFF)",
+    gate: "4",
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -105,10 +105,14 @@ function timeWindow(time: TimeBudget): [number, number] {
 
 /**
  * Preserved pre-v2 getRecs, served when the `recsv2` flag is OFF (Task 19
- * wires the flag branch). Behaviorally identical to the pre-v2 body; the
- * only delta vs the original is the two `recommendations` SELECTs now
- * project `slot` to satisfy the shared `hydrateRecs` row type. Do NOT add
- * v2 logic here — deleted in the post-rollout cleanup once v2 is default.
+ * wires the flag branch) — the spec's one-toggle kill-switch / rollback
+ * path. Behaviorally identical to the pre-v2 body AND schema-independent of
+ * migration 0018: it never references `recommendations.slot` (nor
+ * `dismissed_at` / `snoozed_until` / `never_again`), so the `recsv2`-OFF
+ * rollback works even before 0018 is applied (0018 is a deferred operator
+ * step). `hydrateRecs` defaults the omitted slot to 'comfort' (uniform with
+ * metadataOnlyRecs). Do NOT add v2 logic here — deleted in the post-rollout
+ * cleanup once v2 is default.
  */
 async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
   const me = await getCachedUser();
@@ -156,7 +160,6 @@ async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
       score: recommendations.score,
       reason: recommendations.reason,
       algorithm: recommendations.algorithm,
-      slot: recommendations.slot,
       generatedAt: recommendations.generatedAt,
     })
     .from(recommendations)
@@ -285,7 +288,6 @@ async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
         score: recommendations.score,
         reason: recommendations.reason,
         algorithm: recommendations.algorithm,
-        slot: recommendations.slot,
       })
       .from(recommendations)
       .where(
@@ -836,7 +838,7 @@ type RecHydrationRow = {
   score: string;
   reason: string | null;
   algorithm: "similarity" | "ai" | "hybrid";
-  slot: "comfort" | "backlog" | "friends" | "wildcard";
+  slot?: "comfort" | "backlog" | "friends" | "wildcard";
 };
 async function hydrateRecs(rows: RecHydrationRow[]): Promise<RecCard[]> {
   if (rows.length === 0) return [];
@@ -874,9 +876,12 @@ async function hydrateRecs(rows: RecHydrationRow[]): Promise<RecCard[]> {
         algorithm: c.algorithm,
         // Cache-hit / post-rerank rehydrate lacks live signal context, so
         // chips are neutral and confidence is score-derived; the slot is
-        // the REAL persisted bucket (written by the v2 post-rerank UPDATE
-        // and defaulted to 'comfort' by the schema for legacy rows).
-        slot: c.slot,
+        // the REAL persisted bucket (written by the v2 post-rerank UPDATE).
+        // On the legacy (recsv2-OFF) path the row never projects `slot`
+        // (that path is schema-independent of migration 0018), so it's
+        // `undefined` and we default it to 'comfort' here — uniform with
+        // metadataOnlyRecs's hardcoded 'comfort'.
+        slot: c.slot ?? "comfort",
         fitChips: neutralFitChips(),
         confidence: deriveConfidence(Number(c.score)),
       };
