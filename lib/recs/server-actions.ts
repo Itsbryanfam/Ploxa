@@ -684,6 +684,27 @@ export async function getRecs(
   }
   const slotByGameId = new Map(bucketed.map((b) => [b.gameId, b.slot]));
 
+  // Edge rerank candidate set.
+  //
+  // `bucketed` is the 6-CARD GRID (3 comfort + backlog + friends + wildcard,
+  // capped at GRID_SIZE=6). Using it as the Edge CANDIDATE POOL starves the
+  // reranker: "pick 5 from ~6" is nearly fixed, so userRefinements (which
+  // only enter the Edge PROMPT, never pool/score/MMR/bucket) can't move the
+  // picks — multiple active refinements returned the same games (incident
+  // 2026-05-15). When refinements are active, hand the Edge a much wider
+  // MMR-diversified pool so it has real room to honor them; the picks it
+  // returns still get slotted via `slotByGameId` (unknown ids default to
+  // 'comfort'). The no-refinement path is unchanged — it keeps the
+  // stratified 6 so the rail layout is exact.
+  const edgeCandidateIds =
+    refinements.length > 0
+      ? applyMMR(mmrInput, {
+          lambda: 0.7,
+          topN: 40,
+          similarity: cosineSimilarity,
+        }).map((m) => m.id)
+      : bucketed.map((b) => b.gameId);
+
   // Resolve the Edge Function URL. Prefer the explicit `SUPABASE_FUNCTIONS_URL`
   // env var (custom domains); fall back to `${NEXT_PUBLIC_SUPABASE_URL}/functions/v1`.
   // Missing env → treat as AI failure rather than crash.
@@ -703,9 +724,11 @@ export async function getRecs(
         body: JSON.stringify({
           userId: me.id,
           filters,
-          // Pre-scored shortlist (post-MMR/bucket) — the Edge Function
-          // re-ranks within this set rather than the raw candidate pool.
-          candidateIds: bucketed.map((b) => b.gameId),
+          // Pre-scored shortlist — the Edge re-ranks within this set. With
+          // refinements active this is a WIDER MMR pool (not the 6-card
+          // grid) so the refinement text can actually change the picks; see
+          // `edgeCandidateIds` above.
+          candidateIds: edgeCandidateIds,
           cacheKey: key,
           mode: refinements.length > 0 ? "rerank-only" : "full",
           userRefinements: refinements,
