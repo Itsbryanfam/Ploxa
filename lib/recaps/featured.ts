@@ -94,3 +94,71 @@ export async function unpinFeaturedList(): Promise<void> {
   revalidatePath("/discover");
   revalidatePath("/admin/featured");
 }
+
+/**
+ * Result shape used by the `useActionState` form-action wrappers below.
+ * Kept as a re-exported async-function return type rather than a class so
+ * the Next.js 16 `"use server"` export gate stays green. (Bare type aliases
+ * also get rejected — only async functions may be exported from a "use
+ * server" file. The wrappers return `Promise<FormActionState>` literally;
+ * the alias lives in callers via `Awaited<ReturnType<typeof …>>`.)
+ *
+ * Why we need wrappers at all: `<form action={serverFn}>` is fire-and-forget
+ * in Next.js 16 — thrown errors don't reach the form. To surface
+ * "List not found" / "List must be public" / "Admin only" messages in the
+ * admin UI we wrap the actions, catch errors, and return them as state via
+ * React 19's `useActionState`.
+ */
+
+/**
+ * Form-action wrapper around `pinFeaturedList` for `useActionState` in the
+ * admin Pin form. Returns `{ error: null }` on success; the page revalidates
+ * via the underlying action so the rendered "current pin" reflects the new
+ * row on the next render pass.
+ */
+export async function pinFeaturedListFormAction(
+  _prevState: { error: string | null },
+  formData: FormData,
+): Promise<{ error: string | null }> {
+  const listIdRaw = formData.get("listId");
+  const pinnedUntilRaw = formData.get("pinnedUntil");
+  const listId = typeof listIdRaw === "string" ? listIdRaw.trim() : "";
+  if (!listId) return { error: "List ID is required" };
+
+  let pinnedUntil: Date | null = null;
+  if (typeof pinnedUntilRaw === "string" && pinnedUntilRaw.trim().length > 0) {
+    const parsed = new Date(pinnedUntilRaw);
+    if (Number.isNaN(parsed.getTime())) {
+      return { error: "Invalid expiry date" };
+    }
+    if (parsed.getTime() <= Date.now()) {
+      return { error: "Expiry must be in the future" };
+    }
+    pinnedUntil = parsed;
+  }
+
+  try {
+    await pinFeaturedList({ listId, pinnedUntil });
+    return { error: null };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to pin list" };
+  }
+}
+
+/**
+ * Form-action wrapper around `unpinFeaturedList`. The Unpin button on the
+ * admin page submits a tiny `<form action={…}>` with no inputs; the wrapper
+ * exists only so errors (NotAdminError, transient DB failures) can be
+ * surfaced via `useActionState` rather than throwing through the form.
+ */
+export async function unpinFeaturedListFormAction(
+  _prevState: { error: string | null },
+  _formData: FormData,
+): Promise<{ error: string | null }> {
+  try {
+    await unpinFeaturedList();
+    return { error: null };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to unpin list" };
+  }
+}
