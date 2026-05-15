@@ -14,7 +14,7 @@ export type TasteTier = "empty" | "sparse" | "sharpening" | "full";
 
 /** Bump on any prompt-text change. Logged in narrativeModelVersion for traceability. */
 export const NARRATIVE_PROMPT_VERSION = "v2";
-export const RERANK_PROMPT_VERSION = "v1"; // Used by T11.
+export const RERANK_PROMPT_VERSION = "v2"; // T11: + userRefinements + library-citing
 
 export type NarrativePromptInput = {
   vectors: VectorBundle;
@@ -152,6 +152,8 @@ export type RerankPromptInput = {
   }>;
   dismissedGames: Array<{ title: string; genres: string[] }>;
   currentlyPlaying: Array<{ title: string }>;
+  libraryTitles?: string[];
+  userRefinements?: string[];
 };
 
 /**
@@ -159,6 +161,20 @@ export type RerankPromptInput = {
  * authoritative doc comment. Any prompt-text change here must be applied
  * to the lib/ file and vice versa; bump RERANK_PROMPT_VERSION on edits.
  */
+const REFINEMENT_MAX = 5;
+const REFINEMENT_CHAR_CAP = 140;
+// Strip ALL line/control chars (not just \n) and collapse whitespace runs:
+// userRefinements is user-controlled free text injected into a line-
+// structured prompt. A surviving \r / \v /   etc. could forge prompt
+// structure; the delimited block + "filter wins" framing is the next layer.
+function sanitizeRefinement(s: string): string {
+  return s
+    .replace(/[\r\n\t\v\f  ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, REFINEMENT_CHAR_CAP);
+}
+
 export function buildRerankPrompt(input: RerankPromptInput): {
   system: string;
   user: string;
@@ -198,6 +214,9 @@ export function buildRerankPrompt(input: RerankPromptInput): {
     userBlocks.push("Their taste read:", input.narrative, "");
   }
 
+  // Top-5 genre signal (compressed). Reuses the same sort-by-|v| ordering
+  // as topN() above but inlines it here because we need a comma-joined
+  // single-line representation rather than the multi-line fmtVector form.
   const topGenres = Object.entries(input.vectors.genre)
     .filter(([, v]) => Math.abs(v) >= 0.05)
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
@@ -221,6 +240,27 @@ export function buildRerankPrompt(input: RerankPromptInput): {
   if (input.currentlyPlaying.length > 0) {
     const playing = input.currentlyPlaying.map((g) => g.title).join("; ");
     userBlocks.push(`Currently playing (do not recommend these): ${playing}`, "");
+  }
+
+  if (input.userRefinements && input.userRefinements.length > 0) {
+    const cleaned = input.userRefinements
+      .slice(0, REFINEMENT_MAX)
+      .map(sanitizeRefinement)
+      .filter((s) => s.length > 0);
+    if (cleaned.length > 0) {
+      userBlocks.push(
+        `ADDITIONAL USER REQUESTS:\n${cleaned.map((r) => `- ${r}`).join("\n")}\n\nApply these when selecting picks AND when writing reasoning. If a request conflicts with a hard filter, the filter wins. Reference the request explicitly in the reason when relevant.`,
+        "",
+      );
+    }
+  }
+
+  if (input.libraryTitles && input.libraryTitles.length > 0) {
+    const sample = input.libraryTitles.slice(0, 10).join(", ");
+    userBlocks.push(
+      `USER'S LIBRARY (sample): ${sample}\n\nWhen writing reasoning, cite specific games from the user's library that this pick resembles when the comparison is honest. Prefer "Like Stardew Valley, this is..." over generic "matches your love of..." phrasing.`,
+      "",
+    );
   }
 
   userBlocks.push("Return the JSON object now.");

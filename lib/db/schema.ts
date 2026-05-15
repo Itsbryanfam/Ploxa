@@ -53,6 +53,16 @@ export const recAlgorithmEnum = pgEnum("rec_algorithm", [
   "hybrid",
 ]);
 
+// Play-next redesign (2026-05-15): stratified recommendation buckets.
+// `slot` partitions a user's live recs into Comfort / Backlog / Friends /
+// Wildcard rails — see the orchestration rewrite (play-next redesign Task 12).
+export const recSlotEnum = pgEnum("rec_slot", [
+  "comfort",
+  "backlog",
+  "friends",
+  "wildcard",
+]);
+
 export const aiFeatureEnum = pgEnum("ai_feature", [
   "review_draft",
   "fingerprint",
@@ -396,6 +406,15 @@ export const recommendations = pgTable(
     cacheKey: text("cache_key"),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
     dismissed: boolean("dismissed").notNull().default(false),
+    // Play-next redesign (2026-05-15). `slot`: stratified bucket assignment
+    // (Comfort / Backlog / Friends / Wildcard), set by the orchestration
+    // rewrite. The three soft-negative fields drive a time-decayed penalty
+    // (play-next redesign Task 5) and supersede the legacy boolean `dismissed`
+    // above (which Task 13 repurposes as a hard soft-delete).
+    slot: recSlotEnum("slot").notNull().default("comfort"),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+    neverAgain: boolean("never_again").notNull().default(false),
   },
   (table) => ({
     // Cache-hit lookup: same (user, cacheKey, freshness ordering) for live recs.
@@ -412,6 +431,10 @@ export const recommendations = pgTable(
     userCacheGameUniq: uniqueIndex("recommendations_user_cache_game_uniq")
       .on(table.userId, table.cacheKey, table.gameId)
       .where(sql`${table.dismissed} = false`),
+    // NOTE: `recommendations_neg_lookup_idx` (soft-negative rerank lookup) is
+    // intentionally defined SQL-only in migration 0018 and is deliberately
+    // absent here. Do NOT add it to this builder: drizzle-kit generate would
+    // then try to re-create it, producing spurious `db:check` drift.
   }),
 );
 

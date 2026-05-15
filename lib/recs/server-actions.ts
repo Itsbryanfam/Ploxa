@@ -16,10 +16,18 @@ import {
   tasteFingerprints,
 } from "@/lib/db/schema";
 import { ensureLog } from "@/lib/logs/server-actions";
+import { assignBuckets, type ScoredCandidate } from "@/lib/recs/buckets";
 import { cacheKey } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
+import { applyMMR } from "@/lib/recs/diversity-mmr";
+import { isRecsV2Enabled } from "@/lib/recs/feature-flag";
+import { moodMatchScore } from "@/lib/recs/mood-affinity";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
 import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
+import { composeScore } from "@/lib/recs/scoring";
+import { computeSocialScore, fetchSocialSignals } from "@/lib/recs/social-score";
+import { softNegativePenalty } from "@/lib/recs/soft-negative";
+import { timeFitScore } from "@/lib/recs/time-fit";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
 
@@ -54,6 +62,18 @@ export type RecCard = {
   // the same `platform_kind` enum that powers the user-connections filter.
   platforms: string[] | null;
   algorithm: "similarity" | "ai" | "hybrid";
+  // Play-next redesign (Task 12). `slot` is the stratified rail this card
+  // belongs to (Comfort / Backlog / Friends / Wildcard). `fitChips` drive
+  // the RecCard "why" affordances (T15); `confidence` is a coarse band
+  // derived from the composite score for the card's strength indicator.
+  slot: "comfort" | "backlog" | "friends" | "wildcard";
+  fitChips: {
+    timeFit: "perfect" | "close" | "loose";
+    moodMatches: string[];
+    inLibrary: boolean;
+    friendsCount: number;
+  };
+  confidence: "strong" | "good" | "worth-a-try";
 };
 
 export type RecResult =
@@ -84,28 +104,17 @@ function timeWindow(time: TimeBudget): [number, number] {
 }
 
 /**
- * Primary recommendation entry point.
- *
- * Flow:
- *   1. Cache check — if ≥4 non-dismissed rows exist for (user, cacheKey)
- *      AND every row was generated AFTER the user's `vectorsGeneratedAt`,
- *      we serve the persisted rows as a `"hybrid"` result without any
- *      AI call. The ≥4 threshold (rather than ===5) tolerates the rerank
- *      Edge Function dropping 1 of 5 picks for a hallucinated gameId.
- *   2. Sparse tier — skip AI entirely; use metadataOnlyRecs (the T9 path,
- *      including the T10 RAWG-popularity fallback for thin vectors).
- *   3. Sharpening / full — pull candidate pool, apply hard time + platform
- *      filters BEFORE sending to AI (no point asking the model to consider
- *      candidates that violate hard constraints), then invoke the
- *      rerank-recs Edge Function. On success, re-read the rows the function
- *      persisted under cacheKey and return them as `"ai"`.
- *   4. AI failure — fall back to metadataOnlyRecs with an explanatory
- *      banner. Note: this writes `"similarity"` rows under cacheKey, so a
- *      subsequent same-filter call will cache-hit on those similarity
- *      rows (returned as `"hybrid"`). Acceptable for the demo; a future
- *      task can scope cache hits to AI-derived algorithms if needed.
+ * Preserved pre-v2 getRecs, served when the `recsv2` flag is OFF (Task 19
+ * wires the flag branch) — the spec's one-toggle kill-switch / rollback
+ * path. Behaviorally identical to the pre-v2 body AND schema-independent of
+ * migration 0018: it never references `recommendations.slot` (nor
+ * `dismissed_at` / `snoozed_until` / `never_again`), so the `recsv2`-OFF
+ * rollback works even before 0018 is applied (0018 is a deferred operator
+ * step). `hydrateRecs` defaults the omitted slot to 'comfort' (uniform with
+ * metadataOnlyRecs). Do NOT add v2 logic here — deleted in the post-rollout
+ * cleanup once v2 is default.
  */
-export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
+async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
   const me = await getCachedUser();
   if (!me) return { ok: false, reason: "unauthorized" };
 
@@ -310,6 +319,508 @@ export async function getRecs(rawFilters: FilterParams): Promise<RecResult> {
 }
 
 /**
+ * Coarse confidence band derived from the composite score. Drives the
+ * RecCard strength chip (T15). Thresholds are a product call (design spec)
+ * — the cache-hit / metadata paths derive it from the persisted/normalized
+ * score; the fresh AI path overrides with the in-scope composite.
+ */
+function deriveConfidence(score: number): "strong" | "good" | "worth-a-try" {
+  if (score >= 0.66) return "strong";
+  if (score >= 0.4) return "good";
+  return "worth-a-try";
+}
+
+/**
+ * Default fit chips for paths without live scoring context (cache-hit
+ * rehydrate, metadata-only). Type-correct + honest: no fabricated signal.
+ */
+function neutralFitChips(): RecCard["fitChips"] {
+  return { timeFit: "close", moodMatches: [], inLibrary: false, friendsCount: 0 };
+}
+
+/**
+ * Cosine similarity over the bag-of-tags vectors the v2 MMR stage builds.
+ * No precomputed game embeddings exist, so getRecs derives a sparse 0/1
+ * tag vector per candidate over the union of genre/theme/mechanic tags in
+ * the filtered set and feeds pairwise cosine into applyMMR for diversity.
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length === 0 || b.length === 0) return 0;
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+/**
+ * Primary recommendation entry point (v2 — play-next redesign Task 12).
+ *
+ * Preserves the original flow's steps 0-2 byte-for-behavior (auth →
+ * safeParse → fingerprint/empty-tier → fpReady → cacheKey → cache+freshness
+ * gate → sparse-tier metadataOnlyRecs) and replaces ONLY the sharpening/full
+ * candidate→filter→Edge→hydrate stage with the v2 scoring → MMR-diversity →
+ * bucket → slot pipeline.
+ *
+ * Additions over legacy (the ONLY behavioral deltas):
+ *   - `options.refinements`: free-text user nudges ("less grindy"). When
+ *     present, the cache is bypassed (re-rank fresh) and the Edge Function
+ *     is invoked in `"rerank-only"` mode with `userRefinements`.
+ *   - composite scoring (taste/mood/timeFit/social/library − soft-negative),
+ *     MMR diversity over a bag-of-tags vector, stratified bucket assignment.
+ *   - post-rerank slot UPDATE so the cache-hit path serves correct rails
+ *     (user decision A: "getRecs post-rerank UPDATE").
+ *   - every RecCard now carries `slot` / `fitChips` / `confidence`.
+ *
+ * Everything else (cache freshness gate, empty/sparse tiers,
+ * metadataOnlyRecs incl. its banner, tier+algorithm on every RecResult,
+ * the exact Edge URL/auth/untrusted-JSON guard) is preserved exactly.
+ *
+ * `getRecsLegacy` above is a verbatim copy of the pre-v2 body, wired by
+ * Task 19 behind the `recsv2` flag.
+ */
+export async function getRecs(
+  rawFilters: FilterParams,
+  options?: { refinements?: string[] },
+): Promise<RecResult> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  if (!isRecsV2Enabled(me.id)) return getRecsLegacy(rawFilters);
+
+  // Hoist one wall-clock per request (T5) — fed to softNegativePenalty and
+  // the snooze gate so a single call can't straddle a tick boundary.
+  const now = new Date();
+  // Sanitize free-text refinements at the boundary (wire-deserialized).
+  const refinements = (options?.refinements ?? [])
+    .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    .slice(0, 5);
+
+  // Re-validate at the boundary — the action receives raw deserialized
+  // values from the wire and the TS signature alone is not a barrier.
+  // safeParse so a malformed client payload returns a clean reason instead
+  // of a 500 from the server-action error boundary.
+  const filtersResult = filterSchema.safeParse(rawFilters);
+  if (!filtersResult.success) {
+    return { ok: false, reason: "invalid-filters" };
+  }
+  const filters = filtersResult.data;
+  // getFingerprint is owner-or-public; me.id is always the owner branch,
+  // so the only null path is "profile row missing" — treat as empty-tier.
+  const fp = await getFingerprint(me.id);
+  if (!fp) return { ok: false, reason: "empty-tier" };
+
+  if (fp.tier === "empty") return { ok: false, reason: "empty-tier" };
+
+  // Pin the narrowed tier so the helper signature can require non-empty
+  // without TS losing the narrowing across the helper boundary.
+  const fpReady = fp as typeof fp & {
+    tier: "sparse" | "sharpening" | "full";
+  };
+
+  // Compute the cache key once and thread it through every branch — keeps
+  // the cache check, rerank invocation, and metadataOnlyRecs insert in sync.
+  const key = cacheKey({
+    userId: me.id,
+    moods: filters.moods,
+    time: filters.time,
+    platforms: filters.platforms,
+  });
+
+  // 1. Cache check — non-dismissed rows for this key, ordered by score desc.
+  //    Refinements bypass the cache entirely: a user nudging the results
+  //    explicitly asked for a fresh re-rank, so a stale cache hit would be
+  //    wrong. The freshness gate logic is otherwise identical to legacy.
+  if (refinements.length === 0) {
+    const cached = await db
+      .select({
+        id: recommendations.id,
+        gameId: recommendations.gameId,
+        score: recommendations.score,
+        reason: recommendations.reason,
+        algorithm: recommendations.algorithm,
+        slot: recommendations.slot,
+        generatedAt: recommendations.generatedAt,
+      })
+      .from(recommendations)
+      .where(
+        and(
+          eq(recommendations.userId, me.id),
+          eq(recommendations.cacheKey, key),
+          eq(recommendations.dismissed, false),
+        ),
+      )
+      .orderBy(desc(recommendations.score));
+
+    // Freshness gate: compare against the user's last vector update. If the
+    // milestone trigger (T7) re-aggregated vectors after the cache was
+    // written, the cache is stale even if it has 5 rows. `vectorsGeneratedAt`
+    // is `notNull` per schema, but we defensively default to epoch so a
+    // missing row (e.g. a brand-new sparse-tier user who never persisted a
+    // fingerprint row) doesn't crash the comparison.
+    const [vrow] = await db
+      .select({ vectorsGeneratedAt: tasteFingerprints.vectorsGeneratedAt })
+      .from(tasteFingerprints)
+      .where(eq(tasteFingerprints.userId, me.id))
+      .limit(1);
+    const vectorsAt = vrow?.vectorsGeneratedAt ?? new Date(0);
+
+    const cacheStillFresh =
+      cached.length >= 4 && cached.every((c) => c.generatedAt > vectorsAt);
+
+    if (cacheStillFresh) {
+      const recs = await hydrateRecs(cached.slice(0, 5));
+      if (recs.length >= 4) {
+        return { ok: true, tier: fpReady.tier, recs, algorithm: "hybrid" };
+      }
+      // If we lost too many rows to a games-table join miss (e.g. a game
+      // was deleted between the rec insert and now), fall through.
+    }
+  }
+
+  // 2. Sparse tier — skip AI, use metadataOnlyRecs (T9 templated path +
+  //    T10 popularity fallback for thin vectors). Refinements don't apply
+  //    to the sparse path (no AI rerank there) — acceptable per dispatch.
+  if (fpReady.tier === "sparse") {
+    return metadataOnlyRecs(me.id, fpReady, filters, key);
+  }
+
+  // 3. Sharpening / full — v2 pipeline. Pull a candidate pool (T10: 100
+  //    default, no explicit limit), hard-filter on time/platform/never-
+  //    again/active-snooze, composite-score every survivor, MMR-diversify,
+  //    stratify into the 4 rails, then send the pre-scored shortlist to
+  //    the rerank Edge Function. Pass live `fp.vectors` so the pool stays
+  //    correct even when the persisted taste_fingerprints row is stale.
+  const candidates = await candidatePool(me.id, { vectors: fpReady.vectors });
+  if (candidates.length === 0) {
+    return { ok: false, reason: "no-candidates" };
+  }
+
+  // Dismissal / snooze / never-again state for the candidate set (T1
+  // partial index covers this lookup).
+  const candIds = candidates.map((c) => c.id);
+  const negRows = await db
+    .select({
+      gameId: recommendations.gameId,
+      dismissedAt: recommendations.dismissedAt,
+      snoozedUntil: recommendations.snoozedUntil,
+      neverAgain: recommendations.neverAgain,
+    })
+    .from(recommendations)
+    .where(
+      and(
+        eq(recommendations.userId, me.id),
+        inArray(recommendations.gameId, candIds),
+      ),
+    );
+  // Collapse to one state per gameId (most-recent non-null wins; any
+  // never-again / active snooze sticks across rows).
+  const negMap = new Map<
+    number,
+    { dismissedAt: Date | null; snoozedUntil: Date | null; neverAgain: boolean }
+  >();
+  for (const r of negRows) {
+    const prev = negMap.get(r.gameId);
+    negMap.set(r.gameId, {
+      dismissedAt: r.dismissedAt ?? prev?.dismissedAt ?? null,
+      snoozedUntil: r.snoozedUntil ?? prev?.snoozedUntil ?? null,
+      neverAgain: r.neverAgain || prev?.neverAgain || false,
+    });
+  }
+
+  const [minH, maxH] = timeWindow(filters.time);
+  const filtered: CandidateGame[] = candidates.filter((g) => {
+    if (g.playtimeAvgHours != null) {
+      if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
+    }
+    // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
+    // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
+    // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
+    if (!gamePlatformsMatchUserFilter(g.platforms, filters.platforms)) {
+      return false;
+    }
+    const ds = negMap.get(g.id);
+    if (ds?.neverAgain) return false;
+    if (ds?.snoozedUntil && ds.snoozedUntil.getTime() > now.getTime()) {
+      return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    return { ok: false, reason: "no-candidates" };
+  }
+
+  // Library game ids + bulk social signals + lowercased explored-genre
+  // stats (T8/T9: games.genres is mixed-case; assignBuckets/pickWildcard
+  // require lowercased Set/Map members).
+  const libRows = await db
+    .select({ gameId: logs.gameId })
+    .from(logs)
+    .where(eq(logs.userId, me.id));
+  const libraryIds = new Set(libRows.map((r) => r.gameId));
+  const socialMap = await fetchSocialSignals(
+    me.id,
+    filtered.map((c) => c.id),
+  );
+  const exploredGenres = new Set<string>();
+  const genreFrequency = new Map<string, number>();
+  const loggedGenreRows = await db
+    .select({ genres: games.genres })
+    .from(logs)
+    .innerJoin(games, eq(games.id, logs.gameId))
+    .where(eq(logs.userId, me.id));
+  for (const row of loggedGenreRows) {
+    for (const raw of row.genres ?? []) {
+      const g = raw.toLowerCase();
+      exploredGenres.add(g);
+      genreFrequency.set(g, (genreFrequency.get(g) ?? 0) + 1);
+    }
+  }
+
+  const byId = new Map(filtered.map((c) => [c.id, c]));
+  const scored: ScoredCandidate[] = filtered.map((c) => {
+    // Same normalization as metadataOnlyRecs: similarityScore is an
+    // unbounded sum of vector weights; clamp to [0,1] via /5.
+    const taste = Math.min(1, Math.max(0, c.similarityScore / 5));
+    const moodScores = filters.moods.map((m) =>
+      moodMatchScore(m, { genres: c.genres, mechanics: c.mechanics }),
+    );
+    const mood =
+      moodScores.length > 0
+        ? moodScores.reduce((a, b) => a + b, 0) / moodScores.length
+        : 0.5;
+    const timeFit = timeFitScore(c.playtimeAvgHours, filters.time);
+    const sig = socialMap.get(c.id);
+    const social = sig ? computeSocialScore(sig) : 0; // T4: already [0,1)
+    const inLibrary = libraryIds.has(c.id);
+    const penalty = softNegativePenalty(
+      negMap.get(c.id) ?? {
+        dismissedAt: null,
+        snoozedUntil: null,
+        neverAgain: false,
+      },
+      now,
+    );
+    const composite = composeScore({
+      taste,
+      mood,
+      timeFit,
+      social,
+      libraryBonus: inLibrary ? 1 : 0,
+      softNegPenalty: penalty,
+    });
+    return {
+      gameId: c.id,
+      composite,
+      inLibrary,
+      socialScore: social,
+      genres: (c.genres ?? []).map((x) => x.toLowerCase()),
+    };
+  });
+
+  // MMR diversity. No precomputed embeddings exist — derive a bag-of-tags
+  // 0/1 vector over the union of genre/theme/mechanic tags in the filtered
+  // set and feed pairwise cosine in.
+  const tagIndex = new Map<string, number>();
+  for (const c of filtered) {
+    for (const t of [
+      ...(c.genres ?? []),
+      ...(c.themes ?? []),
+      ...(c.mechanics ?? []),
+    ]) {
+      const k = t.toLowerCase();
+      if (!tagIndex.has(k)) tagIndex.set(k, tagIndex.size);
+    }
+  }
+  const embFor = (c: CandidateGame): number[] => {
+    const v = new Array<number>(tagIndex.size).fill(0);
+    for (const t of [
+      ...(c.genres ?? []),
+      ...(c.themes ?? []),
+      ...(c.mechanics ?? []),
+    ]) {
+      const i = tagIndex.get(t.toLowerCase());
+      if (i != null) v[i] = 1;
+    }
+    return v;
+  };
+  const mmrInput = scored.map((s) => ({
+    id: s.gameId,
+    score: s.composite,
+    embedding: embFor(byId.get(s.gameId)!),
+  }));
+  const diversified = applyMMR(mmrInput, {
+    lambda: 0.7,
+    topN: 15,
+    similarity: cosineSimilarity,
+  });
+  const scoredById = new Map(scored.map((s) => [s.gameId, s]));
+  const diversifiedScored = diversified
+    .map((m) => scoredById.get(m.id))
+    .filter((s): s is ScoredCandidate => s !== undefined);
+
+  const bucketed = assignBuckets(diversifiedScored, {
+    exploredGenres,
+    genreFrequency,
+    seed: Math.floor(now.getTime() / 60000),
+  });
+  if (bucketed.length === 0) {
+    return { ok: false, reason: "no-candidates" };
+  }
+  const slotByGameId = new Map(bucketed.map((b) => [b.gameId, b.slot]));
+
+  // Resolve the Edge Function URL. Prefer the explicit `SUPABASE_FUNCTIONS_URL`
+  // env var (custom domains); fall back to `${NEXT_PUBLIC_SUPABASE_URL}/functions/v1`.
+  // Missing env → treat as AI failure rather than crash.
+  const functionsUrl =
+    process.env.SUPABASE_FUNCTIONS_URL ??
+    (process.env.NEXT_PUBLIC_SUPABASE_URL
+      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
+      : null);
+  const apikey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  let rerankOk = false;
+  if (functionsUrl && apikey) {
+    try {
+      const resp = await fetch(`${functionsUrl}/rerank-recs`, {
+        method: "POST",
+        headers: { apikey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: me.id,
+          filters,
+          // Pre-scored shortlist (post-MMR/bucket) — the Edge Function
+          // re-ranks within this set rather than the raw candidate pool.
+          candidateIds: bucketed.map((b) => b.gameId),
+          cacheKey: key,
+          mode: refinements.length > 0 ? "rerank-only" : "full",
+          userRefinements: refinements,
+        }),
+      });
+      if (resp.ok) {
+        // Untrusted JSON body — guard the "ok" property check against a
+        // non-object payload (e.g. `null`, or a string). Edge Function
+        // controls this response shape so the practical risk is near-zero,
+        // but the type assertion alone is not a runtime barrier.
+        const j: unknown = await resp.json();
+        if (
+          typeof j === "object" &&
+          j !== null &&
+          "ok" in j &&
+          (j as { ok: unknown }).ok === true
+        ) {
+          rerankOk = true;
+        }
+      }
+    } catch (err) {
+      console.error("rerank-recs invoke failed:", err);
+    }
+  }
+
+  if (rerankOk) {
+    // The Edge wrote rows with slot defaulting to 'comfort'. Persist the
+    // real bucket assignment (user decision A: getRecs post-rerank UPDATE)
+    // so the cache-hit path serves correct slots. One UPDATE per slot
+    // value (≤4 slots) keyed by gameId list — bounded, no N+1.
+    const bySlot = new Map<string, number[]>();
+    for (const [gid, slot] of slotByGameId) {
+      const arr = bySlot.get(slot) ?? [];
+      arr.push(gid);
+      bySlot.set(slot, arr);
+    }
+    await Promise.all(
+      [...bySlot.entries()].map(([slot, gids]) =>
+        db
+          .update(recommendations)
+          .set({ slot: slot as "comfort" | "backlog" | "friends" | "wildcard" })
+          .where(
+            and(
+              eq(recommendations.userId, me.id),
+              eq(recommendations.cacheKey, key),
+              eq(recommendations.dismissed, false),
+              inArray(recommendations.gameId, gids),
+            ),
+          ),
+      ),
+    );
+
+    // Re-read the rows the Edge Function just wrote atomically under cacheKey.
+    const fresh = await db
+      .select({
+        id: recommendations.id,
+        gameId: recommendations.gameId,
+        score: recommendations.score,
+        reason: recommendations.reason,
+        algorithm: recommendations.algorithm,
+        slot: recommendations.slot,
+      })
+      .from(recommendations)
+      .where(
+        and(
+          eq(recommendations.userId, me.id),
+          eq(recommendations.cacheKey, key),
+          eq(recommendations.dismissed, false),
+        ),
+      )
+      .orderBy(desc(recommendations.score));
+    const recs = await hydrateRecs(fresh);
+    // Symmetry with the cache-hit branch: if a catalog race deleted every
+    // game between the Edge Function's INSERT and this re-read, return a
+    // structured failure rather than an empty grid with no error context.
+    if (recs.length === 0) {
+      return { ok: false, reason: "no-candidates" };
+    }
+    // Enrich the FRESH path with precise fit chips from in-scope scoring
+    // data (hydrateRecs gave neutral chips; we still hold socialMap /
+    // scoredById / byId / filters here).
+    const enriched = recs.map((r): RecCard => {
+      const sc = scoredById.get(r.gameId);
+      const cand = byId.get(r.gameId);
+      const sig = socialMap.get(r.gameId);
+      const tf = cand ? timeFitScore(cand.playtimeAvgHours, filters.time) : 0.5;
+      const moodMatches = cand
+        ? filters.moods.filter(
+            (m) =>
+              moodMatchScore(m, {
+                genres: cand.genres,
+                mechanics: cand.mechanics,
+              }) >= 0.5,
+          )
+        : [];
+      return {
+        ...r,
+        fitChips: {
+          timeFit: (tf >= 0.8
+            ? "perfect"
+            : tf >= 0.4
+              ? "close"
+              : "loose") as "perfect" | "close" | "loose",
+          moodMatches,
+          inLibrary: sc?.inLibrary ?? false,
+          friendsCount: sig ? sig.friendsPlayed + sig.friendsLiked : 0,
+        },
+        confidence: deriveConfidence(sc?.composite ?? r.score),
+      };
+    });
+    return { ok: true, tier: fpReady.tier, recs: enriched, algorithm: "ai" };
+  }
+
+  // 4. AI failure → metadata fallback with banner. Set the banner after the
+  //    helper returns so we don't duplicate the helper's "sparse banner"
+  //    logic; AI failure on sharpening/full overrides any inner banner.
+  const fallback = await metadataOnlyRecs(me.id, fpReady, filters, key);
+  if (fallback.ok) {
+    fallback.banner = "AI ranking unavailable — basic matching shown.";
+  }
+  return fallback;
+}
+
+/**
  * Shared rec-row → RecCard hydration. Both the cache-hit branch and the
  * post-rerank rehydration branch in `getRecs` produce the same shape: a list
  * of recommendations rows joined to the games table. Encapsulating the join
@@ -327,6 +838,7 @@ type RecHydrationRow = {
   score: string;
   reason: string | null;
   algorithm: "similarity" | "ai" | "hybrid";
+  slot?: "comfort" | "backlog" | "friends" | "wildcard";
 };
 async function hydrateRecs(rows: RecHydrationRow[]): Promise<RecCard[]> {
   if (rows.length === 0) return [];
@@ -362,6 +874,16 @@ async function hydrateRecs(rows: RecHydrationRow[]): Promise<RecCard[]> {
         // Drizzle infers `c.algorithm` as the pgEnum union — assigns
         // directly to `RecCard.algorithm` which mirrors the same enum.
         algorithm: c.algorithm,
+        // Cache-hit / post-rerank rehydrate lacks live signal context, so
+        // chips are neutral and confidence is score-derived; the slot is
+        // the REAL persisted bucket (written by the v2 post-rerank UPDATE).
+        // On the legacy (recsv2-OFF) path the row never projects `slot`
+        // (that path is schema-independent of migration 0018), so it's
+        // `undefined` and we default it to 'comfort' here — uniform with
+        // metadataOnlyRecs's hardcoded 'comfort'.
+        slot: c.slot ?? "comfort",
+        fitChips: neutralFitChips(),
+        confidence: deriveConfidence(Number(c.score)),
       };
     })
     .filter((r): r is RecCard => r !== null);
@@ -541,6 +1063,12 @@ async function metadataOnlyRecs(
       reason,
       platforms: g.platforms,
       algorithm: "similarity" as const,
+      // The metadata path has no bucket stage — every pick is "comfort".
+      // No live mood/social/time context here either, so chips are
+      // neutral; confidence is derived from the normalized score.
+      slot: "comfort" as const,
+      fitChips: neutralFitChips(),
+      confidence: deriveConfidence(Math.min(1, g.similarityScore / 5)),
     };
   });
 
@@ -581,7 +1109,10 @@ async function metadataOnlyRecs(
 /**
  * Owner-only dismissal. Sets `dismissed=true` so the row drops out of the
  * cache-hit window for future getRecs calls and feeds the rerank prompt's
- * negative-context SELECT. Deliberately does NOT delete the row.
+ * negative-context SELECT. Also stamps `dismissedAt` so T5's
+ * `softNegativePenalty` (read via getRecs' negMap from
+ * `recommendations.dismissedAt`) applies its time-decayed soft-negative
+ * penalty to the game. Deliberately does NOT delete the row.
  *
  * No cache invalidation: the four remaining non-dismissed rows for the
  * current cache key continue to serve. The /play-next page revalidates so a
@@ -603,7 +1134,64 @@ export async function dismissRec(
 
   await db
     .update(recommendations)
-    .set({ dismissed: true })
+    .set({ dismissed: true, dismissedAt: new Date() })
+    .where(eq(recommendations.id, recId));
+
+  revalidatePath("/play-next");
+  return { ok: true };
+}
+
+/**
+ * Owner-only 30-day snooze. Sets `snoozedUntil` so T5's softNegativePenalty
+ * (read via getRecs' negMap) hard-excludes the game until it lapses, then
+ * lets it decay back in. Does NOT set `dismissed` — a snooze is temporary.
+ */
+export async function snoozeRec(
+  recId: string,
+): Promise<{ ok: true } | { ok: false; reason: "unauthorized" | "not-found" }> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const [row] = await db
+    .select({ id: recommendations.id, userId: recommendations.userId })
+    .from(recommendations)
+    .where(eq(recommendations.id, recId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
+
+  await db
+    .update(recommendations)
+    .set({ snoozedUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) })
+    .where(eq(recommendations.id, recId));
+
+  revalidatePath("/play-next");
+  return { ok: true };
+}
+
+/**
+ * Owner-only permanent exclusion. Sets `neverAgain` (hard-excluded forever by
+ * T5's softNegativePenalty) plus `dismissedAt` so the row also drops via the
+ * existing dismissal path. Intentionally does NOT delete the row (kept for
+ * the rerank negative-context SELECT).
+ */
+export async function neverAgainRec(
+  recId: string,
+): Promise<{ ok: true } | { ok: false; reason: "unauthorized" | "not-found" }> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const [row] = await db
+    .select({ id: recommendations.id, userId: recommendations.userId })
+    .from(recommendations)
+    .where(eq(recommendations.id, recId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
+
+  await db
+    .update(recommendations)
+    .set({ neverAgain: true, dismissedAt: new Date() })
     .where(eq(recommendations.id, recId));
 
   revalidatePath("/play-next");

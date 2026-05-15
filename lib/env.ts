@@ -53,6 +53,12 @@ const serverSchema = z.object({
     .string()
     .optional()
     .transform((s) => (s ?? "").split(",").map((id) => id.trim()).filter(Boolean)),
+  // Feature flag: v2 /play-next pipeline. Empty/unset → dev/test default
+  // (true off-prod) via lib/recs/feature-flag.ts; "true"/"false" force it.
+  RECS_V2_ENABLED: optionalString,
+  // Comma-separated user IDs that get v2 even when the global flag is off
+  // (canary rollout). Split + trimmed in feature-flag.ts.
+  RECS_V2_USERS: optionalString,
 });
 
 const clientSchema = z.object({
@@ -92,6 +98,8 @@ const serverEnv =
         RESEND_DIGEST_FROM_ADDRESS: process.env.RESEND_DIGEST_FROM_ADDRESS,
         CRON_SECRET: process.env.CRON_SECRET,
         ADMIN_USER_IDS: process.env.ADMIN_USER_IDS,
+        RECS_V2_ENABLED: process.env.RECS_V2_ENABLED,
+        RECS_V2_USERS: process.env.RECS_V2_USERS,
       })
     : ({} as z.infer<typeof serverSchema>);
 

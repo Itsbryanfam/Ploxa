@@ -6,10 +6,14 @@ import { useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
+import { ConfidencePill } from "@/components/recs/atoms/confidence-pill";
+import { LibraryBadge } from "@/components/recs/atoms/library-badge";
+import { SlotBadge } from "@/components/recs/atoms/slot-badge";
 import {
-  dismissRec,
+  neverAgainRec,
   playRec,
   saveRecForLater,
+  snoozeRec,
   type RecCard as RecCardData,
 } from "@/lib/recs/server-actions";
 import { cn } from "@/lib/utils";
@@ -19,24 +23,32 @@ type Platform = "steam" | "xbox" | "psn";
 /**
  * Interactive rec card for the /play-next results grid.
  *
- * T15 wires the three feedback buttons:
+ * Play-next redesign (T15): the card now surfaces the stratified-rail
+ * affordances on top of the preserved T15 feedback wiring.
+ *
  *   - "Play this" — variant depends on `gamePlatforms ∩ connectedPlatforms`:
  *       • 0 overlap → no platform hint; the server action redirects to
  *         `/games/{slug}` so the user can pick where to play manually.
  *       • 1 overlap → "Play on {p}" — single-tap; creates `playing` log on `p`.
  *       • 2+ overlap → dropdown picker; tapping a platform creates a log there.
  *   - "Save for later" — creates a `backlog` log + dismisses the rec.
- *   - "Not for me" — dismisses the rec only.
+ *   - Dismiss split (replaces the old single "Not for me"): a popover with
+ *       • "Not for me" → `snoozeRec` (30-day soft snooze; T13)
+ *       • "Never show this again" → `neverAgainRec` (permanent exclusion; T13)
+ *     Both route through `doDismiss` so the optimistic hide + framer exit
+ *     still fire identically to the pre-v2 dismissal.
  *
  * Optimistic dismiss: the card hides immediately (parent's `dismissedIds` set
  * drops it from `visibleRecs`), AnimatePresence runs the exit animation, and
  * the server action completes in the background. Toast confirms success or
  * surfaces a structured failure.
  *
- * Algorithm widening note: the badge treats `"ai"` and `"hybrid"` as AI picks.
- * `"hybrid"` is the cache-hit serving of rows previously written as `"ai"`;
- * from the user's perspective they're equivalent. Earlier plan drafts used
- * `"ai_rerank"` — that string is not in the DB enum.
+ * v2 cover overlays replace the old decorative "AI pick" / "basic match"
+ * corner badge (intentional spec change — confidence is the meaningful
+ * signal; the algorithm string was decorative): `<LibraryBadge>` top-left
+ * when the game is already in the viewer's library, and `<ConfidencePill>`
+ * top-right EXCEPT for `wildcard` slots, where a confidence band would be
+ * misleading on an intentionally out-of-distribution surprise pick.
  */
 export function RecCard({
   rec,
@@ -51,6 +63,7 @@ export function RecCard({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [openDismiss, setOpenDismiss] = useState(false);
 
   const overlap = gamePlatforms.filter((p) => connectedPlatforms.includes(p));
 
@@ -63,11 +76,21 @@ export function RecCard({
     startTransition(action);
   }
 
-  function onNotForMe() {
+  function onSnooze() {
+    setOpenDismiss(false);
     doDismiss(async () => {
-      const r = await dismissRec(rec.id);
-      if (r.ok) toast("Dismissed.");
-      else toast.error("Couldn't dismiss this one.");
+      const r = await snoozeRec(rec.id);
+      if (r.ok) toast("Snoozed for 30 days.");
+      else toast.error("Couldn't snooze this one.");
+    });
+  }
+
+  function onNeverAgain() {
+    setOpenDismiss(false);
+    doDismiss(async () => {
+      const r = await neverAgainRec(rec.id);
+      if (r.ok) toast("Won't show this again.");
+      else toast.error("Couldn't update this one.");
     });
   }
 
@@ -99,11 +122,19 @@ export function RecCard({
   }
 
   const art = rec.posterUrl ?? rec.coverUrl;
-  const isAi = rec.algorithm === "ai" || rec.algorithm === "hybrid";
+  const { timeFit, moodMatches, inLibrary, friendsCount } = rec.fitChips;
+  const timeFitLabel =
+    timeFit === "perfect"
+      ? "Perfect length"
+      : timeFit === "close"
+        ? "Close fit"
+        : "Loose fit";
 
   return (
     <motion.div
       layout
+      data-testid="rec-card"
+      data-slot={rec.slot}
       initial={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
       className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg)]"
@@ -118,16 +149,16 @@ export function RecCard({
             sizes="240px"
           />
         ) : null}
-        <span
-          className={cn(
-            "absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider",
-            isAi
-              ? "bg-[var(--accent)]/90 text-[var(--accent-fg)]"
-              : "bg-[var(--bg-card)]/90 text-[var(--text-dim)]",
-          )}
-        >
-          {isAi ? "AI pick" : "basic match"}
-        </span>
+        {inLibrary ? (
+          <span className="absolute left-1 top-1">
+            <LibraryBadge />
+          </span>
+        ) : null}
+        {rec.slot !== "wildcard" ? (
+          <span className="absolute right-1 top-1">
+            <ConfidencePill confidence={rec.confidence} />
+          </span>
+        ) : null}
       </div>
       <div className="space-y-2 p-3">
         <h3 className="text-sm font-medium leading-tight">
@@ -138,12 +169,38 @@ export function RecCard({
             </span>
           ) : null}
         </h3>
-        <p
-          className="line-clamp-3 text-xs leading-snug text-[var(--text-dim)]"
-          title={rec.reason}
-        >
+        <p className="text-xs leading-snug text-[var(--text-dim)]">
           {rec.reason}
         </p>
+        <div className="flex flex-wrap gap-1.5">
+          <SlotBadge slot={rec.slot} />
+          {timeFit ? (
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium",
+                timeFit === "perfect"
+                  ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                  : "bg-[var(--bg-elev)] text-[var(--text-dim)]",
+              )}
+            >
+              {timeFitLabel}
+            </span>
+          ) : null}
+          {moodMatches.map((m) => (
+            <span
+              key={m}
+              className="inline-flex items-center rounded-md bg-[var(--accent)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--accent)]"
+            >
+              {m.charAt(0).toUpperCase() + m.slice(1)}
+            </span>
+          ))}
+          {/* friends: literal blue — no blue theme token; matches SlotBadge's documented exception */}
+          {friendsCount > 0 ? (
+            <span className="inline-flex items-center rounded-md bg-[#3b82f6]/15 px-2 py-0.5 text-[11px] font-medium text-[#7aa7ff]">
+              {friendsCount} played
+            </span>
+          ) : null}
+        </div>
         <div className="flex flex-col gap-1 pt-2">
           <PlayThisButton
             overlap={overlap}
@@ -154,18 +211,43 @@ export function RecCard({
             type="button"
             disabled={pending}
             onClick={onSave}
+            data-testid="rec-card-save"
             className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-dim)] hover:border-[var(--border-hover)] disabled:opacity-50"
           >
             Save for later
           </button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={onNotForMe}
-            className="rounded border border-[var(--border-soft)] px-2 py-1 text-xs text-[var(--text-faint)] hover:border-[var(--border)] hover:text-[var(--text-dim)] disabled:opacity-50"
-          >
-            Not for me
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Dismiss"
+              disabled={pending}
+              onClick={() => setOpenDismiss((o) => !o)}
+              data-testid="rec-card-dismiss"
+              className="w-full rounded border border-[var(--border-soft)] px-2 py-1 text-xs text-[var(--text-faint)] hover:border-[var(--border)] hover:text-[var(--text-dim)] disabled:opacity-50"
+            >
+              Not interested ▾
+            </button>
+            {openDismiss && (
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-[var(--border)] bg-[var(--bg-elev)] p-1 shadow-lg">
+                <button
+                  type="button"
+                  onClick={onSnooze}
+                  data-testid="rec-card-snooze"
+                  className="block w-full rounded px-2 py-1 text-left text-xs text-[var(--text-dim)] hover:bg-[var(--bg-card)]"
+                >
+                  Not for me
+                </button>
+                <button
+                  type="button"
+                  onClick={onNeverAgain}
+                  data-testid="rec-card-never"
+                  className="block w-full rounded px-2 py-1 text-left text-xs text-[var(--text-dim)] hover:bg-[var(--bg-card)]"
+                >
+                  Never show this again
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </motion.div>
@@ -199,6 +281,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => onPlay(undefined)}
+        data-testid="rec-card-play"
         className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play this →
@@ -212,6 +295,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => onPlay(overlap[0])}
+        data-testid="rec-card-play"
         className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play on {overlap[0]} →
@@ -225,6 +309,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => setOpenPicker((o) => !o)}
+        data-testid="rec-card-play"
         className="w-full rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play this ▾
