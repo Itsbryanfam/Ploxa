@@ -55,10 +55,12 @@ export function moodMatchScore(mood: Mood, c: CandidateForMood): number {
   const budget = entry.boostGenres.length + entry.boostMechanics.length;
   if (budget === 0) return 0;
 
-  // Normalize by the candidate's own matchable signal, not the full mood
-  // vocabulary: real games carry only ~2-4 tags, so dividing by the entire
-  // boost budget would cap even a perfect match at ~0.4 and silently weaken
-  // the mood axis. denom is the achievable hit count given this candidate.
+  // Normalize by the candidate's own tag count, not the full mood vocabulary:
+  // real games carry only ~2-4 tags, so dividing by the entire boost budget
+  // (~9 terms for chill) would cap even a 4-hit perfect match at ~0.44 and
+  // silently weaken the mood axis. denom approximates achievable signal via
+  // total candidate tag count; tag-rich games are slightly under-scored,
+  // which is acceptable for a 0.25-weighted axis.
   const matched = genreHits + mechBoostHits;
   const denom = Math.max(1, Math.min(budget, genres.size + mechanics.size));
   const raw = (matched - mechPenaltyHits) / denom;
