@@ -4,9 +4,10 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { isBlockedBetween } from "@/lib/social/_shared/visibility";
+import { loadVisibleReview } from "@/lib/social/_shared/review-visibility";
 import { emit } from "@/lib/social/notifications/emit";
 
-const { likes, listLikes, reviews, lists } = schema;
+const { likes, listLikes, lists } = schema;
 
 /**
  * Reaction server actions for reviews and lists. Each like is idempotent via
@@ -44,10 +45,9 @@ export async function likeReview(reviewId: string): Promise<{ ok: boolean }> {
   const user = await getCachedUser();
   if (!user) return { ok: false };
 
-  const review = await db.query.reviews.findFirst({
-    where: eq(reviews.id, reviewId),
-    columns: { userId: true },
-  });
+  // F-007: only like a review the caller may see (owner, or a published
+  // public review by a public author) — parity with likeList's gate.
+  const review = await loadVisibleReview(reviewId, user.id);
   if (!review) return { ok: false };
 
   // Self-like + blocked-pair both succeed silently (don't reveal predicate).
