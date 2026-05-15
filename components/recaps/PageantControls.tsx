@@ -162,12 +162,12 @@ function ClosingShareRow({ sharePitch }: { sharePitch?: string }) {
           aria-label="Copy link to clipboard"
           className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-6 py-3 text-sm font-medium text-[var(--text)] shadow-lg transition-colors hover:bg-[var(--bg-card-hover)]"
         >
-          {copied ? "Copied!" : "Copy link"}
+          {copied ? "Copied" : "Copy link"}
         </button>
       </div>
       {/*
         Polite live region so AT announces the copy result without
-        stealing focus. The visible "Copied!" label flip on the button
+        stealing focus. The visible "Copied" label flip on the button
         is the sighted cue.
       */}
       <p aria-live="polite" className="sr-only">

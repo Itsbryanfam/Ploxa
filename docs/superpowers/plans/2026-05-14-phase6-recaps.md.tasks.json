@@ -73,28 +73,28 @@
     {
       "id": 11,
       "subject": "Task 11: YIR page route + cache-or-build flow",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4, 6, 10],
       "description": "**Goal:** /u/[username]/year/[year]/page.tsx server component implementing the cache-or-build flow.\n\n**Files:** app/(app)/u/[username]/year/[year]/page.tsx, app/(app)/u/[username]/year/[year]/loading.tsx, lib/recaps/cache-or-build.ts, tests/unit/recaps/cache-or-build.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/cache-or-build.test.ts && pnpm tsc --noEmit && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/(app)/u/[username]/year/[year]/page.tsx\",\"app/(app)/u/[username]/year/[year]/loading.tsx\",\"lib/recaps/cache-or-build.ts\",\"tests/unit/recaps/cache-or-build.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/cache-or-build.test.ts && pnpm tsc --noEmit && pnpm build\",\"acceptanceCriteria\":[\"resolves username → profile; private-profile gate 404\",\"locked OR fresh current-year → cached payload no aggregator run\",\"stale OR no row → buildRecap + captions + UPSERT\",\"too_sparse → render SparseDataState no row written\",\"loading.tsx mascot reviewing state\",\"generateMetadata reads ?scene searchParam\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 12: Pageant component (Framer Motion scene sequencer)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [11],
       "description": "**Goal:** Client <Pageant> component — auto-advance scenes with mascot beats; swipe/keyboard/tap controls; progress bar; share affordance.\n\n**Files:** components/recaps/Pageant.tsx, components/recaps/PageantProgressBar.tsx, components/recaps/PageantControls.tsx, tests/unit/recaps/pageant-state.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/pageant-state.test.ts && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"components/recaps/Pageant.tsx\",\"components/recaps/PageantProgressBar.tsx\",\"components/recaps/PageantControls.tsx\",\"tests/unit/recaps/pageant-state.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/pageant-state.test.ts && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"pure pageantReducer extracted\",\"auto-advance 8s default with per-scene override\",\"tap-third-zones + swipe + keyboard work\",\"pause sticky no auto-resume\",\"progress bar L→R fill\",\"closing scene replaces small icon with big share buttons\",\"prefers-reduced-motion zero-duration\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 13: Scene components — data scenes",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** Five non-AI scene components rendering data viz + template-filled caption.\n\n**Files:** components/recaps/scenes/OpeningScene.tsx, components/recaps/scenes/StatsTotalScene.tsx, components/recaps/scenes/TopGamesScene.tsx, components/recaps/scenes/LongestGameScene.tsx, components/recaps/scenes/ReviewsScene.tsx, tests/unit/recaps/scenes-data.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/scenes-data.test.tsx`\n\n```json:metadata\n{\"files\":[\"components/recaps/scenes/OpeningScene.tsx\",\"components/recaps/scenes/StatsTotalScene.tsx\",\"components/recaps/scenes/TopGamesScene.tsx\",\"components/recaps/scenes/LongestGameScene.tsx\",\"components/recaps/scenes/ReviewsScene.tsx\",\"tests/unit/recaps/scenes-data.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/scenes-data.test.tsx\",\"acceptanceCriteria\":[\"each scene is (payload, caption, isActive) → JSX\",\"data viz animates on isActive change\",\"caption always rendered for a11y\",\"prefers-reduced-motion final state instant\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 14: Scene components — AI-captioned scenes (+ 4 substitutes)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** Six AI-captioned scene components + 4 substitute scenes for graceful degradation.\n\n**Files:** components/recaps/scenes/{GotyScene,GenreDominanceScene,MechanicLoveScene,SurpriseScene,TasteEvolutionScene,ClosingScene,MostReplayedScene,TopThemeScene,CompletionRatioScene,MoodThemesScene}.tsx, tests/unit/recaps/scenes-ai.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/scenes-ai.test.tsx`\n\n```json:metadata\n{\"files\":[\"components/recaps/scenes/GotyScene.tsx\",\"components/recaps/scenes/GenreDominanceScene.tsx\",\"components/recaps/scenes/MechanicLoveScene.tsx\",\"components/recaps/scenes/SurpriseScene.tsx\",\"components/recaps/scenes/TasteEvolutionScene.tsx\",\"components/recaps/scenes/ClosingScene.tsx\",\"components/recaps/scenes/MostReplayedScene.tsx\",\"components/recaps/scenes/TopThemeScene.tsx\",\"components/recaps/scenes/CompletionRatioScene.tsx\",\"components/recaps/scenes/MoodThemesScene.tsx\",\"tests/unit/recaps/scenes-ai.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/scenes-ai.test.tsx\",\"acceptanceCriteria\":[\"6 primary AI scenes\",\"4 substitute scenes match primary shape\",\"GotyScene: full-bleed cover + title + rating\",\"GenreDominanceScene: large name + donut sliver\",\"ClosingScene: three big share buttons no small icon\",\"all respect prefers-reduced-motion\"]}\n```"
     },

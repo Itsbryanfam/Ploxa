@@ -24,6 +24,14 @@ export interface SceneDefinition {
   aiCaption: boolean;
   yearOnly?: boolean;
   holdDurationMs?: number; // override default 8000 ms
+  /**
+   * Substitute scenes are never included in the base scene list — they're
+   * only inserted into `payload.scenes` by the substitution pass when a
+   * primary scene's data is missing. We keep them in SCENE_CATALOG so
+   * `getScene()` resolves them and the captions module finds a
+   * fallbackTemplate for them.
+   */
+  isSubstitute?: boolean;
   fallbackTemplate: (payload: RecapPayload) => string;
 }
 

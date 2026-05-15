@@ -13,11 +13,21 @@ import { getScene } from "@/lib/recaps/scenes";
 
 import { PageantControls } from "./PageantControls";
 import { PageantProgressBar } from "./PageantProgressBar";
+import { ClosingScene } from "./scenes/ClosingScene";
+import { CompletionRatioScene } from "./scenes/CompletionRatioScene";
+import { GenreDominanceScene } from "./scenes/GenreDominanceScene";
+import { GotyScene } from "./scenes/GotyScene";
 import { LongestGameScene } from "./scenes/LongestGameScene";
+import { MechanicLoveScene } from "./scenes/MechanicLoveScene";
+import { MoodThemesScene } from "./scenes/MoodThemesScene";
+import { MostReplayedScene } from "./scenes/MostReplayedScene";
 import { OpeningScene } from "./scenes/OpeningScene";
 import { ReviewsScene } from "./scenes/ReviewsScene";
 import { StatsTotalScene } from "./scenes/StatsTotalScene";
+import { SurpriseScene } from "./scenes/SurpriseScene";
+import { TasteEvolutionScene } from "./scenes/TasteEvolutionScene";
 import { TopGamesScene } from "./scenes/TopGamesScene";
+import { TopThemeScene } from "./scenes/TopThemeScene";
 
 /**
  * Pageant — Phase 6 T12.
@@ -294,15 +304,9 @@ export function Pageant({ payload, mode, initialSceneIndex = 0 }: PageantProps) 
 
 // -----------------------------------------------------------------------
 // SceneRenderer — switches on sceneId and renders the matching scene
-// component. T13 wires up the five data scenes (opening, stats_total,
-// top_games, longest_game, reviews). T14 will add the AI-captioned
-// scenes (goty, genre_dominance, mechanic_love, surprise,
-// taste_evolution, closing) and the four substitute scenes
-// (most_replayed, top_theme, completion_ratio, mood_themes).
-//
-// Until T14 lands, scenes not yet covered fall through to the
-// placeholder so the Pageant remains navigable end-to-end even for
-// payloads that include AI-captioned scenes.
+// component. T14 covers all 15 scene ids (11 primary + 4 substitute);
+// the default `ScenePlaceholder` branch is kept as a safety net for any
+// future drift between SceneId and the catalog.
 // -----------------------------------------------------------------------
 
 interface SceneRendererProps {
@@ -343,9 +347,81 @@ function SceneRenderer({
           isActive={isActive}
         />
       );
+    case "goty":
+      return (
+        <GotyScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "genre_dominance":
+      return (
+        <GenreDominanceScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "mechanic_love":
+      return (
+        <MechanicLoveScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "surprise":
+      return (
+        <SurpriseScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "taste_evolution":
+      return (
+        <TasteEvolutionScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
     case "longest_game":
       return (
         <LongestGameScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "most_replayed":
+      return (
+        <MostReplayedScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "top_theme":
+      return (
+        <TopThemeScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "completion_ratio":
+      return (
+        <CompletionRatioScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
+    case "mood_themes":
+      return (
+        <MoodThemesScene
           payload={payload}
           caption={caption}
           isActive={isActive}
@@ -359,10 +435,18 @@ function SceneRenderer({
           isActive={isActive}
         />
       );
-    // T14: goty, genre_dominance, mechanic_love, surprise,
-    // taste_evolution, closing, most_replayed, top_theme,
-    // completion_ratio, mood_themes.
+    case "closing":
+      return (
+        <ClosingScene
+          payload={payload}
+          caption={caption}
+          isActive={isActive}
+        />
+      );
     default:
+      // Defensive: every SceneId in the union has a case above. The
+      // default exists purely so a future drift between the SceneId type
+      // and this switch doesn't crash the pageant.
       return <ScenePlaceholder sceneId={sceneId} caption={caption} />;
   }
 }

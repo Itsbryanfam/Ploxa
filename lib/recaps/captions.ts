@@ -283,26 +283,22 @@ export async function generateCaption(
  * to their template — that way the returned record covers every scene id
  * that has a SCENE_CATALOG entry.
  *
- * Return type is `Partial<Record<SceneId, string>>` (not full Record)
- * because substitution scene IDs (`most_replayed`, `top_theme`,
- * `completion_ratio`, `mood_themes`) are NOT in SCENE_CATALOG yet and
- * therefore get silently filtered out by the `.filter` below. Those keys
- * will not appear in the returned object until T14 adds catalog entries
- * for the 4 substitute scenes.
+ * Return type is `Partial<Record<SceneId, string>>` rather than the full
+ * Record because a SCENE_CATALOG drift bug — a scene id appearing in
+ * payload.scenes that has no matching catalog entry — would leave that
+ * key off the result. The current SCENE_CATALOG (T14) covers all 15
+ * scene ids including the four substitutes; the partial type is kept
+ * as a safety net for future drift rather than a current gap.
  *
- * If a scene id in payload.scenes has no SCENE_CATALOG entry (drift bug
- * or unimplemented substitution scene), it's silently skipped from the
- * result rather than throwing. The caller (T11 render path) treats
- * missing captions as fallbacks via the scene lookup anyway.
+ * If a scene id in payload.scenes has no SCENE_CATALOG entry (future
+ * drift bug), it's silently skipped from the result rather than throwing.
+ * The caller (T11 render path) treats missing captions as fallbacks via
+ * the scene lookup anyway.
  */
 export async function generateAllCaptions(
   payload: RecapPayload,
   userId: string,
 ): Promise<Partial<Record<SceneId, string>>> {
-  // TODO(T14): substitution scene IDs (most_replayed/top_theme/completion_ratio/
-  // mood_themes) have no SCENE_CATALOG entry yet, so they're silently filtered out.
-  // T14 should add catalog entries for the 4 substitute scenes so this filter
-  // covers every key in payload.scenes 1:1.
   const scenes = payload.scenes
     .map((id) => SCENE_CATALOG.find((s) => s.id === id))
     .filter((s): s is SceneDefinition => s !== undefined);
