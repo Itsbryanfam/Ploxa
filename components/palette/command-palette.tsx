@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { usePaletteStore } from "@/lib/palette/palette-store";
 import { PaletteInput } from "./palette-input";
 import { GameSearchResults } from "./game-search-results";
+import { UserSearchResults } from "./user-search-results";
 import { QuickLogForm } from "./quick-log-form";
 
 /**
@@ -55,6 +56,12 @@ export function CommandPalette() {
 
   if (!mounted || (!isOpen && !closing)) return null;
 
+  // `@`-prefix routes the query to the user search; everything else stays
+  // on game search. Strip the prefix before passing through so the user
+  // results component sees just the inner query string.
+  const isUserSearch = query.startsWith("@");
+  const userQuery = isUserSearch ? query.slice(1) : "";
+
   return createPortal(
     <>
       {/* Backdrop */}
@@ -73,15 +80,24 @@ export function CommandPalette() {
         }
         role="dialog"
         aria-modal="true"
-        aria-label="Game search"
+        aria-label={isUserSearch ? "People search" : "Game search"}
       >
         <div className="flex items-center gap-3 border-b border-[var(--border-soft)] px-5 py-4">
           <PaletteSearchIcon />
-          <PaletteInput ref={inputRef} value={query} onChange={setQuery} />
+          <PaletteInput
+            ref={inputRef}
+            value={query}
+            onChange={setQuery}
+            placeholder="Search games, or @username for people..."
+          />
         </div>
         <div className="max-h-[60vh] overflow-y-auto">
           {view === "search" ? (
-            <GameSearchResults query={query} />
+            isUserSearch ? (
+              <UserSearchResults query={userQuery} />
+            ) : (
+              <GameSearchResults query={query} />
+            )
           ) : (
             <QuickLogForm />
           )}
