@@ -285,10 +285,23 @@ export function moodMatchScore(mood: Mood, c: CandidateForMood): number {
   const budget = entry.boostGenres.length + entry.boostMechanics.length;
   if (budget === 0) return 0;
 
-  const raw = (genreHits + mechBoostHits - mechPenaltyHits) / budget;
+  // Normalize by the candidate's own tag count, not the full mood vocabulary:
+  // real games carry only ~2-4 tags, so dividing by the entire boost budget
+  // (~9 terms for chill) would cap even a 4-hit perfect match at ~0.44 and
+  // silently weaken the mood axis. denom approximates achievable signal via
+  // total candidate tag count; tag-rich games are slightly under-scored,
+  // which is acceptable for a 0.25-weighted axis.
+  const matched = genreHits + mechBoostHits;
+  const denom = Math.max(1, Math.min(budget, genres.size + mechanics.size));
+  const raw = (matched - mechPenaltyHits) / denom;
   return Math.max(0, Math.min(1, raw));
 }
 ```
+
+> **Execution note (2026-05-15):** The original plan divided `raw` by the full
+> `budget`, which capped a realistic candidate (~2-4 tags) below the test's
+> `> 0.5` assertion. Corrected during execution to normalize by the candidate's
+> achievable signal (controller-authorized "Option A"). Shipped in commit `7cf9cb9`.
 
 - [ ] **Step 4: Run test — expect PASS**
 
@@ -474,8 +487,23 @@ git commit -m "feat(recs): time-fit Gaussian scoring + hard-cap feasibility chec
 Create `tests/unit/recs/social-score.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { computeSocialScore, sigmoid } from "@/lib/recs/social-score";
+import { describe, expect, it, vi } from "vitest";
+
+// social-score.ts eagerly does `import { db } from "@/lib/db"` (same
+// convention as its sibling candidate-pool.ts). Importing the real module
+// would instantiate a postgres-js client. Mock @/lib/db to a minimal stub
+// so the eager import resolves — these tests only exercise the pure
+// computeSocialScore/sigmoid exports, so the stub's methods are never
+// called. `server-only` is already aliased to a no-op by vitest.config.ts.
+vi.mock("@/lib/db", () => {
+  return {
+    db: {
+      select: vi.fn(),
+    },
+  };
+});
+
+const { computeSocialScore, sigmoid } = await import("@/lib/recs/social-score");
 
 describe("sigmoid", () => {
   it("returns 0.5 at 0", () => {
@@ -510,6 +538,16 @@ describe("computeSocialScore", () => {
     const b = computeSocialScore({ friendsPlayed: 5, friendsLiked: 0 });
     expect(b).toBeGreaterThan(a);
   });
+
+  it("is a small positive for a single weak signal (sign guard at the contract boundary)", () => {
+    const s = computeSocialScore({ friendsPlayed: 1, friendsLiked: 0 });
+    expect(s).toBeGreaterThan(0);
+    expect(s).toBeLessThan(0.1);
+  });
+
+  it("stays strictly below 1 even at extreme counts (guards the saturation fix)", () => {
+    expect(computeSocialScore({ friendsPlayed: 0, friendsLiked: 500 })).toBeLessThan(1);
+  });
 });
 ```
 
@@ -530,16 +568,18 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { follows, logs } from "@/lib/db/schema";
 
+export type SocialSignals = { friendsPlayed: number; friendsLiked: number };
+
 export function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
 
-export function computeSocialScore(input: {
-  friendsPlayed: number;
-  friendsLiked: number;
-}): number {
+export function computeSocialScore(input: SocialSignals): number {
   if (input.friendsPlayed === 0 && input.friendsLiked === 0) return 0;
-  return sigmoid(0.3 * input.friendsPlayed + 0.5 * input.friendsLiked) - 0.5;
+  // Shift by 0.5 so zero-input anchors at 0; ×2 expands to the [0,1) the
+  // axis contract wants. Coeffs (0.03/0.05) keep the sigmoid arg well below
+  // float64 saturation so the strict <1 bound holds at realistic counts.
+  return 2 * (sigmoid(0.03 * input.friendsPlayed + 0.05 * input.friendsLiked) - 0.5);
 }
 
 /**
@@ -550,7 +590,7 @@ export function computeSocialScore(input: {
 export async function fetchSocialSignals(
   userId: string,
   gameIds: number[],
-): Promise<Map<number, { friendsPlayed: number; friendsLiked: number }>> {
+): Promise<Map<number, SocialSignals>> {
   if (gameIds.length === 0) return new Map();
 
   // Step 1: get followed user IDs
@@ -566,13 +606,13 @@ export async function fetchSocialSignals(
     .select({
       gameId: logs.gameId,
       friendsPlayed: sql<number>`COUNT(DISTINCT CASE WHEN ${logs.status} IN ('playing', 'completed') THEN ${logs.userId} END)::int`,
-      friendsLiked: sql<number>`COUNT(DISTINCT CASE WHEN ${logs.liked} = true THEN ${logs.userId} END)::int`,
+      friendsLiked: sql<number>`COUNT(DISTINCT CASE WHEN ${logs.rating} >= 7 THEN ${logs.userId} END)::int`,
     })
     .from(logs)
     .where(and(inArray(logs.userId, followed), inArray(logs.gameId, gameIds)))
     .groupBy(logs.gameId);
 
-  const out = new Map<number, { friendsPlayed: number; friendsLiked: number }>();
+  const out = new Map<number, SocialSignals>();
   for (const r of rows) {
     out.set(r.gameId, { friendsPlayed: r.friendsPlayed, friendsLiked: r.friendsLiked });
   }
@@ -580,7 +620,13 @@ export async function fetchSocialSignals(
 }
 ```
 
-Note: subtracting 0.5 from the sigmoid output shifts the zero-input case to map cleanly to 0 score (since sigmoid(0) = 0.5). The function is monotonic and bounded `[0, 0.5)` in practice — multiply by 2 if you need full `[0, 1)`, but the score axis only weighs 0.10 so the natural range is fine.
+Note: subtracting 0.5 from the sigmoid output anchors the zero-input case at 0 (since sigmoid(0) = 0.5); the ×2 then expands the monotonic range to `[0, 1)` to match the axis contract / acceptance criterion. The axis is weighted 0.10 in the composite.
+
+> **Execution note (2026-05-15):** Controller-authorized corrections to the original plan, applied during execution:
+> 1. **`computeSocialScore` range** — original `sigmoid(0.3·fp+0.5·fl)-0.5` capped at ~0.5, failing the `(0.9,1)` test and the "[0,1)" acceptance criterion. A naive ×2 alone saturated to exactly 1.0 (float64 sigmoid → 1.0 at arg≈80). Fixed to `2·(sigmoid(0.03·fp+0.05·fl)-0.5)` — same 3:5 play:like ratio, scaled to avoid saturation at realistic friend counts. (Note: `Math.exp` underflows to 0 at arg ≳ 745, so the strict `<1` bound holds for realistic counts, not literally infinite scale — the regression test uses `friendsLiked: 500`.)
+> 2. **`fetchSocialSignals.friendsLiked`** — original referenced `logs.liked`, a column that does not exist (the `likes` table is review-only). Repointed to `logs.rating >= 7` (rating is a 0–10 scale per `lib/logs/server-actions.ts`; ≥7 is a clear positive).
+> 3. **Module structure + testing** — kept eager `import { db } from "@/lib/db"` (matches sibling `lib/recs/candidate-pool.ts` and the repo-wide convention); the unit test uses `vi.mock("@/lib/db", …)` + `await import(...)` mirroring `tests/unit/candidate-pool-prefilter.test.ts` (the established pattern in 16+ test files). `server-only` is globally aliased to a stub by `vitest.config.ts`.
+> 4. **Type + guards** — extracted `export type SocialSignals`; added a sign-guard test (single weak signal) and a saturation-regression test (the only guard protecting correction #1).
 
 - [ ] **Step 4: Run test — expect PASS**
 
@@ -701,7 +747,12 @@ Expected: FAIL — module not found.
 Create `lib/recs/soft-negative.ts`:
 
 ```ts
-const HALF_LIFE_DAYS = 14;
+// Exponential recovery time-constant (NOT a half-life). After τ days the
+// dismissal penalty has lifted ~63% (1 - e^-1); the true 50% point is
+// τ·ln2 ≈ 9.7 days. Spec prose says "14-day half-life" loosely — this is
+// the time-constant of that decay, and the test thresholds are calibrated
+// to this exponential curve (a true-half-life formula would fail them).
+const DECAY_TIME_CONSTANT_DAYS = 14;
 
 export type DismissalState = {
   dismissedAt: Date | null;
@@ -709,18 +760,28 @@ export type DismissalState = {
   neverAgain: boolean;
 };
 
+/**
+ * Recovery MULTIPLIER for dismissal soft-negatives (NOT a penalty magnitude).
+ * 1.0 = no penalty (use the candidate as-is); 0 = hard exclude (never-again
+ * or an active snooze). The caller multiplies the composite score by this:
+ * `composite * softNegativePenalty(state)`.
+ */
 export function softNegativePenalty(state: DismissalState, now: Date = new Date()): number {
   if (state.neverAgain) return 0;
   if (state.snoozedUntil !== null && state.snoozedUntil.getTime() > now.getTime()) return 0;
   if (state.dismissedAt === null) return 1.0;
 
   const days = (now.getTime() - state.dismissedAt.getTime()) / (24 * 60 * 60 * 1000);
-  if (days < 0) return 1.0; // dismissedAt in future = data glitch, ignore
+  if (days < 0) return 1.0; // clock skew / backfilled rows can yield dismissedAt > now; treat as not-yet-decayed
 
-  const penalty = 1 - Math.exp(-days / HALF_LIFE_DAYS);
+  const penalty = 1 - Math.exp(-days / DECAY_TIME_CONSTANT_DAYS);
   return Math.max(0, Math.min(1, penalty));
 }
 ```
+
+> **Execution note (2026-05-15):** Two code-review refinements applied (math UNCHANGED — the spec thresholds + 2 of 3 decay tests are calibrated to this exponential time-constant curve; a true-half-life formula would fail them):
+> 1. Renamed `HALF_LIFE_DAYS` → `DECAY_TIME_CONSTANT_DAYS` with a WHY comment. `1 - exp(-days/14)` makes 14 the time-constant τ, not the half-life (true 50% point ≈ τ·ln2 ≈ 9.7d; at 14d the penalty has lifted ~63%). The old name encoded a false invariant. Added a JSDoc documenting that the return is a *retention multiplier* (1.0 = keep, 0 = exclude), since the polarity inverts the word "penalty" and Task 6 does `composite * softNegativePenalty(...)`.
+> 2. Added 3 tests (now 10 total): a curve-identity pin (`daysAgo(14)` ≈ `1 - e^-1`, catches a future half-life "fix"), the future-`dismissedAt` glitch branch (`daysAhead(3)` → 1.0), and the `dismissedAt === now` boundary (→ ~0). Shipped commit `056501f`.
 
 - [ ] **Step 4: Run test — expect PASS**
 
@@ -846,6 +907,23 @@ export const SCORE_WEIGHTS = {
   libraryBonus: 0.1,
 } as const;
 
+// composeScore relies on the weights forming a convex combination (sum = 1)
+// so the weighted blend stays in [0,1]. These weights are a product decision
+// that WILL be re-tuned (see design spec) — guard the invariant at module
+// load so an unbalanced re-tune fails `next build`, not silently in prod.
+if (
+  Math.abs(
+    SCORE_WEIGHTS.taste +
+      SCORE_WEIGHTS.mood +
+      SCORE_WEIGHTS.timeFit +
+      SCORE_WEIGHTS.social +
+      SCORE_WEIGHTS.libraryBonus -
+      1,
+  ) > 1e-9
+) {
+  throw new Error("SCORE_WEIGHTS must sum to 1.0");
+}
+
 export type ScoreInputs = {
   taste: number;
   mood: number;
@@ -855,6 +933,9 @@ export type ScoreInputs = {
   softNegPenalty: number;
 };
 
+// All axes are assumed finite and in [0,1] (each upstream module self-clamps
+// per its own contract). NaN/Inf propagate by design — fix the upstream
+// source, don't sanitize here.
 export function composeScore(i: ScoreInputs): number {
   const weighted =
     SCORE_WEIGHTS.taste * clamp01(i.taste) +
@@ -862,6 +943,9 @@ export function composeScore(i: ScoreInputs): number {
     SCORE_WEIGHTS.timeFit * clamp01(i.timeFit) +
     SCORE_WEIGHTS.social * clamp01(i.social) +
     SCORE_WEIGHTS.libraryBonus * clamp01(i.libraryBonus);
+  // softNegPenalty is a multiplicative retention gate, NOT a 6th weighted
+  // axis: a 0 penalty (never-again / active snooze) must hard-zero the score
+  // regardless of how strong the other axes are. Do not fold into the sum.
   return clamp01(weighted * clamp01(i.softNegPenalty));
 }
 
@@ -869,6 +953,8 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 ```
+
+> **Execution note (2026-05-15):** Code-review hardening (scoring math + weight values UNCHANGED): added a module-load assertion that `SCORE_WEIGHTS` sums to 1.0 (the spec says these weights will be re-tuned; an unbalanced edit now fails `next build` instead of silently breaking the [0,1] contract in prod), a WHY comment that the soft-neg penalty is a multiplicative hard-exclude gate (not foldable into the weighted sum), and a finite/[0,1] precondition note. Tests extended additively (now 13): an `it.each` isolating all 5 axis weights (catches social↔libraryBonus transposition — both 0.1) + a negative-input lower-clamp test. Shipped commit `00129f4`.
 
 - [ ] **Step 4: Run test — expect PASS**
 
@@ -994,8 +1080,13 @@ export function applyMMR<T>(items: MMRItem<T>[], opts: MMROptions<T>): MMRItem<T
 
     for (let i = 0; i < remaining.length; i++) {
       const cand = remaining[i];
-      // Max similarity to anything already picked
-      let maxSim = 0;
+      // Max similarity to anything already picked. Identity is -Infinity (not
+      // 0): cosine ∈ [-1,1], so an anti-correlated candidate (most diverse)
+      // must yield a negative maxSim and thus a larger diversity bonus than
+      // an orthogonal one. picked is always non-empty here (first pick is
+      // seeded before the loop), so maxSim is always overwritten with a real
+      // similarity — it never leaks -Infinity into mmrVal.
+      let maxSim = -Infinity;
       for (const p of picked) {
         const s = opts.similarity(cand.embedding, p.embedding);
         if (s > maxSim) maxSim = s;
@@ -1025,6 +1116,8 @@ Expected: PASS.
 git add lib/recs/diversity-mmr.ts tests/unit/recs/diversity-mmr.test.ts
 git commit -m "feat(recs): MMR diversity reranking (λ=0.7)"
 ```
+
+> **Execution note (2026-05-15):** Code-review correctness fix (commit `c3de8ce`): `maxSim` init changed `0` → `-Infinity` (the correct max-reduction identity). Task 12 feeds **signed** taste-vector embeddings through an unclamped `[-1,1]` cosine, so the old `0` floor made an anti-correlated candidate (most diverse) indistinguishable from an orthogonal one — silently under-rewarding the diverse tail. Behavior-neutral for the all-non-negative test fixture (so the original 4 tests pass unchanged); added 3 guards (now 7): a λ=0 anti-correlation test that *fails on the old `maxSim=0`*, a deterministic-tie-break test (Task 12 reproducibility), and a single-item boundary.
 
 ---
 
@@ -1128,6 +1221,10 @@ export type WildcardCandidate = {
   genres: string[];
 };
 
+// PRECONDITION: `exploredGenres` members and `genreFrequency` keys MUST be
+// lowercased by the caller. Lookups here lowercase the candidate genre, but
+// games.genres is mixed-case (RAWG/IGDB) — a mixed-case Set/Map silently
+// misclassifies every genre as unexplored and Bucket A swallows the pool.
 type WildcardOpts = {
   exploredGenres: Set<string>;
   genreFrequency?: Map<string, number>; // user's log count per genre
@@ -1166,7 +1263,10 @@ export function pickWildcard(
   if (unexplored.length > 0) {
     pool = unexplored;
   } else if (opts.genreFrequency) {
-    // Score each candidate by inverse of min(genreFreq for its genres)
+    // Rank by each candidate's least-explored genre (min log-frequency
+    // across its genres), then keep only the globally-least-explored.
+    // `?? Infinity` is a sentinel: a genre absent from genreFrequency
+    // (caller-inconsistent with exploredGenres) sorts as most-explored.
     const scored = filtered.map((c) => {
       const freqs = c.genres.map((g) => opts.genreFrequency!.get(g.toLowerCase()) ?? Infinity);
       const minFreq = Math.min(...freqs);
@@ -1178,7 +1278,9 @@ export function pickWildcard(
     pool = filtered;
   }
 
-  // Constrained random within pool, deterministic via seed
+  // Constrained random within pool. With a seed → deterministic (Task 12
+  // passes a per-request seed for reproducible recs). No seed → wall-clock
+  // entropy by design: a fresh wildcard each call. Not for client/SSR paths.
   const rand = mulberry32(opts.seed ?? Date.now());
   const idx = Math.floor(rand() * pool.length);
   return pool[idx];
@@ -1196,6 +1298,8 @@ Expected: PASS.
 git add lib/recs/wildcard.ts tests/unit/recs/wildcard.test.ts
 git commit -m "feat(recs): wildcard slot via constrained-random sampling from unexplored clusters"
 ```
+
+> **Execution note (2026-05-15):** Code-review hardening (algorithm byte-unchanged; commit `5cde8b3`). (1) Added a PRECONDITION doc on `WildcardOpts`: callers MUST lowercase `exploredGenres`/`genreFrequency` keys — `games.genres` is mixed-case, and a mixed-case Set/Map silently makes Bucket A swallow the whole pool. **Task 12 must lowercase when building these.** (2) Pinned the PRNG with a golden-value test (`seed: 7` on a 3-item pool → gameId `1`; mulberry32(7) first = 0.0117 → idx 0) so a PRNG regression fails loudly — the old determinism test only checked self-consistency. (3) Added the previously-untested `else pool=filtered` fallback test + a multi-unexplored Bucket-A test. (4) Fixed an inaccurate "inverse" comment and documented the `?? Infinity` sentinel + the `Date.now()` seed-fallback fork. Note for Task 9/12: this module's score field is `composite`, vs `MMRItem.score` elsewhere — the integrator maps `.score → .composite` deliberately.
 
 ---
 
@@ -1351,8 +1455,18 @@ type AssignOpts = {
 };
 
 const SLOT_TARGETS = { comfort: 3, backlog: 1, friends: 1, wildcard: 1 } as const;
+// Derive the grid size from SLOT_TARGETS so a re-tune can't silently desync
+// the demotion cap from the slot budget (cf. the SCORE_WEIGHTS sum guard).
+const GRID_SIZE =
+  SLOT_TARGETS.comfort + SLOT_TARGETS.backlog + SLOT_TARGETS.friends + SLOT_TARGETS.wildcard;
 const BACKING_FLOOR = 0.5;
 
+/**
+ * Stratifies scored candidates into the 6-card grid (3 Comfort + Backlog +
+ * Friends + Wildcard, with graceful demotion). Returned `BucketedCandidate`s
+ * shallow-copy the input and SHARE the `genres` array by reference — callers
+ * (Task 12) must treat returned candidates as read-only.
+ */
 export function assignBuckets(
   candidates: ScoredCandidate[],
   opts: AssignOpts,
@@ -1363,11 +1477,14 @@ export function assignBuckets(
   const used = new Set<number>();
   const out: BucketedCandidate[] = [];
 
-  // 1. Comfort — top 3 by composite, regardless of bucket properties
+  // 1. Comfort — top 3 by composite. Intentionally NOT floor-gated:
+  // Comfort is the guaranteed-fill tier (graceful fill even below floor).
+  let comfortCount = 0;
   for (const c of sorted) {
-    if (out.filter((x) => x.slot === "comfort").length >= SLOT_TARGETS.comfort) break;
+    if (comfortCount >= SLOT_TARGETS.comfort) break;
     out.push({ ...c, slot: "comfort" });
     used.add(c.gameId);
+    comfortCount++;
   }
 
   // 2. Backlog — highest-scored library candidate above floor
@@ -1406,7 +1523,7 @@ export function assignBuckets(
   }
 
   // 5. Demote empty slots to extra Comfort
-  while (out.length < 6) {
+  while (out.length < GRID_SIZE) {
     const next = sorted.find((c) => !used.has(c.gameId));
     if (!next) break;
     out.push({ ...next, slot: "comfort" });
@@ -1428,6 +1545,8 @@ Expected: PASS.
 git add lib/recs/buckets.ts tests/unit/recs/buckets.test.ts
 git commit -m "feat(recs): stratified bucket assignment (3 Comfort + Backlog + Friends + Wildcard)"
 ```
+
+> **Execution note (2026-05-15):** Added during execution: a 4-line PRECONDITION doc on `AssignOpts` propagating Task 8's lowercased-keys contract (initial commit `526bb1b`). Then code-review hardening (algorithm behavior-neutral; commit `b2b266e`): derived `GRID_SIZE` from `SLOT_TARGETS` (the demote cap was a hardcoded `6` that could silently desync from a re-tuned slot budget — same invariant-drift class as the T6 `SCORE_WEIGHTS` guard); replaced the Step-1 in-loop `out.filter(...)` with a `comfortCount` counter (equivalent, clearer intent) + a WHY comment that Comfort is intentionally not floor-gated; added a return-contract JSDoc (returned candidates share `genres` array refs — read-only). Tests 5→8: floor-respect (the `composite>=floor` clause was previously unexercised — deleting it kept all tests green), explicit slot-priority (Backlog precedes Friends), and determinism (same input+seed → identical grid). **Carry-forward to Task 12:** treat the grid size as `SLOT_TARGETS`-derived, not a literal `6`; and the `exploredGenres`/`genreFrequency` lowercased-keys precondition applies when calling `assignBuckets` (forwarded into `pickWildcard`).
 
 ---
 

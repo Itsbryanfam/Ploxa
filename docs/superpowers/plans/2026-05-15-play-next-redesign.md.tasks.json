@@ -4,58 +4,58 @@
     {
       "id": 1,
       "subject": "Task 1: Migration 0018 + schema delta",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Schema delta on `recommendations` — add `slot`, `dismissed_at`, `snoozed_until`, `never_again` columns and the `rec_slot` enum.\n\n**Files:**\n- Create: `lib/db/migrations/0018_play_next_redesign.sql`\n- Modify: `lib/db/schema.ts`\n- Create: `tests/unit/recs/schema-v2.test.ts`\n\n**Verify:** `pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/schema-v2.test.ts && pnpm db:check`\n\n```json:metadata\n{\"files\": [\"lib/db/migrations/0018_play_next_redesign.sql\", \"lib/db/schema.ts\", \"tests/unit/recs/schema-v2.test.ts\"], \"verifyCommand\": \"pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/schema-v2.test.ts && pnpm db:check\", \"acceptanceCriteria\": [\"0018 SQL applies cleanly\", \"rec_slot enum has 4 values\", \"4 new columns on recommendations\", \"Drizzle snapshot integrity holds\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Mood affinity table",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Fixed lookup table + `moodMatchScore` helper.\n\n**Files:**\n- Create: `lib/recs/mood-affinity.ts`\n- Create: `tests/unit/recs/mood-affinity.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/mood-affinity.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/mood-affinity.ts\", \"tests/unit/recs/mood-affinity.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/mood-affinity.test.ts\", \"acceptanceCriteria\": [\"Every mood has an entry\", \"No genre in both boost and penalize\", \"moodMatchScore bounded [0,1]\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Time-fit scoring",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Gaussian time-fit scoring + `isTimeFeasible` hard-cap check.\n\n**Files:**\n- Create: `lib/recs/time-fit.ts`\n- Create: `tests/unit/recs/time-fit.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/time-fit.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/time-fit.ts\", \"tests/unit/recs/time-fit.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/time-fit.test.ts\", \"acceptanceCriteria\": [\"Gaussian peaks at sweet spot\", \"Hard caps return 0\", \"NULL hours returns 0.5\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Social score",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Compute social-axis from follow-graph activity.\n\n**Files:**\n- Create: `lib/recs/social-score.ts`\n- Create: `tests/unit/recs/social-score.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/social-score.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/social-score.ts\", \"tests/unit/recs/social-score.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/social-score.test.ts\", \"acceptanceCriteria\": [\"Returns 0 with no friends\", \"Sigmoid-bounded\", \"Bulk fetch helper works\"]}\n```",
       "blockedBy": [1]
     },
     {
       "id": 5,
       "subject": "Task 5: Soft-negative penalty",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Time-decayed dismissal penalty + snooze + never-again.\n\n**Files:**\n- Create: `lib/recs/soft-negative.ts`\n- Create: `tests/unit/recs/soft-negative.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/soft-negative.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/soft-negative.ts\", \"tests/unit/recs/soft-negative.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/soft-negative.test.ts\", \"acceptanceCriteria\": [\"never_again returns 0\", \"snoozed_until in future returns 0\", \"14-day half-life decay\"]}\n```",
       "blockedBy": [1]
     },
     {
       "id": 6,
       "subject": "Task 6: Composite scoring",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Combine 5 axes with locked weights and soft-neg penalty.\n\n**Files:**\n- Create: `lib/recs/scoring.ts`\n- Create: `tests/unit/recs/scoring.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/scoring.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/scoring.ts\", \"tests/unit/recs/scoring.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/scoring.test.ts\", \"acceptanceCriteria\": [\"Weights sum to 1.0\", \"Output bounded [0,1]\", \"Soft-neg multiplied last\"]}\n```",
       "blockedBy": [2, 3, 4, 5]
     },
     {
       "id": 7,
       "subject": "Task 7: MMR diversity",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Maximal Marginal Relevance reranking (λ=0.7) for diversity.\n\n**Files:**\n- Create: `lib/recs/diversity-mmr.ts`\n- Create: `tests/unit/recs/diversity-mmr.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/diversity-mmr.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/diversity-mmr.ts\", \"tests/unit/recs/diversity-mmr.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/diversity-mmr.test.ts\", \"acceptanceCriteria\": [\"λ=1.0 preserves score order\", \"λ=0.7 promotes diversity\", \"topN respected\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: Wildcard picker",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Pick from genre clusters the user has never logged from.\n\n**Files:**\n- Create: `lib/recs/wildcard.ts`\n- Create: `tests/unit/recs/wildcard.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/wildcard.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/wildcard.ts\", \"tests/unit/recs/wildcard.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/wildcard.test.ts\", \"acceptanceCriteria\": [\"Prefers unexplored genres\", \"Falls back to least-explored\", \"Deterministic with seed\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: Bucket assignment",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Stratify into 3 Comfort + 1 Backlog + 1 Friends + 1 Wildcard with graceful demotion.\n\n**Files:**\n- Create: `lib/recs/buckets.ts`\n- Create: `tests/unit/recs/buckets.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/buckets.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/buckets.ts\", \"tests/unit/recs/buckets.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/buckets.test.ts\", \"acceptanceCriteria\": [\"Empty backlog demotes to Comfort\", \"Empty friends demotes to Comfort\", \"No duplicates across slots\", \"Returns 6 when input rich\"]}\n```",
       "blockedBy": [6, 7, 8]
     },
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T00:00:00.000Z"
+  "lastUpdated": "2026-05-15T17:00:00.000Z"
 }
