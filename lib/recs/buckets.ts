@@ -24,8 +24,18 @@ type AssignOpts = {
 };
 
 const SLOT_TARGETS = { comfort: 3, backlog: 1, friends: 1, wildcard: 1 } as const;
+// Derive the grid size from SLOT_TARGETS so a re-tune can't silently desync
+// the demotion cap from the slot budget (cf. the SCORE_WEIGHTS sum guard).
+const GRID_SIZE =
+  SLOT_TARGETS.comfort + SLOT_TARGETS.backlog + SLOT_TARGETS.friends + SLOT_TARGETS.wildcard;
 const BACKING_FLOOR = 0.5;
 
+/**
+ * Stratifies scored candidates into the 6-card grid (3 Comfort + Backlog +
+ * Friends + Wildcard, with graceful demotion). Returned `BucketedCandidate`s
+ * shallow-copy the input and SHARE the `genres` array by reference — callers
+ * (Task 12) must treat returned candidates as read-only.
+ */
 export function assignBuckets(
   candidates: ScoredCandidate[],
   opts: AssignOpts,
@@ -36,11 +46,14 @@ export function assignBuckets(
   const used = new Set<number>();
   const out: BucketedCandidate[] = [];
 
-  // 1. Comfort — top 3 by composite, regardless of bucket properties
+  // 1. Comfort — top 3 by composite. Intentionally NOT floor-gated:
+  // Comfort is the guaranteed-fill tier (graceful fill even below floor).
+  let comfortCount = 0;
   for (const c of sorted) {
-    if (out.filter((x) => x.slot === "comfort").length >= SLOT_TARGETS.comfort) break;
+    if (comfortCount >= SLOT_TARGETS.comfort) break;
     out.push({ ...c, slot: "comfort" });
     used.add(c.gameId);
+    comfortCount++;
   }
 
   // 2. Backlog — highest-scored library candidate above floor
@@ -79,7 +92,7 @@ export function assignBuckets(
   }
 
   // 5. Demote empty slots to extra Comfort
-  while (out.length < 6) {
+  while (out.length < GRID_SIZE) {
     const next = sorted.find((c) => !used.has(c.gameId));
     if (!next) break;
     out.push({ ...next, slot: "comfort" });

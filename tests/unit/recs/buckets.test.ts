@@ -90,4 +90,49 @@ describe("assignBuckets", () => {
     const out = assignBuckets(cands, { exploredGenres: new Set(), seed: 1 });
     expect(out.length).toBe(2);
   });
+
+  it("rejects a library candidate below the backing floor from the backlog slot", () => {
+    const cands = [
+      mkCand(1, 0.9),
+      mkCand(2, 0.85),
+      mkCand(3, 0.8),
+      mkCand(4, 0.45, { inLibrary: true }), // inLibrary but BELOW 0.5 floor
+      mkCand(5, 0.6, { socialScore: 0.4 }),
+      mkCand(6, 0.5, { genres: ["roguelike"] }),
+    ];
+    const out = assignBuckets(cands, { exploredGenres: new Set(["puzzle"]), seed: 1 });
+    // floor clause must exclude id4 from backlog; deleting `&& composite>=floor`
+    // would make this fail (id4 would take the backlog slot).
+    expect(out.some((c) => c.slot === "backlog")).toBe(false);
+    expect(out.find((c) => c.gameId === 4)?.slot).not.toBe("backlog");
+  });
+
+  it("assigns an inLibrary+social candidate to backlog (Step 2 precedes Step 3)", () => {
+    const cands = [
+      mkCand(1, 0.9),
+      mkCand(2, 0.85),
+      mkCand(3, 0.8),
+      mkCand(4, 0.7, { inLibrary: true, socialScore: 0.5 }), // eligible for BOTH
+      mkCand(5, 0.6, { genres: ["roguelike"] }),
+    ];
+    const out = assignBuckets(cands, { exploredGenres: new Set(["puzzle"]), seed: 1 });
+    expect(out.find((c) => c.gameId === 4)?.slot).toBe("backlog");
+    expect(out.some((c) => c.slot === "friends")).toBe(false);
+  });
+
+  it("is deterministic: identical input + seed yields an identical grid", () => {
+    const cands = [
+      mkCand(1, 0.9),
+      mkCand(2, 0.85),
+      mkCand(3, 0.8),
+      mkCand(4, 0.7, { inLibrary: true }),
+      mkCand(5, 0.65, { socialScore: 0.4 }),
+      mkCand(6, 0.5, { genres: ["roguelike"] }),
+      mkCand(7, 0.45, { genres: ["metroidvania"] }),
+    ];
+    const opts = { exploredGenres: new Set(["puzzle"]), seed: 99 };
+    const a = assignBuckets(cands, opts);
+    const b = assignBuckets(cands, opts);
+    expect(a.map((c) => `${c.gameId}:${c.slot}`)).toEqual(b.map((c) => `${c.gameId}:${c.slot}`));
+  });
 });
