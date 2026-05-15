@@ -318,9 +318,11 @@ export function PlayNextClient({
               ? "You don’t have any logs yet — log a game first."
               : recsState.reason === "no-candidates"
                 ? "No picks match — try widening your filters or removing a refinement."
-                : recsState.reason === "error"
-                  ? "Couldn’t load picks just now — change a filter to try again."
-                  : "Something went wrong."}
+                : recsState.reason === "rate-limited"
+                  ? "Too many tweaks too fast — give it a minute, then try again."
+                  : recsState.reason === "error"
+                    ? "Couldn’t load picks just now — change a filter to try again."
+                    : "Something went wrong."}
           </p>
         </MascotPrompt>
       )}
