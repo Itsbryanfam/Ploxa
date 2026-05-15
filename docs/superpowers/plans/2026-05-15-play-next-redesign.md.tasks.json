@@ -74,7 +74,7 @@
     {
       "id": 12,
       "subject": "Task 12: getRecs orchestration rewrite",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Wire new scoring + MMR + buckets + wildcard + refinements into getRecs.\n\n**Files:**\n- Modify: `lib/recs/server-actions.ts`\n- Create: `tests/integration/recs/get-recs.test.ts`\n\n**Verify:** `pnpm vitest run tests/integration/recs/get-recs.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/server-actions.ts\", \"tests/integration/recs/get-recs.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/integration/recs/get-recs.test.ts\", \"acceptanceCriteria\": [\"Refinements parameter accepted\", \"rerank-only mode used when refinements present\", \"6 bucketed RecCards returned\", \"slot field on every card\"]}\n```",
       "blockedBy": [1, 5, 6, 7, 8, 9, 10, 11]
     },
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T18:30:00.000Z"
+  "lastUpdated": "2026-05-15T20:00:00.000Z"
 }
