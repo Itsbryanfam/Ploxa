@@ -25,6 +25,8 @@ const LABELS: Record<Slot, string> = {
 const STYLES: Record<Slot, string> = {
   comfort: "bg-[var(--bg-elev)] text-[var(--text-dim)]",
   backlog: "bg-[var(--accent)]/10 text-[var(--accent)]",
+  // friends: literal blue — no blue theme token exists; intentional
+  // exception to this file's CSS-var convention until one is added.
   friends: "bg-[#3b82f6]/15 text-[#7aa7ff]",
   wildcard:
     "bg-[var(--pixel)]/15 text-[var(--pixel)] ring-1 ring-[var(--pixel)]/40",
