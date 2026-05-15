@@ -107,7 +107,7 @@
     {
       "id": 17,
       "subject": "Task 17: RefinementInput",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Free-text input + quick chips + active pills + URL state.\n\n**Files:**\n- Create: `components/recs/refinement-input.tsx`\n- Create: `tests/unit/recs/refinement-input.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/refinement-input.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/refinement-input.tsx\", \"tests/unit/recs/refinement-input.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/refinement-input.test.tsx\", \"acceptanceCriteria\": [\"Quick chips commit on click\", \"Enter commits text\", \"Active pills dismissable\", \"140-char clamp\", \"Max 5 active (drops oldest)\"]}\n```"
     },
     {
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T22:15:00.000Z"
+  "lastUpdated": "2026-05-15T22:50:00.000Z"
 }
