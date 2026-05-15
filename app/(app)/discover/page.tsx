@@ -4,10 +4,12 @@ import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getPopularGames } from "@/lib/social/discovery/popular-games";
 import { getTrendingReviews } from "@/lib/social/discovery/trending-reviews";
 import { getSimilarUsers } from "@/lib/social/discovery/similar-users";
+import { getActiveFeaturedList } from "@/lib/recaps/featured-read";
 
 import { PopularGamesGrid } from "@/components/discovery/popular-games-grid";
 import { TrendingReviewsList } from "@/components/discovery/trending-reviews-list";
 import { SimilarUsersRow } from "@/components/discovery/similar-users-row";
+import { FeaturedListCard } from "@/components/recaps/FeaturedListCard";
 
 export const metadata = {
   title: "Discover",
@@ -26,11 +28,12 @@ export const metadata = {
  */
 export default async function DiscoverPage() {
   const user = await getCachedUser();
-  const [popular, trending, similar] = await Promise.all([
+  const [popular, trending, similar, featured] = await Promise.all([
     getPopularGames(4),
     getTrendingReviews(user?.id ?? null, 4),
     // getSimilarUsers signature is (viewerId: string, limit) — non-null only.
     user ? getSimilarUsers(user.id, 4) : Promise.resolve([]),
+    getActiveFeaturedList("discover_landing"),
   ]);
 
   return (
@@ -41,6 +44,12 @@ export default async function DiscoverPage() {
           What the community is playing, reading, and recommending this week.
         </p>
       </header>
+
+      {featured && (
+        <section aria-label="Featured list">
+          <FeaturedListCard pin={featured} />
+        </section>
+      )}
 
       <section className="space-y-4">
         <div className="flex items-baseline justify-between gap-4">
