@@ -1,0 +1,90 @@
+import { pickWildcard, type WildcardCandidate } from "@/lib/recs/wildcard";
+
+export type ScoredCandidate = {
+  gameId: number;
+  composite: number;
+  inLibrary: boolean;
+  socialScore: number; // 0..1
+  genres: string[];
+};
+
+export type BucketedCandidate = ScoredCandidate & {
+  slot: "comfort" | "backlog" | "friends" | "wildcard";
+};
+
+// PRECONDITION: `exploredGenres` members and `genreFrequency` keys MUST be
+// lowercased by the caller — forwarded as-is into pickWildcard, which
+// lowercases candidate genres for comparison. games.genres is mixed-case
+// (RAWG/IGDB); a mixed-case Set/Map silently breaks the wildcard slot.
+type AssignOpts = {
+  exploredGenres: Set<string>;
+  genreFrequency?: Map<string, number>;
+  seed?: number;
+  minBackingThreshold?: number; // floor for backlog/friends slots
+};
+
+const SLOT_TARGETS = { comfort: 3, backlog: 1, friends: 1, wildcard: 1 } as const;
+const BACKING_FLOOR = 0.5;
+
+export function assignBuckets(
+  candidates: ScoredCandidate[],
+  opts: AssignOpts,
+): BucketedCandidate[] {
+  if (candidates.length === 0) return [];
+  const floor = opts.minBackingThreshold ?? BACKING_FLOOR;
+  const sorted = [...candidates].sort((a, b) => b.composite - a.composite);
+  const used = new Set<number>();
+  const out: BucketedCandidate[] = [];
+
+  // 1. Comfort — top 3 by composite, regardless of bucket properties
+  for (const c of sorted) {
+    if (out.filter((x) => x.slot === "comfort").length >= SLOT_TARGETS.comfort) break;
+    out.push({ ...c, slot: "comfort" });
+    used.add(c.gameId);
+  }
+
+  // 2. Backlog — highest-scored library candidate above floor
+  const backlog = sorted.find(
+    (c) => !used.has(c.gameId) && c.inLibrary && c.composite >= floor,
+  );
+  if (backlog) {
+    out.push({ ...backlog, slot: "backlog" });
+    used.add(backlog.gameId);
+  }
+
+  // 3. Friends — highest-scored social>0 candidate above floor
+  const friends = sorted.find(
+    (c) => !used.has(c.gameId) && c.socialScore > 0 && c.composite >= floor,
+  );
+  if (friends) {
+    out.push({ ...friends, slot: "friends" });
+    used.add(friends.gameId);
+  }
+
+  // 4. Wildcard — unexplored cluster sample
+  const wcInput: WildcardCandidate[] = sorted
+    .filter((c) => !used.has(c.gameId))
+    .map((c) => ({ gameId: c.gameId, composite: c.composite, genres: c.genres }));
+  const wcPick = pickWildcard(wcInput, {
+    exploredGenres: opts.exploredGenres,
+    genreFrequency: opts.genreFrequency,
+    seed: opts.seed,
+  });
+  if (wcPick) {
+    const full = sorted.find((c) => c.gameId === wcPick.gameId);
+    if (full) {
+      out.push({ ...full, slot: "wildcard" });
+      used.add(full.gameId);
+    }
+  }
+
+  // 5. Demote empty slots to extra Comfort
+  while (out.length < 6) {
+    const next = sorted.find((c) => !used.has(c.gameId));
+    if (!next) break;
+    out.push({ ...next, slot: "comfort" });
+    used.add(next.gameId);
+  }
+
+  return out;
+}
