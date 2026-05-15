@@ -25,8 +25,13 @@ export function applyMMR<T>(items: MMRItem<T>[], opts: MMROptions<T>): MMRItem<T
 
     for (let i = 0; i < remaining.length; i++) {
       const cand = remaining[i];
-      // Max similarity to anything already picked
-      let maxSim = 0;
+      // Max similarity to anything already picked. Identity is -Infinity (not
+      // 0): cosine ∈ [-1,1], so an anti-correlated candidate (most diverse)
+      // must yield a negative maxSim and thus a larger diversity bonus than
+      // an orthogonal one. picked is always non-empty here (first pick is
+      // seeded before the loop), so maxSim is always overwritten with a real
+      // similarity — it never leaks -Infinity into mmrVal.
+      let maxSim = -Infinity;
       for (const p of picked) {
         const s = opts.similarity(cand.embedding, p.embedding);
         if (s > maxSim) maxSim = s;

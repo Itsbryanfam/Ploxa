@@ -45,4 +45,36 @@ describe("applyMMR", () => {
   it("returns empty array for empty input", () => {
     expect(applyMMR([], { lambda: 0.7, topN: 5, similarity: sim })).toEqual([]);
   });
+
+  it("with λ=0 (pure diversity) prefers an anti-correlated item over an orthogonal one", () => {
+    // Guards the maxSim=-Infinity identity fix. With λ=0, mmrVal = -maxSim,
+    // so the most-dissimilar candidate wins. "opposite" has cosine -1 to the
+    // seed (max diversity); "orthogonal" has cosine 0. The OLD maxSim=0 floor
+    // made both yield maxSim=0 → tie → wrong pick ("orthogonal").
+    const items: MMRItem<string>[] = [
+      { id: "seed", score: 0.9, embedding: [1, 0] },
+      { id: "orthogonal", score: 0.5, embedding: [0, 1] },
+      { id: "opposite", score: 0.5, embedding: [-1, 0] },
+    ];
+    const out = applyMMR(items, { lambda: 0, topN: 2, similarity: sim });
+    expect(out.map((i) => i.id)).toEqual(["seed", "opposite"]);
+  });
+
+  it("breaks ties deterministically in input order (Task 12 reproducibility)", () => {
+    const tied: MMRItem<string>[] = [
+      { id: "x", score: 0.8, embedding: [1, 0, 0] },
+      { id: "y", score: 0.8, embedding: [0, 1, 0] },
+      { id: "z", score: 0.8, embedding: [0, 0, 1] },
+    ];
+    const out = applyMMR(tied, { lambda: 1.0, topN: 3, similarity: sim });
+    expect(out.map((i) => i.id)).toEqual(["x", "y", "z"]);
+  });
+
+  it("returns the single item for a one-element input", () => {
+    const out = applyMMR(
+      [{ id: "solo", score: 0.7, embedding: [1] }],
+      { lambda: 0.7, topN: 5, similarity: sim },
+    );
+    expect(out.map((i) => i.id)).toEqual(["solo"]);
+  });
 });
