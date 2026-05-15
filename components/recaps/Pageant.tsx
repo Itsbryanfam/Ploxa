@@ -11,20 +11,9 @@ import {
 import type { RecapMode, RecapPayload, SceneId } from "@/lib/recaps/types";
 import { getScene } from "@/lib/recaps/scenes";
 
-import dynamic from "next/dynamic";
-
 import { PageantControls } from "./PageantControls";
 import { PageantProgressBar } from "./PageantProgressBar";
 import { ClosingScene } from "./scenes/ClosingScene";
-
-// Lazy-loaded so the server-action import chain (refresh-action → rate-limit →
-// Redis) does not execute during module evaluation. This keeps Pageant's module
-// graph free of server-only initialisation side-effects, which matters for the
-// pageant-state reducer tests that import Pageant directly.
-const RefreshButton = dynamic(
-  () => import("./RefreshButton").then((m) => ({ default: m.RefreshButton })),
-  { ssr: false },
-);
 import { CompletionRatioScene } from "./scenes/CompletionRatioScene";
 import { GenreDominanceScene } from "./scenes/GenreDominanceScene";
 import { GotyScene } from "./scenes/GotyScene";
@@ -318,17 +307,9 @@ export function Pageant({
         canForward={state.index < state.total - 1}
         isClosingScene={isClosingScene}
         sharePitch={sharePitch}
+        canRefresh={canRefresh}
+        refreshYear={year}
       />
-
-      {/* Refresh affordance — current-year owner only, closing scene only.
-          Rendered outside PageantControls to avoid prop-drilling and to keep
-          ClosingScene itself a pure data-display component. Positioned above
-          the control strip via bottom padding on the control strip area. */}
-      {isClosingScene && canRefresh && year !== undefined && (
-        <div className="absolute bottom-20 left-0 right-0 z-20 flex justify-center">
-          <RefreshButton year={year} />
-        </div>
-      )}
     </div>
   );
 }
