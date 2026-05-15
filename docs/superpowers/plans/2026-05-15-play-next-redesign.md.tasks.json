@@ -127,7 +127,7 @@
     {
       "id": 20,
       "subject": "Task 20: Playwright E2E",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Browser-driven test of core flow.\n\n**Files:**\n- Create: `tests/e2e/play-next-v2.spec.ts`\n- Modify: `components/recs/rec-card.tsx` (add data-testid)\n\n**Verify:** `pnpm playwright test play-next-v2`\n\n```json:metadata\n{\"files\": [\"tests/e2e/play-next-v2.spec.ts\", \"components/recs/rec-card.tsx\"], \"verifyCommand\": \"pnpm playwright test play-next-v2\", \"acceptanceCriteria\": [\"6 cards render\", \"Filter chip popover works\", \"Refinement adds + removes pill\", \"Wildcard slot visually distinct\", \"Dismiss split menu opens\"]}\n```",
       "blockedBy": [19]
     },
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T23:55:00.000Z"
+  "lastUpdated": "2026-05-16T00:30:00.000Z"
 }
