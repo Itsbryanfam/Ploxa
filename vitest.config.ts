@@ -16,7 +16,11 @@ import { resolve } from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/unit/**/*.test.ts", "tests/integration/**/*.test.ts"],
+    include: [
+      "tests/unit/**/*.test.ts",
+      "tests/unit/**/*.test.tsx",
+      "tests/integration/**/*.test.ts",
+    ],
     exclude: ["node_modules", ".next", "tests/e2e/**"],
     coverage: {
       provider: "v8",

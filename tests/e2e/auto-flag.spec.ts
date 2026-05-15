@@ -17,7 +17,7 @@ test("comment with 3+ URLs is auto-flagged, hidden from non-author, visible to a
   // publicUser signs in and posts spammy comment with 3 URLs (link_density rule)
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser.email);
-  await page.getByLabel("Password").fill(publicUser.password);
+  await page.locator("#password").fill(publicUser.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 
@@ -34,7 +34,7 @@ test("comment with 3+ URLs is auto-flagged, hidden from non-author, visible to a
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser2.email);
-  await page.getByLabel("Password").fill(publicUser2.password);
+  await page.locator("#password").fill(publicUser2.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 

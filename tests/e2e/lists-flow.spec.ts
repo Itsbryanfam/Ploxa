@@ -26,7 +26,7 @@ test("create list, add a game via AddToListModal, visit user lists page", async 
   // Log in as publicUser via the password form.
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser.email);
-  await page.getByLabel("Password").fill(publicUser.password);
+  await page.locator("#password").fill(publicUser.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 

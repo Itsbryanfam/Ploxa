@@ -92,6 +92,7 @@ export const emailDigestCadenceEnum = pgEnum("email_digest_cadence", [
   "off",
   "daily",
   "weekly",
+  "monthly",
 ]);
 
 // ─────────────────────────────────────────────────────────────
@@ -132,6 +133,9 @@ export const profiles = pgTable("profiles", {
     .notNull()
     .default("weekly"),
   lastDigestSentAt: timestamp("last_digest_sent_at", { withTimezone: true }),
+  // Phase 6: timestamp of the last monthly-recap email sent. Mirrors
+  // lastDigestSentAt's role for the recap email pre-warm cron.
+  lastRecapSentAt: timestamp("last_recap_sent_at", { withTimezone: true }),
   // Settings overhaul (2026-05-13): soft-delete marker. Reads filter WHERE deleted_at IS NULL.
   // Nightly purge cron removes auth.users rows once deleted_at < NOW() - 30 days.
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -743,8 +747,11 @@ export const aiCalls = pgTable("ai_calls", {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Year-in-review — Forward-looking (Phase 6)
-// Table exists in DB; no app reads yet. Will fill in Phase 6 (weeks 27-30).
+// Year-in-review — Phase 6 (Recaps)
+// Cinematic 11-scene year-in-review pageant. Payload is built by
+// buildRecap({mode:"year", ...}) and persisted here once locked.
+// shareImageHash names the OG share card asset; lockedAt freezes the
+// payload (used for read-only/share-only access after year end).
 // ─────────────────────────────────────────────────────────────
 export const yearInReviews = pgTable(
   "year_in_reviews",
@@ -756,9 +763,60 @@ export const yearInReviews = pgTable(
     year: integer("year").notNull(),
     payload: jsonb("payload").notNull(),
     shareImageUrl: text("share_image_url"),
+    shareImageHash: varchar("share_image_hash", { length: 32 }),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
   },
   (table) => ({
     userYearIdx: uniqueIndex("year_in_reviews_user_year_uniq").on(table.userId, table.year),
   }),
 );
+
+// ─────────────────────────────────────────────────────────────
+// Monthly recaps — Phase 6
+// 7-scene mini-recap variant for the monthly cadence. Same shape as
+// yearInReviews minus a few yearOnly scenes; payload is built by
+// buildRecap({mode:"month", windowStart, windowEnd}).
+// ─────────────────────────────────────────────────────────────
+export const monthlyRecaps = pgTable(
+  "monthly_recaps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    year: integer("year").notNull(),
+    monthIndex: integer("month_index").notNull(),
+    payload: jsonb("payload").notNull(),
+    shareImageHash: varchar("share_image_hash", { length: 32 }),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+  },
+  (table) => ({
+    userYearMonthUniq: uniqueIndex("monthly_recaps_user_year_month_uniq").on(
+      table.userId,
+      table.year,
+      table.monthIndex,
+    ),
+  }),
+);
+
+// ─────────────────────────────────────────────────────────────
+// Featured lists — Phase 6
+// Admin-managed single-row pin on /discover (and potentially other surfaces).
+// The partial unique index on (surface) WHERE pinned_until IS NULL OR
+// pinned_until > now() enforces "one active pin per surface" while
+// preserving history (expired pins fall out of the unique constraint).
+// ─────────────────────────────────────────────────────────────
+export const featuredLists = pgTable("featured_lists", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  listId: uuid("list_id")
+    .notNull()
+    .references(() => lists.id, { onDelete: "cascade" }),
+  surface: varchar("surface", { length: 32 }).notNull(),
+  pinnedAt: timestamp("pinned_at", { withTimezone: true }).notNull().defaultNow(),
+  pinnedUntil: timestamp("pinned_until", { withTimezone: true }),
+  pinnedBy: uuid("pinned_by")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "restrict" }),
+});

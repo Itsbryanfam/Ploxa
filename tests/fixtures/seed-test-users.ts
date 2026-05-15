@@ -149,6 +149,16 @@ export async function seedReview(opts: SeedReviewOptions): Promise<SeededReview>
 export const SEED_GAME_ID = 4;
 
 /**
+ * A pool of real game ids that exist in every test DB. Used by seedLogs to
+ * spread rows across distinct games (the logs table has a unique index on
+ * (user_id, game_id, is_replay), so each game id can host at most 2 rows:
+ * one with is_replay=false, one with is_replay=true).
+ *
+ * Ids verified against the live catalog on 2026-05-14.
+ */
+export const SEED_GAME_IDS = [4, 20, 21, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34] as const;
+
+/**
  * Insert a follow row directly via service-role. Idempotent on PK
  * conflict (23505) — same row already exists, so a noop is the
  * correct outcome.
@@ -185,6 +195,90 @@ export interface SeedListOptions {
 export interface SeededList {
   listId: string;
   slug: string;
+}
+
+/**
+ * Expose the admin client for specs that need direct DB access.
+ * Each call creates a new client instance (cheap — no long-lived connection).
+ */
+export { adminClient };
+
+/**
+ * Options for seedLogs. Spreads N log rows for one user across a date range
+ * using the SEED_GAME_IDS pool. The logs table has a unique index on
+ * (user_id, game_id, is_replay), so we cycle through distinct game ids and
+ * set is_replay=false for all rows (keeping it simple and deterministic).
+ *
+ * The aggregator counts logs via `COALESCE(started_at, last_event_at)`, so
+ * we populate last_event_at at evenly-spaced intervals inside [start, end).
+ */
+export interface SeedLogsOptions {
+  userId: string;
+  count: number;
+  /** ISO date string for window start, e.g. "2026-01-01". */
+  startDate: string;
+  /** ISO date string for window end (exclusive), e.g. "2026-12-31". */
+  endDate: string;
+}
+
+export interface SeededLog {
+  logId: string;
+  gameId: number;
+}
+
+/**
+ * Insert `count` log rows for a user, spread evenly across [startDate, endDate).
+ * Each log uses a distinct game_id from SEED_GAME_IDS (cycles if count > pool).
+ * Status cycles through completed/playing/backlog for realism.
+ * Existing rows for the same (user_id, game_id, is_replay) are deleted first
+ * so the helper is idempotent across repeated runs within a single test suite run.
+ */
+export async function seedLogs(opts: SeedLogsOptions): Promise<SeededLog[]> {
+  const admin = adminClient();
+  const { userId, count, startDate, endDate } = opts;
+
+  const startMs = new Date(startDate).getTime();
+  const endMs = new Date(endDate).getTime();
+  const stepMs = Math.floor((endMs - startMs) / Math.max(count, 1));
+
+  const statuses = ["completed", "playing", "backlog"] as const;
+  const results: SeededLog[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const gameId = SEED_GAME_IDS[i % SEED_GAME_IDS.length];
+    const eventAt = new Date(startMs + stepMs * i).toISOString();
+    const status = statuses[i % statuses.length];
+
+    // Remove any stale row for this (user, game, is_replay) triple first.
+    await admin
+      .from("logs")
+      .delete()
+      .eq("user_id", userId)
+      .eq("game_id", gameId)
+      .eq("is_replay", false);
+
+    const { data: inserted, error } = await admin
+      .from("logs")
+      .insert({
+        user_id: userId,
+        game_id: gameId,
+        status,
+        is_replay: false,
+        last_event_at: eventAt,
+        is_private: false,
+      })
+      .select("id")
+      .single();
+
+    if (error || !inserted) {
+      throw new Error(
+        `seedLogs insert failed for game ${gameId}: ${error?.message ?? "no row returned"}`,
+      );
+    }
+    results.push({ logId: inserted.id, gameId });
+  }
+
+  return results;
 }
 
 /**
