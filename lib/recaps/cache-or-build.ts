@@ -52,12 +52,21 @@ const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 interface CacheOrBuildInput {
   userId: string;
   year: number;
+  /** When true, skip the cache short-circuit and force a fresh aggregator run.
+   *  The locked_at check still takes precedence — locked years are immutable. */
+  forceBuild?: boolean;
+}
+
+export interface CacheOrBuildYearlyResult {
+  payload: RecapPayload;
+  /** The locked_at timestamp string from the DB row, or null if not locked / no row. */
+  lockedAt: string | null;
 }
 
 export async function cacheOrBuildYearly(
   input: CacheOrBuildInput,
-): Promise<RecapPayload> {
-  const { userId, year } = input;
+): Promise<CacheOrBuildYearlyResult> {
+  const { userId, year, forceBuild = false } = input;
 
   // 1. SELECT existing row. The type generic is inlined (rather than a
   // named interface) because drizzle's `db.execute<T>` requires T to
@@ -83,6 +92,7 @@ export async function cacheOrBuildYearly(
   const sevenDaysAgoMs = now.getTime() - ONE_WEEK_MS;
 
   // 2. Cache short-circuit — only when a row exists.
+  // locked_at always wins over forceBuild (locked years are immutable).
   if (rows[0]) {
     const isLocked = rows[0].locked_at !== null;
     const isFreshCurrentYear =
@@ -90,8 +100,8 @@ export async function cacheOrBuildYearly(
       new Date(rows[0].generated_at).getTime() > sevenDaysAgoMs;
     const isPastYear = year < currentYear;
 
-    if (isLocked || isFreshCurrentYear || isPastYear) {
-      return rows[0].payload;
+    if (isLocked || (!forceBuild && (isFreshCurrentYear || isPastYear))) {
+      return { payload: rows[0].payload, lockedAt: rows[0].locked_at };
     }
   }
 
@@ -106,7 +116,7 @@ export async function cacheOrBuildYearly(
 
   // 3a. Sparse short-circuit — return as-is, do NOT write a row.
   if (payload.tier === "too_sparse") {
-    return payload;
+    return { payload, lockedAt: null };
   }
 
   // 3b. AI captions overlay.
@@ -138,7 +148,9 @@ export async function cacheOrBuildYearly(
       generated_at = now()
   `);
 
-  return payload;
+  // Freshly built rows are never locked — locked_at is only set by the
+  // annual_locked cron / T19. Return null to reflect that.
+  return { payload, lockedAt: null };
 }
 
 /**
@@ -173,9 +185,15 @@ interface CacheOrBuildMonthlyInput {
   monthIndex: number; // 1-based
 }
 
+export interface CacheOrBuildMonthlyResult {
+  payload: RecapPayload;
+  /** The locked_at timestamp string from the DB row, or null if not locked / no row. */
+  lockedAt: string | null;
+}
+
 export async function cacheOrBuildMonthly(
   input: CacheOrBuildMonthlyInput,
-): Promise<RecapPayload> {
+): Promise<CacheOrBuildMonthlyResult> {
   const { userId, year, monthIndex } = input;
 
   // 1. SELECT existing row.
@@ -212,7 +230,7 @@ export async function cacheOrBuildMonthly(
       (year === currentYear && monthIndex < currentMonth);
 
     if (isLocked || isFreshCurrentMonth || isPastMonth) {
-      return rows[0].payload;
+      return { payload: rows[0].payload, lockedAt: rows[0].locked_at };
     }
   }
 
@@ -227,7 +245,7 @@ export async function cacheOrBuildMonthly(
 
   // 3a. Sparse short-circuit — return as-is, do NOT write a row.
   if (payload.tier === "too_sparse") {
-    return payload;
+    return { payload, lockedAt: null };
   }
 
   // 3b. AI captions overlay.
@@ -258,5 +276,6 @@ export async function cacheOrBuildMonthly(
       generated_at = now()
   `);
 
-  return payload;
+  // Freshly built monthly rows are never locked.
+  return { payload, lockedAt: null };
 }

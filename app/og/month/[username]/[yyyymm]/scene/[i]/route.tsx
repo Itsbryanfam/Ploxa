@@ -65,7 +65,7 @@ export async function GET(
 
   // Privacy: we do NOT 404 private profiles here — see module comment above.
 
-  const payload = await cacheOrBuildMonthly({
+  const { payload } = await cacheOrBuildMonthly({
     userId: profile.user_id,
     year,
     monthIndex,

@@ -114,7 +114,8 @@ describe("cacheOrBuildYearly — cache branches (no aggregator run)", () => {
 
     const out = await cacheOrBuildYearly({ userId: "u-1", year: 2026 });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBe("2026-01-01T00:00:00.000Z");
     expect(mockExecute).toHaveBeenCalledTimes(1); // SELECT only
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockCaptions).not.toHaveBeenCalled();
@@ -130,7 +131,8 @@ describe("cacheOrBuildYearly — cache branches (no aggregator run)", () => {
 
     const out = await cacheOrBuildYearly({ userId: "u-1", year: 2026 });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBeNull();
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockCaptions).not.toHaveBeenCalled();
@@ -152,7 +154,8 @@ describe("cacheOrBuildYearly — cache branches (no aggregator run)", () => {
 
     const out = await cacheOrBuildYearly({ userId: "u-1", year: 2025 });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBeNull();
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockCaptions).not.toHaveBeenCalled();
@@ -188,8 +191,9 @@ describe("cacheOrBuildYearly — rebuild branches", () => {
     expect(mockCaptions.mock.calls[0]![1]).toBe("u-1");
     // SELECT + UPSERT
     expect(mockExecute).toHaveBeenCalledTimes(2);
-    expect(out.captions).toEqual(captions);
-    expect(out.tier).toBe("ok");
+    expect(out.payload.captions).toEqual(captions);
+    expect(out.payload.tier).toBe("ok");
+    expect(out.lockedAt).toBeNull();
   });
 
   it("builds when no row exists and returns ok: runs aggregator + captions + INSERT", async () => {
@@ -206,7 +210,8 @@ describe("cacheOrBuildYearly — rebuild branches", () => {
     expect(mockBuild).toHaveBeenCalledTimes(1);
     expect(mockCaptions).toHaveBeenCalledTimes(1);
     expect(mockExecute).toHaveBeenCalledTimes(2); // SELECT + INSERT
-    expect(out.captions).toEqual(captions);
+    expect(out.payload.captions).toEqual(captions);
+    expect(out.lockedAt).toBeNull();
   });
 
   it("builds a past year when no row exists (the cache short-circuit only applies when a row is present)", async () => {
@@ -225,7 +230,8 @@ describe("cacheOrBuildYearly — rebuild branches", () => {
     expect(mockBuild).toHaveBeenCalledTimes(1);
     expect(mockCaptions).toHaveBeenCalledTimes(1);
     expect(mockExecute).toHaveBeenCalledTimes(2);
-    expect(out.tier).toBe("ok");
+    expect(out.payload.tier).toBe("ok");
+    expect(out.lockedAt).toBeNull();
   });
 });
 
@@ -236,7 +242,8 @@ describe("cacheOrBuildYearly — too_sparse short-circuit", () => {
 
     const out = await cacheOrBuildYearly({ userId: "u-1", year: 2026 });
 
-    expect(out.tier).toBe("too_sparse");
+    expect(out.payload.tier).toBe("too_sparse");
+    expect(out.lockedAt).toBeNull();
     expect(mockBuild).toHaveBeenCalledTimes(1);
     expect(mockCaptions).not.toHaveBeenCalled();
     // Only the SELECT — no INSERT was issued.
@@ -266,6 +273,7 @@ describe("cacheOrBuildYearly — boundary semantics", () => {
     const out = await cacheOrBuildYearly({ userId: "u-1", year: 2026 });
 
     expect(mockBuild).toHaveBeenCalledTimes(1);
-    expect(out.captions).toEqual({ opening: "rebuilt" });
+    expect(out.payload.captions).toEqual({ opening: "rebuilt" });
+    expect(out.lockedAt).toBeNull();
   });
 });

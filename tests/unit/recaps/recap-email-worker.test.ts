@@ -244,7 +244,7 @@ describe("annual_preview happy path", () => {
   it("sends to all candidates and updates last_recap_sent_at", async () => {
     const candidates = makeCandidates(2);
     mockExecute.mockResolvedValueOnce(candidates);
-    mockCacheOrBuildYearly.mockResolvedValue(makeOkPayload("yearly"));
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeOkPayload("yearly"), lockedAt: null });
 
     const req = makeRequest({ mode: "annual_preview" });
     const res = await POST(req);
@@ -261,7 +261,7 @@ describe("annual_preview happy path", () => {
 
   it("calls cacheOrBuildYearly (not monthly) for annual_preview", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildYearly.mockResolvedValue(makeOkPayload("yearly"));
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeOkPayload("yearly"), lockedAt: null });
 
     await POST(makeRequest({ mode: "annual_preview" }));
 
@@ -277,7 +277,7 @@ describe("annual_preview happy path", () => {
 describe("annual_locked", () => {
   it("sends email and sets locked_at on year_in_reviews after successful send", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildYearly.mockResolvedValue(makeOkPayload("yearly"));
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeOkPayload("yearly"), lockedAt: null });
 
     const req = makeRequest({ mode: "annual_locked" });
     const res = await POST(req);
@@ -291,7 +291,7 @@ describe("annual_locked", () => {
 
   it("does NOT set locked_at when send fails (Resend error)", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildYearly.mockResolvedValue(makeOkPayload("yearly"));
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeOkPayload("yearly"), lockedAt: null });
     mockEmailsSend.mockResolvedValueOnce({ data: null, error: { message: "send failed" } });
 
     const req = makeRequest({ mode: "annual_locked" });
@@ -316,7 +316,7 @@ describe("monthly mode", () => {
     vi.setSystemTime(fakeNow);
 
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildMonthly.mockResolvedValue(makeOkPayload("monthly"));
+    mockCacheOrBuildMonthly.mockResolvedValue({ payload: makeOkPayload("monthly"), lockedAt: null });
 
     await POST(makeRequest({ mode: "monthly" }));
 
@@ -332,7 +332,7 @@ describe("monthly mode", () => {
     vi.setSystemTime(fakeNow);
 
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildMonthly.mockResolvedValue(makeOkPayload("monthly"));
+    mockCacheOrBuildMonthly.mockResolvedValue({ payload: makeOkPayload("monthly"), lockedAt: null });
 
     await POST(makeRequest({ mode: "monthly" }));
 
@@ -345,7 +345,7 @@ describe("monthly mode", () => {
 
   it("calls cacheOrBuildMonthly (not yearly) for monthly mode", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildMonthly.mockResolvedValue(makeOkPayload("monthly"));
+    mockCacheOrBuildMonthly.mockResolvedValue({ payload: makeOkPayload("monthly"), lockedAt: null });
 
     await POST(makeRequest({ mode: "monthly" }));
 
@@ -361,7 +361,7 @@ describe("monthly mode", () => {
 describe("sparse tier", () => {
   it("counts as skipped, does NOT send email, does NOT update last_recap_sent_at", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildYearly.mockResolvedValue(makeSparsePayload());
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeSparsePayload(), lockedAt: null });
 
     const res = await POST(makeRequest({ mode: "annual_preview" }));
     const json = await res.json();
@@ -377,8 +377,8 @@ describe("sparse tier", () => {
     const [c1, c2] = makeCandidates(2);
     mockExecute.mockResolvedValueOnce([c1, c2]);
     mockCacheOrBuildYearly
-      .mockResolvedValueOnce(makeSparsePayload())
-      .mockResolvedValueOnce(makeOkPayload("yearly"));
+      .mockResolvedValueOnce({ payload: makeSparsePayload(), lockedAt: null })
+      .mockResolvedValueOnce({ payload: makeOkPayload("yearly"), lockedAt: null });
 
     const res = await POST(makeRequest({ mode: "annual_preview" }));
     const json = await res.json();
@@ -396,7 +396,7 @@ describe("sparse tier", () => {
 describe("Resend error", () => {
   it("counts as failed when Resend returns an error object", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildYearly.mockResolvedValue(makeOkPayload("yearly"));
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeOkPayload("yearly"), lockedAt: null });
     mockEmailsSend.mockResolvedValueOnce({ data: null, error: { message: "rate limited" } });
 
     const res = await POST(makeRequest({ mode: "annual_preview" }));
@@ -410,7 +410,7 @@ describe("Resend error", () => {
   it("one row fails, next succeeds — batch continues (failed=1, sent=1)", async () => {
     const [c1, c2] = makeCandidates(2);
     mockExecute.mockResolvedValueOnce([c1, c2]);
-    mockCacheOrBuildYearly.mockResolvedValue(makeOkPayload("yearly"));
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeOkPayload("yearly"), lockedAt: null });
     // First send fails, second succeeds
     mockEmailsSend
       .mockResolvedValueOnce({ data: null, error: { message: "send failed" } })
@@ -439,7 +439,7 @@ describe("DB resilience", () => {
 
   it("counts as sent even if last_recap_sent_at DB update fails (best-effort)", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildYearly.mockResolvedValue(makeOkPayload("yearly"));
+    mockCacheOrBuildYearly.mockResolvedValue({ payload: makeOkPayload("yearly"), lockedAt: null });
     // Make the update chain throw
     mockWhere.mockRejectedValueOnce(new Error("deadlock"));
 
@@ -453,7 +453,7 @@ describe("DB resilience", () => {
 
   it("catches pipeline exception per-row (cacheOrBuild throws) → counts as failed", async () => {
     mockExecute.mockResolvedValueOnce(makeCandidates(1));
-    mockCacheOrBuildYearly.mockRejectedValueOnce(new Error("AI provider 500"));
+    mockCacheOrBuildYearly.mockRejectedValueOnce(new Error("AI provider 500")); // still throws — correct behavior
 
     const res = await POST(makeRequest({ mode: "annual_preview" }));
     const json = await res.json();

@@ -8,6 +8,8 @@ import { cacheOrBuildYearly } from "@/lib/recaps/cache-or-build";
 import { getProfileByUsername } from "@/lib/profile/server-actions";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 
+const CURRENT_YEAR = new Date().getUTCFullYear();
+
 /**
  * /u/[username]/year/[year] — canonical year-in-review page.
  *
@@ -72,8 +74,8 @@ const getYearPageData = cache(async (username: string, year: number) => {
   const isOwner = viewer?.id === profile.userId;
   if (!profile.isPublic && !isOwner) return null;
 
-  const payload = await cacheOrBuildYearly({ userId: profile.userId, year });
-  return { profile, viewer, isOwner, payload };
+  const { payload, lockedAt } = await cacheOrBuildYearly({ userId: profile.userId, year });
+  return { profile, viewer, isOwner, payload, lockedAt };
 });
 
 export async function generateMetadata({
@@ -125,7 +127,7 @@ export default async function YearPage({ params, searchParams }: PageProps) {
   const data = await getYearPageData(username, year);
   if (!data) notFound();
 
-  const { payload } = data;
+  const { payload, lockedAt, isOwner } = data;
 
   // Sparse-data tier: SparseDataState handles its own mascot + CTA layout.
   // cacheOrBuildYearly returned `too_sparse` WITHOUT writing a row, so the
@@ -134,6 +136,10 @@ export default async function YearPage({ params, searchParams }: PageProps) {
   if (payload.tier === "too_sparse") {
     return <SparseDataState username={username} mode="yearly" />;
   }
+
+  // canRefresh: current-year owner can re-run the aggregator (T20).
+  // Only offered when the recap is not locked (locked = finalized for the year).
+  const canRefresh = isOwner && year === CURRENT_YEAR && !lockedAt && payload.tier === "ok";
 
   // `scene` is the deep-link target index, e.g. /year/2026?scene=3. T12
   // wires this into Pageant's initial state. Non-numeric values silently
@@ -147,6 +153,8 @@ export default async function YearPage({ params, searchParams }: PageProps) {
       payload={payload}
       mode="yearly"
       initialSceneIndex={initialSceneIndex}
+      canRefresh={canRefresh}
+      year={year}
     />
   );
 }

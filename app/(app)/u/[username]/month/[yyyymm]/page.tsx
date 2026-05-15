@@ -80,12 +80,12 @@ const getMonthPageData = cache(
     const isOwner = viewer?.id === profile.userId;
     if (!profile.isPublic && !isOwner) return null;
 
-    const payload = await cacheOrBuildMonthly({
+    const { payload, lockedAt } = await cacheOrBuildMonthly({
       userId: profile.userId,
       year,
       monthIndex,
     });
-    return { profile, viewer, isOwner, payload };
+    return { profile, viewer, isOwner, payload, lockedAt };
   },
 );
 
@@ -137,7 +137,7 @@ export default async function MonthPage({ params, searchParams }: PageProps) {
   const data = await getMonthPageData(username, year, monthIndex);
   if (!data) notFound();
 
-  const { payload } = data;
+  const { payload } = data; // lockedAt present in data but not used on monthly page
 
   // Sparse-data tier: SparseDataState handles its own layout. cacheOrBuildMonthly
   // returned too_sparse WITHOUT writing a row — once the user adds enough logs

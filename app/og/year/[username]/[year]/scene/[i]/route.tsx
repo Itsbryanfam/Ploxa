@@ -58,7 +58,7 @@ export async function GET(
 
   // Privacy: we do NOT 404 private profiles here — see module comment above.
 
-  const payload = await cacheOrBuildYearly({ userId: profile.user_id, year });
+  const { payload } = await cacheOrBuildYearly({ userId: profile.user_id, year });
 
   // Out-of-range scene index: render summary card rather than 404.
   // This keeps unfurlers from showing a broken card when a recap is rebuilt

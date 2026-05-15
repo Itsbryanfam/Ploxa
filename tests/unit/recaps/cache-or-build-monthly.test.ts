@@ -125,7 +125,8 @@ describe("cacheOrBuildMonthly — cache branches (no aggregator run)", () => {
       monthIndex: 6,
     });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBe("2026-01-01T00:00:00.000Z");
     expect(mockExecute).toHaveBeenCalledTimes(1); // SELECT only
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockCaptions).not.toHaveBeenCalled();
@@ -145,7 +146,8 @@ describe("cacheOrBuildMonthly — cache branches (no aggregator run)", () => {
       monthIndex: 6,
     });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBeNull();
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockCaptions).not.toHaveBeenCalled();
@@ -172,7 +174,8 @@ describe("cacheOrBuildMonthly — cache branches (no aggregator run)", () => {
       monthIndex: 5,
     });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBeNull();
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockCaptions).not.toHaveBeenCalled();
@@ -198,7 +201,8 @@ describe("cacheOrBuildMonthly — cache branches (no aggregator run)", () => {
       monthIndex: 12,
     });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBeNull();
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockCaptions).not.toHaveBeenCalled();
@@ -239,8 +243,9 @@ describe("cacheOrBuildMonthly — rebuild branches", () => {
     expect(mockCaptions.mock.calls[0]![1]).toBe("u-1");
     // SELECT + UPSERT
     expect(mockExecute).toHaveBeenCalledTimes(2);
-    expect(out.captions).toEqual(captions);
-    expect(out.tier).toBe("ok");
+    expect(out.payload.captions).toEqual(captions);
+    expect(out.payload.tier).toBe("ok");
+    expect(out.lockedAt).toBeNull();
   });
 
   it("builds when no row exists and buildRecap returns ok: runs aggregator + captions + INSERT", async () => {
@@ -261,8 +266,9 @@ describe("cacheOrBuildMonthly — rebuild branches", () => {
     expect(mockBuild).toHaveBeenCalledTimes(1);
     expect(mockCaptions).toHaveBeenCalledTimes(1);
     expect(mockExecute).toHaveBeenCalledTimes(2); // SELECT + INSERT
-    expect(out.captions).toEqual(captions);
-    expect(out.tier).toBe("ok");
+    expect(out.payload.captions).toEqual(captions);
+    expect(out.payload.tier).toBe("ok");
+    expect(out.lockedAt).toBeNull();
   });
 
   it("builds a past month when no row exists (cache short-circuit only applies when a row is present)", async () => {
@@ -285,7 +291,8 @@ describe("cacheOrBuildMonthly — rebuild branches", () => {
     expect(mockBuild).toHaveBeenCalledTimes(1);
     expect(mockCaptions).toHaveBeenCalledTimes(1);
     expect(mockExecute).toHaveBeenCalledTimes(2);
-    expect(out.tier).toBe("ok");
+    expect(out.payload.tier).toBe("ok");
+    expect(out.lockedAt).toBeNull();
   });
 
   it("passes correct windowStart/windowEnd to buildRecap for June 2026 (monthIndex=6, 1-based)", async () => {
@@ -321,7 +328,8 @@ describe("cacheOrBuildMonthly — too_sparse short-circuit", () => {
       monthIndex: 6,
     });
 
-    expect(out.tier).toBe("too_sparse");
+    expect(out.payload.tier).toBe("too_sparse");
+    expect(out.lockedAt).toBeNull();
     expect(mockBuild).toHaveBeenCalledTimes(1);
     expect(mockCaptions).not.toHaveBeenCalled();
     // Only the SELECT — no INSERT was issued.
@@ -355,7 +363,8 @@ describe("cacheOrBuildMonthly — boundary semantics", () => {
     });
 
     expect(mockBuild).toHaveBeenCalledTimes(1);
-    expect(out.captions).toEqual({ opening: "rebuilt" });
+    expect(out.payload.captions).toEqual({ opening: "rebuilt" });
+    expect(out.lockedAt).toBeNull();
   });
 
   it("treats January 2026 as a past month when current month is June 2026", async () => {
@@ -379,7 +388,8 @@ describe("cacheOrBuildMonthly — boundary semantics", () => {
       monthIndex: 1,
     });
 
-    expect(out).toBe(cached);
+    expect(out.payload).toBe(cached);
+    expect(out.lockedAt).toBeNull();
     expect(mockBuild).not.toHaveBeenCalled();
     expect(mockExecute).toHaveBeenCalledTimes(1);
   });

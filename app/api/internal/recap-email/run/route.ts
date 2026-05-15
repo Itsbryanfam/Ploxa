@@ -200,14 +200,14 @@ export async function POST(request: Request) {
         // Pre-warm / build the recap row
         let payload;
         if (mode === "annual_preview" || mode === "annual_locked") {
-          payload = await cacheOrBuildYearly({ userId: candidate.user_id, year });
+          ({ payload } = await cacheOrBuildYearly({ userId: candidate.user_id, year }));
         } else {
           // monthIndex is always non-null for "monthly" mode (see deriveWindow)
-          payload = await cacheOrBuildMonthly({
+          ({ payload } = await cacheOrBuildMonthly({
             userId: candidate.user_id,
             year,
             monthIndex: monthIndex!,
-          });
+          }));
         }
 
         // Sparse tier → skip, no email, no timestamp update
