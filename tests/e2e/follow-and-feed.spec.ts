@@ -18,7 +18,7 @@ test("publicUser can follow publicUser2 and see Following state", async ({
   // Log in as publicUser via the password form.
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser.email);
-  await page.getByLabel("Password").fill(publicUser.password);
+  await page.locator("#password").fill(publicUser.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL("/home");
 
@@ -53,7 +53,7 @@ test("follower sees followee's review publish in their feed", async ({
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser.email);
-  await page.getByLabel("Password").fill(publicUser.password);
+  await page.locator("#password").fill(publicUser.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 

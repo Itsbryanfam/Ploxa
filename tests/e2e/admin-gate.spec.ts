@@ -17,7 +17,7 @@ import { test, expect } from "../fixtures/test-base";
 test("non-admin GET on /admin/reports returns 404", async ({ page, publicUser }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser.email);
-  await page.getByLabel("Password").fill(publicUser.password);
+  await page.locator("#password").fill(publicUser.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 

@@ -18,7 +18,7 @@ test("comment + reply + edit + soft-delete preserves thread structure", async ({
   // Sign in as publicUser
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser.email);
-  await page.getByLabel("Password").fill(publicUser.password);
+  await page.locator("#password").fill(publicUser.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 

@@ -20,7 +20,7 @@ test("action triggers notification + bell badge updates + mark-all-read works", 
   // Sign in as publicUser2 (the recipient) to confirm zero starting state.
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser2.email);
-  await page.getByLabel("Password").fill(publicUser2.password);
+  await page.locator("#password").fill(publicUser2.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 
@@ -31,7 +31,7 @@ test("action triggers notification + bell badge updates + mark-all-read works", 
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser.email);
-  await page.getByLabel("Password").fill(publicUser.password);
+  await page.locator("#password").fill(publicUser.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 
@@ -52,7 +52,7 @@ test("action triggers notification + bell badge updates + mark-all-read works", 
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("Email").fill(publicUser2.email);
-  await page.getByLabel("Password").fill(publicUser2.password);
+  await page.locator("#password").fill(publicUser2.password);
   await page.getByRole("button", { name: /log in/i }).click();
   await page.waitForURL(/\/home/);
 
