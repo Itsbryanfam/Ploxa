@@ -1101,7 +1101,10 @@ async function metadataOnlyRecs(
 /**
  * Owner-only dismissal. Sets `dismissed=true` so the row drops out of the
  * cache-hit window for future getRecs calls and feeds the rerank prompt's
- * negative-context SELECT. Deliberately does NOT delete the row.
+ * negative-context SELECT. Also stamps `dismissedAt` so T5's
+ * `softNegativePenalty` (read via getRecs' negMap from
+ * `recommendations.dismissedAt`) applies its time-decayed soft-negative
+ * penalty to the game. Deliberately does NOT delete the row.
  *
  * No cache invalidation: the four remaining non-dismissed rows for the
  * current cache key continue to serve. The /play-next page revalidates so a
@@ -1123,7 +1126,64 @@ export async function dismissRec(
 
   await db
     .update(recommendations)
-    .set({ dismissed: true })
+    .set({ dismissed: true, dismissedAt: new Date() })
+    .where(eq(recommendations.id, recId));
+
+  revalidatePath("/play-next");
+  return { ok: true };
+}
+
+/**
+ * Owner-only 30-day snooze. Sets `snoozedUntil` so T5's softNegativePenalty
+ * (read via getRecs' negMap) hard-excludes the game until it lapses, then
+ * lets it decay back in. Does NOT set `dismissed` — a snooze is temporary.
+ */
+export async function snoozeRec(
+  recId: string,
+): Promise<{ ok: true } | { ok: false; reason: "unauthorized" | "not-found" }> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const [row] = await db
+    .select({ id: recommendations.id, userId: recommendations.userId })
+    .from(recommendations)
+    .where(eq(recommendations.id, recId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
+
+  await db
+    .update(recommendations)
+    .set({ snoozedUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) })
+    .where(eq(recommendations.id, recId));
+
+  revalidatePath("/play-next");
+  return { ok: true };
+}
+
+/**
+ * Owner-only permanent exclusion. Sets `neverAgain` (hard-excluded forever by
+ * T5's softNegativePenalty) plus `dismissedAt` so the row also drops via the
+ * existing dismissal path. Intentionally does NOT delete the row (kept for
+ * the rerank negative-context SELECT).
+ */
+export async function neverAgainRec(
+  recId: string,
+): Promise<{ ok: true } | { ok: false; reason: "unauthorized" | "not-found" }> {
+  const me = await getCachedUser();
+  if (!me) return { ok: false, reason: "unauthorized" };
+
+  const [row] = await db
+    .select({ id: recommendations.id, userId: recommendations.userId })
+    .from(recommendations)
+    .where(eq(recommendations.id, recId))
+    .limit(1);
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
+
+  await db
+    .update(recommendations)
+    .set({ neverAgain: true, dismissedAt: new Date() })
     .where(eq(recommendations.id, recId));
 
   revalidatePath("/play-next");
