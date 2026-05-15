@@ -20,6 +20,7 @@ import { assignBuckets, type ScoredCandidate } from "@/lib/recs/buckets";
 import { cacheKey } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
 import { applyMMR } from "@/lib/recs/diversity-mmr";
+import { isRecsV2Enabled } from "@/lib/recs/feature-flag";
 import { moodMatchScore } from "@/lib/recs/mood-affinity";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
 import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
@@ -387,6 +388,8 @@ export async function getRecs(
 ): Promise<RecResult> {
   const me = await getCachedUser();
   if (!me) return { ok: false, reason: "unauthorized" };
+
+  if (!isRecsV2Enabled(me.id)) return getRecsLegacy(rawFilters);
 
   // Hoist one wall-clock per request (T5) — fed to softNegativePenalty and
   // the snooze gate so a single call can't straddle a tick boundary.
