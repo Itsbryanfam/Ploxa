@@ -6,7 +6,13 @@ import {
   updateEmailType,
 } from "@/lib/settings/notification-prefs-actions";
 
-type Cadence = "off" | "daily" | "weekly";
+// Mirror of email_digest_cadence pgEnum values. 'monthly' is reserved
+// for the Phase 6 recap email pre-warm cron; the digest cadence picker
+// does not surface it as a user option (recap cadence lives elsewhere
+// in its own toggle), but the union must accept it so a profile already
+// set to 'monthly' flows through this page without a type error.
+type Cadence = "off" | "daily" | "weekly" | "monthly";
+type DigestCadence = Exclude<Cadence, "monthly">;
 
 interface InitialPrefs {
   emailDigestCadence: Cadence;
@@ -20,7 +26,7 @@ interface Props {
   initial: InitialPrefs;
 }
 
-const CADENCE_OPTIONS: { value: Cadence; label: string }[] = [
+const CADENCE_OPTIONS: { value: DigestCadence; label: string }[] = [
   { value: "off", label: "Off" },
   { value: "daily", label: "Daily" },
   { value: "weekly", label: "Weekly" },
@@ -64,7 +70,7 @@ export function NotificationPrefsForm({ initial }: Props) {
     });
   }
 
-  function handleCadenceChange(next: Cadence) {
+  function handleCadenceChange(next: DigestCadence) {
     const prev = cadence;
     setError(null);
     setCadence(next);
@@ -115,7 +121,7 @@ export function NotificationPrefsForm({ initial }: Props) {
           id="cadence-select"
           value={cadence}
           disabled={cadencePending}
-          onChange={(e) => handleCadenceChange(e.target.value as Cadence)}
+          onChange={(e) => handleCadenceChange(e.target.value as DigestCadence)}
           className={[
             "w-48 rounded-md border border-[var(--border)] bg-[var(--bg-card)]",
             "px-3 py-2 text-sm text-[var(--text)]",
