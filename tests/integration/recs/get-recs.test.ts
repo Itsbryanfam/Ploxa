@@ -104,6 +104,45 @@ function queue(final: unknown[]) {
   return c;
 }
 
+// ── post-rerank slot-UPDATE recorder ─────────────────────────────────
+// The v2 getRecs post-rerank stage fires one
+//   db.update(recommendations).set({ slot }).where(and(eq…, inArray(gameId, gids)))
+// per distinct bucket slot. We record { slot, gameIds } per call so the
+// happy-path test can assert the partition contract: every slot ∈ the 4
+// rails, no duplicate slots, and the per-call gameId sets are pairwise
+// DISJOINT with a union equal to the bucketed set.
+//
+// `.set({ slot })` is captured directly. The gameId list is recovered by
+// walking the composed Drizzle `and(...)` SQL object passed to `.where()`
+// and collecting every `Param` whose `.value` is a number — that is
+// exactly the `inArray(recommendations.gameId, gids)` payload, because the
+// sibling `eq()` clauses bind string/boolean params (userId / cacheKey /
+// dismissed), never numbers. Verified against drizzle-orm's SQL chunk tree
+// for this exact `and()` composition.
+type RecordedUpdate = { slot: unknown; gameIds: number[] };
+const recordedUpdates: RecordedUpdate[] = [];
+
+function extractGameIds(whereArg: unknown): number[] {
+  const nums: number[] = [];
+  const seen = new Set<object>();
+  const walk = (o: unknown): void => {
+    if (o == null || typeof o !== "object") return;
+    if (seen.has(o as object)) return;
+    seen.add(o as object);
+    if (Array.isArray(o)) {
+      for (const x of o) walk(x);
+      return;
+    }
+    const v = (o as { value?: unknown }).value;
+    if (typeof v === "number") nums.push(v);
+    for (const k of Object.keys(o as Record<string, unknown>)) {
+      walk((o as Record<string, unknown>)[k]);
+    }
+  };
+  walk(whereArg);
+  return nums;
+}
+
 // Re-export the REAL schema (pure Drizzle table descriptors, no side
 // effects) so transitive consumers (lib/logs/select.ts → `schema.logs`)
 // still resolve. We replace ONLY `db` with the chainable queue mock;
@@ -129,9 +168,30 @@ vi.mock("@/lib/db", async () => {
       // and the orchestration only `await Promise.all(...)`s the result
       // without inspecting it, so an independent no-op chain is correct
       // and keeps the select queue aligned regardless of slot cardinality.
+      //
+      // The chain stays a functional no-op; we additionally RECORD each
+      // call's `.set({ slot })` and the `inArray` gameId list from
+      // `.where()` so the partition contract can be asserted.
       update: vi.fn(() => {
         const c = createChain([]);
         (c.update as (...a: unknown[]) => unknown)();
+        const rec: RecordedUpdate = { slot: undefined, gameIds: [] };
+        let recorded = false;
+        const origSet = c.set as (...a: unknown[]) => unknown;
+        c.set = vi.fn((...args: unknown[]) => {
+          const payload = args[0] as { slot?: unknown } | undefined;
+          rec.slot = payload?.slot;
+          return origSet(...args);
+        });
+        const origWhere = c.where as (...a: unknown[]) => unknown;
+        c.where = vi.fn((...args: unknown[]) => {
+          rec.gameIds = extractGameIds(args[0]);
+          if (!recorded) {
+            recordedUpdates.push(rec);
+            recorded = true;
+          }
+          return origWhere(...args);
+        });
         return c;
       }),
     },
@@ -242,6 +302,7 @@ const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
 
 beforeEach(() => {
   chainQueue.length = 0;
+  recordedUpdates.length = 0;
   lastFetchBody = null;
   fetchMock.mockClear();
   candidatePoolMock.mockClear();
@@ -347,6 +408,44 @@ describe("getRecs v2 — full sharpening/tier orchestration", () => {
     expect(lastFetchBody?.userRefinements).toEqual([]);
     expect(Array.isArray(lastFetchBody?.candidateIds)).toBe(true);
     expect((lastFetchBody?.candidateIds as number[]).length).toBeGreaterThan(0);
+
+    // ── post-rerank slot-UPDATE partition contract ───────────────────
+    // The bySlot grouping fires one UPDATE per distinct bucket slot. Pin:
+    //   (a) it actually fired,
+    //   (b) every recorded slot ∈ the 4 rails,
+    //   (c) no slot is updated twice (≤4 calls, one per distinct slot),
+    //   (d) the per-call gameId sets are pairwise DISJOINT, and
+    //   (e) their union == the bucketed gameId universe.
+    //
+    // The universe is taken from the Edge request body's `candidateIds`
+    // (production sets it to `bucketed.map(b => b.gameId)`), which is the
+    // EXACT set the post-rerank UPDATE iterates (`slotByGameId` is built
+    // from the same `bucketed` array). Asserting against the live bucketed
+    // set — not the static re-read fixture (`recRows([1..5])`, which models
+    // the independent re-read SELECT and is unrelated to which ids the real
+    // MMR/bucket stage selected) — makes (d)+(e) pin the genuine disjoint-
+    // set safety + full-coverage claim, robust to the wall-clock-seeded
+    // MMR/bucket output rather than a fixture coincidence.
+    expect(recordedUpdates.length).toBeGreaterThan(0);
+    expect(recordedUpdates.length).toBeLessThanOrEqual(4);
+
+    const slots = recordedUpdates.map((u) => u.slot);
+    for (const s of slots) {
+      expect(SLOTS.has(s as string)).toBe(true);
+    }
+    expect(new Set(slots).size).toBe(slots.length); // no duplicate slots
+
+    // Pairwise-disjoint: every gameId appears in exactly one UPDATE call.
+    const allIds = recordedUpdates.flatMap((u) => u.gameIds);
+    expect(allIds.length).toBeGreaterThan(0); // gameIds were observable
+    expect(new Set(allIds).size).toBe(allIds.length);
+
+    // Full-coverage: union of UPDATEd ids == the bucketed universe the
+    // Edge received (and that the post-rerank UPDATE partitions).
+    const bucketedUniverse = new Set(
+      lastFetchBody?.candidateIds as number[],
+    );
+    expect(new Set(allIds)).toEqual(bucketedUniverse);
   });
 
   it("returns { ok:false, reason:'no-candidates' } when the pool is empty", async () => {

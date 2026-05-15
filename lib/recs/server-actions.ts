@@ -104,26 +104,10 @@ function timeWindow(time: TimeBudget): [number, number] {
 
 /**
  * Preserved pre-v2 getRecs, served when the `recsv2` flag is OFF (Task 19
- * adds the flag branch). Verbatim copy of the original — do not edit.
- *
- * Original flow:
- *   1. Cache check — if ≥4 non-dismissed rows exist for (user, cacheKey)
- *      AND every row was generated AFTER the user's `vectorsGeneratedAt`,
- *      we serve the persisted rows as a `"hybrid"` result without any
- *      AI call. The ≥4 threshold (rather than ===5) tolerates the rerank
- *      Edge Function dropping 1 of 5 picks for a hallucinated gameId.
- *   2. Sparse tier — skip AI entirely; use metadataOnlyRecs (the T9 path,
- *      including the T10 RAWG-popularity fallback for thin vectors).
- *   3. Sharpening / full — pull candidate pool, apply hard time + platform
- *      filters BEFORE sending to AI (no point asking the model to consider
- *      candidates that violate hard constraints), then invoke the
- *      rerank-recs Edge Function. On success, re-read the rows the function
- *      persisted under cacheKey and return them as `"ai"`.
- *   4. AI failure — fall back to metadataOnlyRecs with an explanatory
- *      banner. Note: this writes `"similarity"` rows under cacheKey, so a
- *      subsequent same-filter call will cache-hit on those similarity
- *      rows (returned as `"hybrid"`). Acceptable for the demo; a future
- *      task can scope cache hits to AI-derived algorithms if needed.
+ * wires the flag branch). Behaviorally identical to the pre-v2 body; the
+ * only delta vs the original is the two `recommendations` SELECTs now
+ * project `slot` to satisfy the shared `hydrateRecs` row type. Do NOT add
+ * v2 logic here — deleted in the post-rollout cleanup once v2 is default.
  */
 async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
   const me = await getCachedUser();
