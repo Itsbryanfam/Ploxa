@@ -113,7 +113,7 @@
     {
       "id": 18,
       "subject": "Task 18: /play-next page rewire",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Replace wizard flow with live page — chips + refinement + 3x2 grid + URL state.\n\n**Files:**\n- Modify: `app/(app)/play-next/page.tsx`\n- Modify: `app/(app)/play-next/_client.tsx`\n\n**Verify:** Manual smoke + `pnpm tsc --noEmit && pnpm vitest run tests/`\n\n```json:metadata\n{\"files\": [\"app/(app)/play-next/page.tsx\", \"app/(app)/play-next/_client.tsx\"], \"verifyCommand\": \"pnpm tsc --noEmit && pnpm vitest run tests/\", \"acceptanceCriteria\": [\"3x2 grid renders\", \"Filter chips edit in-place\", \"Refinement input above grid\", \"URL reflects filters + refinements\", \"Empty + loading states\"]}\n```",
       "blockedBy": [12, 15, 16, 17]
     },
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T22:50:00.000Z"
+  "lastUpdated": "2026-05-15T23:30:00.000Z"
 }
