@@ -81,14 +81,14 @@
     {
       "id": 13,
       "subject": "Task 13: Snooze + Never-again actions",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add snoozeRec + neverAgainRec; convert dismissRec to soft-delete.\n\n**Files:**\n- Modify: `lib/recs/server-actions.ts`\n- Create: `tests/unit/recs/dismissal-actions.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/dismissal-actions.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/server-actions.ts\", \"tests/unit/recs/dismissal-actions.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/dismissal-actions.test.ts\", \"acceptanceCriteria\": [\"snoozeRec sets snoozed_until +30d\", \"neverAgainRec sets flag + dismissed_at\", \"dismissRec is now soft-delete\"]}\n```",
       "blockedBy": [1]
     },
     {
       "id": 14,
       "subject": "Task 14: UI atoms (ConfidencePill, SlotBadge, LibraryBadge)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Three small presentational components.\n\n**Files:**\n- Create: `components/recs/atoms/confidence-pill.tsx`\n- Create: `components/recs/atoms/slot-badge.tsx`\n- Create: `components/recs/atoms/library-badge.tsx`\n- Create: `tests/unit/recs/atoms.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/atoms.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/atoms/confidence-pill.tsx\", \"components/recs/atoms/slot-badge.tsx\", \"components/recs/atoms/library-badge.tsx\", \"tests/unit/recs/atoms.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/atoms.test.tsx\", \"acceptanceCriteria\": [\"3 confidence tiers render\", \"4 slot variants render\", \"LibraryBadge renders\"]}\n```"
     },
     {
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T20:00:00.000Z"
+  "lastUpdated": "2026-05-15T21:00:00.000Z"
 }
