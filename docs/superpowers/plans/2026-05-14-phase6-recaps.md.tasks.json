@@ -1,0 +1,166 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-14-phase6-recaps.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Migrations 0016 + 0017 + schema types",
+      "status": "pending",
+      "description": "**Goal:** Land schema delta — new tables `monthly_recaps` + `featured_lists`, columns on `year_in_reviews` + `profiles`, and `monthly` enum value on `email_digest_cadence`.\n\n**Files:** lib/db/migrations/0016_phase6_recaps.sql, lib/db/migrations/0017_phase6_enum.sql, lib/db/schema.ts, tests/unit/recaps/schema.test.ts\n\n**Verify:** `pnpm tsc --noEmit && pnpm vitest run tests/unit/recaps/schema.test.ts && pnpm db:check`\n\n```json:metadata\n{\"files\":[\"lib/db/migrations/0016_phase6_recaps.sql\",\"lib/db/migrations/0017_phase6_enum.sql\",\"lib/db/schema.ts\",\"tests/unit/recaps/schema.test.ts\"],\"verifyCommand\":\"pnpm tsc --noEmit && pnpm vitest run tests/unit/recaps/schema.test.ts && pnpm db:check\",\"acceptanceCriteria\":[\"0016 SQL applies cleanly\",\"0017 SQL applies (separate file for ALTER TYPE ADD VALUE)\",\"Drizzle exports monthlyRecaps + featuredLists\",\"yearInReviews has shareImageHash + lockedAt\",\"profiles has lastRecapSentAt\",\"email_digest_cadence enum has monthly value\",\"Drizzle snapshot chain valid (db:check passes)\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Types + scene catalog + window helpers",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Foundation types (RecapPayload, Scene, SceneId, RecapMode); 11-entry scene catalog with yearOnly flags + fallback templates; date-window helpers.\n\n**Files:** lib/recaps/types.ts, lib/recaps/scenes.ts, lib/recaps/window.ts, tests/unit/recaps/scenes.test.ts, tests/unit/recaps/window.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/scenes.test.ts tests/unit/recaps/window.test.ts && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"lib/recaps/types.ts\",\"lib/recaps/scenes.ts\",\"lib/recaps/window.ts\",\"tests/unit/recaps/scenes.test.ts\",\"tests/unit/recaps/window.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/scenes.test.ts tests/unit/recaps/window.test.ts && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"11 scene entries with yearOnly flags\",\"filterScenes monthly returns 7, yearly returns 11\",\"7 AI-tagged scenes in yearly\",\"yearWindow and monthWindow return half-open intervals\",\"monthWindow Feb 2024 ends Mar 1 UTC\",\"all fallback templates accept payload arg\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Aggregator (buildRecap) with sparse-data sentinel",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Pure buildRecap function — queries logs/reviews/lists/taste; returns `{tier: 'too_sparse'}` for <10 logs or full payload otherwise.\n\n**Files:** lib/recaps/aggregate.ts, tests/unit/recaps/aggregate.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/aggregate.test.ts && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"lib/recaps/aggregate.ts\",\"tests/unit/recaps/aggregate.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/aggregate.test.ts && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"sparse-data sentinel for <10 logs (no further queries)\",\"totals: totalGames/totalHoursPlayed/completedCount/droppedCount/replayingCount/reviewCount\",\"topGames sorted by rating DESC ties broken by last_event_at\",\"topGenre with percentage + secondGenre\",\"topMechanic from IGDB facets\",\"longestGame by hours_played\",\"favoriteReviewSnippet 60-char slice\",\"all queries parameterized\",\"half-open [start,end) window\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Substitution map in aggregator",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Apply substitution rules — no-Steam → most_replayed, <3 mechanics → top_theme, no quarter variance → completion_ratio, no surprise → mood_themes, 0 reviews → drop reviews scene.\n\n**Files:** lib/recaps/aggregate.ts (extend), tests/unit/recaps/substitutions.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/substitutions.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/aggregate.ts\",\"tests/unit/recaps/substitutions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/substitutions.test.ts\",\"acceptanceCriteria\":[\"no-Steam → most_replayed substitute\",\"<3 mechanics → top_theme substitute\",\"single-quarter → completion_ratio substitute\",\"no surprise → mood_themes substitute\",\"0 reviews → drop reviews scene (no substitute)\",\"≥10 logs always produces ≥8 scenes\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: AI prompts",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Seven scene-specific prompt builders in lib/recaps/prompts.ts — strict shape, no emojis, no exclamation marks, voice locked.\n\n**Files:** lib/recaps/prompts.ts, tests/unit/recaps/prompts.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/prompts.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/prompts.ts\",\"tests/unit/recaps/prompts.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/prompts.test.ts\",\"acceptanceCriteria\":[\"7 builder functions exported\",\"shared constraint suffix appended\",\"no emojis in prompt body\",\"no exclamation marks in prompt body\",\"each accepts the relevant payload slice\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Captions module with retry/fallback",
+      "status": "pending",
+      "blockedBy": [2, 5],
+      "description": "**Goal:** generateCaption(scene, payload) → string. Calls lib/ai/router.ts with zod schema; falls back to scene.fallbackTemplate on any failure; logs to ai_calls.\n\n**Files:** lib/recaps/captions.ts, tests/unit/recaps/captions.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/captions.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/captions.ts\",\"tests/unit/recaps/captions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/captions.test.ts\",\"acceptanceCriteria\":[\"success path returns AI caption\",\"zod validation failure retries once then fallback\",\"AiProviderError → fallback no throw\",\"ai_calls row written every attempt\",\"generateAllCaptions parallelizes via Promise.all\",\"non-AI scenes use fallbackTemplate directly\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Featured-list server actions",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** getActiveFeaturedList + pinFeaturedList + unpinFeaturedList in lib/recaps/featured.ts (server actions) + lib/recaps/featured-read.ts (cached reader). Admin-only writes.\n\n**Files:** lib/recaps/featured.ts, lib/recaps/featured-read.ts, tests/unit/recaps/featured.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/featured.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/recaps/featured.ts\",\"lib/recaps/featured-read.ts\",\"tests/unit/recaps/featured.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/featured.test.ts\",\"acceptanceCriteria\":[\"getActiveFeaturedList returns summary or null\",\"pin closes existing pin via UPDATE then INSERT in transaction\",\"non-admin caller throws NotAdminError\",\"list-not-found rejected\",\"private-list rejected\",\"revalidatePath /discover + /admin/featured\",\"reader uses React cache()\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Admin /admin/featured page",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "**Goal:** Pin affordance UI — current pin + Unpin button + Pin form. Env-gated by ADMIN_USER_IDS.\n\n**Files:** app/(app)/admin/featured/page.tsx, components/admin/featured-pin-form.tsx, components/admin/featured-current-pin.tsx\n\n**Verify:** `pnpm tsc --noEmit && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/(app)/admin/featured/page.tsx\",\"components/admin/featured-pin-form.tsx\",\"components/admin/featured-current-pin.tsx\"],\"verifyCommand\":\"pnpm tsc --noEmit && pnpm build\",\"acceptanceCriteria\":[\"non-admin viewer 404\",\"current pin renders with Unpin button\",\"Pin form with list input + optional expiry\",\"successful pin revalidates and reflects\",\"build clean (Next.js 16 use-server validation)\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: /discover featured-list render + FeaturedListCard",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "**Goal:** Render active pin (if any) above existing trending sections on /discover landing.\n\n**Files:** app/(app)/discover/page.tsx, components/recaps/FeaturedListCard.tsx, tests/unit/recaps/featured-list-card.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/featured-list-card.test.tsx && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"app/(app)/discover/page.tsx\",\"components/recaps/FeaturedListCard.tsx\",\"tests/unit/recaps/featured-list-card.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/featured-list-card.test.tsx && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"null pin → section absent (no empty state)\",\"active pin renders card above Popular this week\",\"card title + Picked by us + count + cover composite\",\"link routes to /u/{author}/lists/{slug}\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: SparseDataState component",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Mascot empty state for users with <10 logs in window.\n\n**Files:** components/recaps/SparseDataState.tsx, tests/unit/recaps/sparse-data-state.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/sparse-data-state.test.tsx`\n\n```json:metadata\n{\"files\":[\"components/recaps/SparseDataState.tsx\",\"tests/unit/recaps/sparse-data-state.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/sparse-data-state.test.tsx\",\"acceptanceCriteria\":[\"renders mascot + heading + neutral copy\",\"no emojis no exclamation marks\",\"CTA back to /u/{username}\",\"prefers-reduced-motion respected\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: YIR page route + cache-or-build flow",
+      "status": "pending",
+      "blockedBy": [3, 4, 6, 10],
+      "description": "**Goal:** /u/[username]/year/[year]/page.tsx server component implementing the cache-or-build flow.\n\n**Files:** app/(app)/u/[username]/year/[year]/page.tsx, app/(app)/u/[username]/year/[year]/loading.tsx, lib/recaps/cache-or-build.ts, tests/unit/recaps/cache-or-build.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/cache-or-build.test.ts && pnpm tsc --noEmit && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/(app)/u/[username]/year/[year]/page.tsx\",\"app/(app)/u/[username]/year/[year]/loading.tsx\",\"lib/recaps/cache-or-build.ts\",\"tests/unit/recaps/cache-or-build.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/cache-or-build.test.ts && pnpm tsc --noEmit && pnpm build\",\"acceptanceCriteria\":[\"resolves username → profile; private-profile gate 404\",\"locked OR fresh current-year → cached payload no aggregator run\",\"stale OR no row → buildRecap + captions + UPSERT\",\"too_sparse → render SparseDataState no row written\",\"loading.tsx mascot reviewing state\",\"generateMetadata reads ?scene searchParam\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: Pageant component (Framer Motion scene sequencer)",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** Client <Pageant> component — auto-advance scenes with mascot beats; swipe/keyboard/tap controls; progress bar; share affordance.\n\n**Files:** components/recaps/Pageant.tsx, components/recaps/PageantProgressBar.tsx, components/recaps/PageantControls.tsx, tests/unit/recaps/pageant-state.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/pageant-state.test.ts && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"components/recaps/Pageant.tsx\",\"components/recaps/PageantProgressBar.tsx\",\"components/recaps/PageantControls.tsx\",\"tests/unit/recaps/pageant-state.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/pageant-state.test.ts && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"pure pageantReducer extracted\",\"auto-advance 8s default with per-scene override\",\"tap-third-zones + swipe + keyboard work\",\"pause sticky no auto-resume\",\"progress bar L→R fill\",\"closing scene replaces small icon with big share buttons\",\"prefers-reduced-motion zero-duration\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Scene components — data scenes",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** Five non-AI scene components rendering data viz + template-filled caption.\n\n**Files:** components/recaps/scenes/OpeningScene.tsx, components/recaps/scenes/StatsTotalScene.tsx, components/recaps/scenes/TopGamesScene.tsx, components/recaps/scenes/LongestGameScene.tsx, components/recaps/scenes/ReviewsScene.tsx, tests/unit/recaps/scenes-data.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/scenes-data.test.tsx`\n\n```json:metadata\n{\"files\":[\"components/recaps/scenes/OpeningScene.tsx\",\"components/recaps/scenes/StatsTotalScene.tsx\",\"components/recaps/scenes/TopGamesScene.tsx\",\"components/recaps/scenes/LongestGameScene.tsx\",\"components/recaps/scenes/ReviewsScene.tsx\",\"tests/unit/recaps/scenes-data.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/scenes-data.test.tsx\",\"acceptanceCriteria\":[\"each scene is (payload, caption, isActive) → JSX\",\"data viz animates on isActive change\",\"caption always rendered for a11y\",\"prefers-reduced-motion final state instant\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: Scene components — AI-captioned scenes (+ 4 substitutes)",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** Six AI-captioned scene components + 4 substitute scenes for graceful degradation.\n\n**Files:** components/recaps/scenes/{GotyScene,GenreDominanceScene,MechanicLoveScene,SurpriseScene,TasteEvolutionScene,ClosingScene,MostReplayedScene,TopThemeScene,CompletionRatioScene,MoodThemesScene}.tsx, tests/unit/recaps/scenes-ai.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/scenes-ai.test.tsx`\n\n```json:metadata\n{\"files\":[\"components/recaps/scenes/GotyScene.tsx\",\"components/recaps/scenes/GenreDominanceScene.tsx\",\"components/recaps/scenes/MechanicLoveScene.tsx\",\"components/recaps/scenes/SurpriseScene.tsx\",\"components/recaps/scenes/TasteEvolutionScene.tsx\",\"components/recaps/scenes/ClosingScene.tsx\",\"components/recaps/scenes/MostReplayedScene.tsx\",\"components/recaps/scenes/TopThemeScene.tsx\",\"components/recaps/scenes/CompletionRatioScene.tsx\",\"components/recaps/scenes/MoodThemesScene.tsx\",\"tests/unit/recaps/scenes-ai.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/scenes-ai.test.tsx\",\"acceptanceCriteria\":[\"6 primary AI scenes\",\"4 substitute scenes match primary shape\",\"GotyScene: full-bleed cover + title + rating\",\"GenreDominanceScene: large name + donut sliver\",\"ClosingScene: three big share buttons no small icon\",\"all respect prefers-reduced-motion\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: OG endpoint family",
+      "status": "pending",
+      "blockedBy": [11, 13, 14],
+      "description": "**Goal:** Four OG routes (yearly summary, yearly per-scene, monthly summary, monthly per-scene) sharing single Satori card builder.\n\n**Files:** app/og/year/[username]/[year]/route.tsx, app/og/year/[username]/[year]/scene/[i]/route.tsx, app/og/month/[username]/[yyyymm]/route.tsx, app/og/month/[username]/[yyyymm]/scene/[i]/route.tsx, lib/recaps/og/card.tsx, tests/unit/recaps/og.test.tsx\n\n**Verify:** `pnpm vitest run tests/unit/recaps/og.test.tsx && pnpm tsc --noEmit && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/og/year/[username]/[year]/route.tsx\",\"app/og/year/[username]/[year]/scene/[i]/route.tsx\",\"app/og/month/[username]/[yyyymm]/route.tsx\",\"app/og/month/[username]/[yyyymm]/scene/[i]/route.tsx\",\"lib/recaps/og/card.tsx\",\"tests/unit/recaps/og.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/og.test.tsx && pnpm tsc --noEmit && pnpm build\",\"acceptanceCriteria\":[\"all 4 routes return 200 image/png 1200x630\",\"return 200 for private profiles (share is consent)\",\"scene index maps to scene-specific layout\",\"card has gradient + star field + scene hero + footer\",\"no external font fetches at request time\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: Monthly route + page",
+      "status": "pending",
+      "blockedBy": [11, 13, 14],
+      "description": "**Goal:** /u/[username]/month/[yyyymm]/page.tsx mirroring yearly route — different cache table + mode.\n\n**Files:** app/(app)/u/[username]/month/[yyyymm]/page.tsx, app/(app)/u/[username]/month/[yyyymm]/loading.tsx, lib/recaps/cache-or-build.ts (extend), tests/unit/recaps/cache-or-build-monthly.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/cache-or-build-monthly.test.ts && pnpm tsc --noEmit && pnpm build`\n\n```json:metadata\n{\"files\":[\"app/(app)/u/[username]/month/[yyyymm]/page.tsx\",\"app/(app)/u/[username]/month/[yyyymm]/loading.tsx\",\"lib/recaps/cache-or-build.ts\",\"tests/unit/recaps/cache-or-build-monthly.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/cache-or-build-monthly.test.ts && pnpm tsc --noEmit && pnpm build\",\"acceptanceCriteria\":[\"yyyymm parsing rejects invalid input\",\"cacheOrBuildMonthly targets monthly_recaps table\",\"all other behavior mirrors yearly\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: Email template (RecapEmail)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** React Email template — yearly + monthly variants with hero CTA + unsubscribe footer.\n\n**Files:** lib/email/recap-template.tsx, tests/unit/recaps/recap-email.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/recap-email.test.ts`\n\n```json:metadata\n{\"files\":[\"lib/email/recap-template.tsx\",\"tests/unit/recaps/recap-email.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/recap-email.test.ts\",\"acceptanceCriteria\":[\"renderRecapHtml returns string\",\"renderRecapPlainText returns string\",\"recapSubject({mode, year, month?}) helper\",\"yearly + monthly variants differ in hero size\",\"unsubscribe footer reuses signUnsubscribeToken JWT\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 18: Recap-email worker",
+      "status": "pending",
+      "blockedBy": [11, 16, 17],
+      "description": "**Goal:** Header-secret gated batch worker — pre-warms rows + sends emails. Mirrors Phase 5 digest worker.\n\n**Files:** app/api/internal/recap-email/run/route.ts, tests/unit/recaps/recap-email-worker.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/recap-email-worker.test.ts && pnpm tsc --noEmit`\n\n```json:metadata\n{\"files\":[\"app/api/internal/recap-email/run/route.ts\",\"tests/unit/recaps/recap-email-worker.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/recap-email-worker.test.ts && pnpm tsc --noEmit\",\"acceptanceCriteria\":[\"404 for non-matching X-Cron-Secret\",\"body schema {mode: annual_preview|annual_locked|monthly}\",\"cohort filter matches schedule rules\",\"BATCH_CONCURRENCY=5 worker pool\",\"per-row try/catch\",\"profiles.last_recap_sent_at dedupe\",\"Resend error checked explicitly\",\"annual_locked sets locked_at = now()\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 19: pg_cron migration (3 jobs + Jan 5 locking)",
+      "status": "pending",
+      "blockedBy": [18],
+      "description": "**Goal:** Supabase migration with three email cron jobs + Jan 5 locking cron.\n\n**Files:** supabase/migrations/20260514_0001_phase6_recap_cron.sql\n\n**Verify:** Migration apply via `mcp__supabase__apply_migration` (operator-gated).\n\n```json:metadata\n{\"files\":[\"supabase/migrations/20260514_0001_phase6_recap_cron.sql\"],\"verifyCommand\":\"echo 'operator-applied: see T23 close-out doc'\",\"acceptanceCriteria\":[\"Vault secret phase6_cron_secret created (skip-if-exists)\",\"3 email cron jobs schedule + body mode\",\"Jan 5 cron updates year_in_reviews locked_at\",\"uses vault.decrypted_secrets pattern (not current_setting)\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 20: Refresh button + server action",
+      "status": "pending",
+      "blockedBy": [11, 12],
+      "description": "**Goal:** \"Refresh my year\" affordance on YIR page for current-year only; rate-limited 1/day per user.\n\n**Files:** lib/recaps/refresh-action.ts, components/recaps/RefreshButton.tsx, components/recaps/Pageant.tsx (modify), tests/unit/recaps/refresh-action.test.ts\n\n**Verify:** `pnpm vitest run tests/unit/recaps/refresh-action.test.ts && pnpm tsc --noEmit && pnpm build`\n\n```json:metadata\n{\"files\":[\"lib/recaps/refresh-action.ts\",\"components/recaps/RefreshButton.tsx\",\"components/recaps/Pageant.tsx\",\"tests/unit/recaps/refresh-action.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recaps/refresh-action.test.ts && pnpm tsc --noEmit && pnpm build\",\"acceptanceCriteria\":[\"server action verifies session\",\"asserts year=current year and not locked\",\"rate limit 1/day via enforceRateLimit\",\"button hidden when locked_at set\",\"optimistic loading state\",\"rate-limit error surfaces user-readable\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 21: verify-phase-6.ts script",
+      "status": "pending",
+      "blockedBy": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20],
+      "description": "**Goal:** 10-group automated gate matching the spec verify table.\n\n**Files:** scripts/verify-phase-6.ts\n\n**Verify:** `pnpm tsx --conditions react-server --env-file=.env scripts/verify-phase-6.ts`\n\n```json:metadata\n{\"files\":[\"scripts/verify-phase-6.ts\"],\"verifyCommand\":\"pnpm tsx --conditions react-server --env-file=.env scripts/verify-phase-6.ts\",\"acceptanceCriteria\":[\"G1: sparse sentinel no AI calls no row\",\"G2: valid payload zod-validated\",\"G3: monthly returns 7 scenes\",\"G4: no-Steam substitute most_replayed\",\"G5: AI fallback fires ai_calls success=false\",\"G6: first view INSERT second view cache hit\",\"G7: 7-day staleness triggers re-run\",\"G8: locked year refresh no-op\",\"G9: featured public read non-admin write reject\",\"G10: private profile 404 OG 200\"]}\n```"
+    },
+    {
+      "id": 22,
+      "subject": "Task 22: Playwright e2e",
+      "status": "pending",
+      "blockedBy": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20],
+      "description": "**Goal:** Smoke spec — first-view aggregator + cache hit + private-profile 404 + sparse-data state + share copy.\n\n**Files:** tests/e2e/phase6-pageant.spec.ts\n\n**Verify:** `pnpm playwright test tests/e2e/phase6-pageant.spec.ts`\n\n```json:metadata\n{\"files\":[\"tests/e2e/phase6-pageant.spec.ts\"],\"verifyCommand\":\"pnpm playwright test tests/e2e/phase6-pageant.spec.ts\",\"acceptanceCriteria\":[\"first view renders within 15s\",\"second view <500ms cache hit\",\"private profile 404 to other user own access OK\",\"sparse user renders SparseDataState\",\"closing share button copies URL\",\"uses pw_test_ prefix pattern\"]}\n```"
+    },
+    {
+      "id": 23,
+      "subject": "Task 23: Operator close-out doc",
+      "status": "pending",
+      "blockedBy": [19, 21, 22],
+      "description": "**Goal:** Document steps the operator takes to bring Phase 6 live in prod.\n\n**Files:** docs/superpowers/operator-close-out/2026-05-14-phase6.md\n\n**Verify:** Manual read-through.\n\n```json:metadata\n{\"files\":[\"docs/superpowers/operator-close-out/2026-05-14-phase6.md\"],\"verifyCommand\":\"echo 'manual review'\",\"acceptanceCriteria\":[\"apply 0016 + 0017 + cron migration steps\",\"verify Vault phase6_cron_secret\",\"set RECAP_CRON_SECRET env\",\"smoke-test annual_preview cron via curl\",\"M1-M5 manual gates\",\"no PII no real secrets in doc\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-14T00:00:00Z"
+}
