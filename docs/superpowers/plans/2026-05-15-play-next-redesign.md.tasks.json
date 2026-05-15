@@ -134,7 +134,7 @@
     {
       "id": 21,
       "subject": "Task 21: Verification gate run",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Run all 12 automated + 4 manual checks; green = ready to merge.\n\n**Files:**\n- Create: `scripts/verify-play-next-v2.ts`\n\n**Verify:** `pnpm tsx scripts/verify-play-next-v2.ts`\n\n```json:metadata\n{\"files\": [\"scripts/verify-play-next-v2.ts\"], \"verifyCommand\": \"pnpm tsx scripts/verify-play-next-v2.ts\", \"acceptanceCriteria\": [\"All 12 automated checks pass\", \"4 manual checks documented + screenshotted\"]}\n```",
       "blockedBy": [20]
     }
