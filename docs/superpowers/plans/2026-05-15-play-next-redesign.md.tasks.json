@@ -1,0 +1,143 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-15-play-next-redesign.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Migration 0018 + schema delta",
+      "status": "pending",
+      "description": "**Goal:** Schema delta on `recommendations` — add `slot`, `dismissed_at`, `snoozed_until`, `never_again` columns and the `rec_slot` enum.\n\n**Files:**\n- Create: `lib/db/migrations/0018_play_next_redesign.sql`\n- Modify: `lib/db/schema.ts`\n- Create: `tests/unit/recs/schema-v2.test.ts`\n\n**Verify:** `pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/schema-v2.test.ts && pnpm db:check`\n\n```json:metadata\n{\"files\": [\"lib/db/migrations/0018_play_next_redesign.sql\", \"lib/db/schema.ts\", \"tests/unit/recs/schema-v2.test.ts\"], \"verifyCommand\": \"pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/schema-v2.test.ts && pnpm db:check\", \"acceptanceCriteria\": [\"0018 SQL applies cleanly\", \"rec_slot enum has 4 values\", \"4 new columns on recommendations\", \"Drizzle snapshot integrity holds\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Mood affinity table",
+      "status": "pending",
+      "description": "**Goal:** Fixed lookup table + `moodMatchScore` helper.\n\n**Files:**\n- Create: `lib/recs/mood-affinity.ts`\n- Create: `tests/unit/recs/mood-affinity.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/mood-affinity.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/mood-affinity.ts\", \"tests/unit/recs/mood-affinity.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/mood-affinity.test.ts\", \"acceptanceCriteria\": [\"Every mood has an entry\", \"No genre in both boost and penalize\", \"moodMatchScore bounded [0,1]\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Time-fit scoring",
+      "status": "pending",
+      "description": "**Goal:** Gaussian time-fit scoring + `isTimeFeasible` hard-cap check.\n\n**Files:**\n- Create: `lib/recs/time-fit.ts`\n- Create: `tests/unit/recs/time-fit.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/time-fit.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/time-fit.ts\", \"tests/unit/recs/time-fit.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/time-fit.test.ts\", \"acceptanceCriteria\": [\"Gaussian peaks at sweet spot\", \"Hard caps return 0\", \"NULL hours returns 0.5\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Social score",
+      "status": "pending",
+      "description": "**Goal:** Compute social-axis from follow-graph activity.\n\n**Files:**\n- Create: `lib/recs/social-score.ts`\n- Create: `tests/unit/recs/social-score.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/social-score.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/social-score.ts\", \"tests/unit/recs/social-score.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/social-score.test.ts\", \"acceptanceCriteria\": [\"Returns 0 with no friends\", \"Sigmoid-bounded\", \"Bulk fetch helper works\"]}\n```",
+      "blockedBy": [1]
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Soft-negative penalty",
+      "status": "pending",
+      "description": "**Goal:** Time-decayed dismissal penalty + snooze + never-again.\n\n**Files:**\n- Create: `lib/recs/soft-negative.ts`\n- Create: `tests/unit/recs/soft-negative.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/soft-negative.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/soft-negative.ts\", \"tests/unit/recs/soft-negative.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/soft-negative.test.ts\", \"acceptanceCriteria\": [\"never_again returns 0\", \"snoozed_until in future returns 0\", \"14-day half-life decay\"]}\n```",
+      "blockedBy": [1]
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Composite scoring",
+      "status": "pending",
+      "description": "**Goal:** Combine 5 axes with locked weights and soft-neg penalty.\n\n**Files:**\n- Create: `lib/recs/scoring.ts`\n- Create: `tests/unit/recs/scoring.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/scoring.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/scoring.ts\", \"tests/unit/recs/scoring.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/scoring.test.ts\", \"acceptanceCriteria\": [\"Weights sum to 1.0\", \"Output bounded [0,1]\", \"Soft-neg multiplied last\"]}\n```",
+      "blockedBy": [2, 3, 4, 5]
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: MMR diversity",
+      "status": "pending",
+      "description": "**Goal:** Maximal Marginal Relevance reranking (λ=0.7) for diversity.\n\n**Files:**\n- Create: `lib/recs/diversity-mmr.ts`\n- Create: `tests/unit/recs/diversity-mmr.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/diversity-mmr.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/diversity-mmr.ts\", \"tests/unit/recs/diversity-mmr.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/diversity-mmr.test.ts\", \"acceptanceCriteria\": [\"λ=1.0 preserves score order\", \"λ=0.7 promotes diversity\", \"topN respected\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Wildcard picker",
+      "status": "pending",
+      "description": "**Goal:** Pick from genre clusters the user has never logged from.\n\n**Files:**\n- Create: `lib/recs/wildcard.ts`\n- Create: `tests/unit/recs/wildcard.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/wildcard.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/wildcard.ts\", \"tests/unit/recs/wildcard.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/wildcard.test.ts\", \"acceptanceCriteria\": [\"Prefers unexplored genres\", \"Falls back to least-explored\", \"Deterministic with seed\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Bucket assignment",
+      "status": "pending",
+      "description": "**Goal:** Stratify into 3 Comfort + 1 Backlog + 1 Friends + 1 Wildcard with graceful demotion.\n\n**Files:**\n- Create: `lib/recs/buckets.ts`\n- Create: `tests/unit/recs/buckets.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/buckets.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/buckets.ts\", \"tests/unit/recs/buckets.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/buckets.test.ts\", \"acceptanceCriteria\": [\"Empty backlog demotes to Comfort\", \"Empty friends demotes to Comfort\", \"No duplicates across slots\", \"Returns 6 when input rich\"]}\n```",
+      "blockedBy": [6, 7, 8]
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Widen candidate pool",
+      "status": "pending",
+      "description": "**Goal:** Bump topN default 50 → 100, add optional seed parameter.\n\n**Files:**\n- Modify: `lib/recs/candidate-pool.ts`\n- Create: `tests/unit/recs/candidate-pool-v2.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/`\n\n```json:metadata\n{\"files\": [\"lib/recs/candidate-pool.ts\", \"tests/unit/recs/candidate-pool-v2.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/\", \"acceptanceCriteria\": [\"Default topN is 100\", \"Optional seed accepted\", \"No regression in existing tests\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Edge Function rerank-only mode + userRefinements + prompt v2",
+      "status": "pending",
+      "description": "**Goal:** Add `mode: full|rerank-only`, `userRefinements` field, library-citing prompt, version bump.\n\n**Files:**\n- Modify: `supabase/functions/rerank-recs/index.ts`\n- Modify: `supabase/functions/_shared/prompts.ts`\n- Modify: `lib/taste/prompts.ts`\n- Create: `tests/unit/recs/rerank-prompt.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/rerank-prompt.test.ts`\n\n```json:metadata\n{\"files\": [\"supabase/functions/rerank-recs/index.ts\", \"supabase/functions/_shared/prompts.ts\", \"lib/taste/prompts.ts\", \"tests/unit/recs/rerank-prompt.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/rerank-prompt.test.ts\", \"acceptanceCriteria\": [\"mode parameter accepted\", \"userRefinements block in prompt\", \"libraryTitles cited\", \"VERSION bumped\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: getRecs orchestration rewrite",
+      "status": "pending",
+      "description": "**Goal:** Wire new scoring + MMR + buckets + wildcard + refinements into getRecs.\n\n**Files:**\n- Modify: `lib/recs/server-actions.ts`\n- Create: `tests/integration/recs/get-recs.test.ts`\n\n**Verify:** `pnpm vitest run tests/integration/recs/get-recs.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/server-actions.ts\", \"tests/integration/recs/get-recs.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/integration/recs/get-recs.test.ts\", \"acceptanceCriteria\": [\"Refinements parameter accepted\", \"rerank-only mode used when refinements present\", \"6 bucketed RecCards returned\", \"slot field on every card\"]}\n```",
+      "blockedBy": [1, 5, 6, 7, 8, 9, 10, 11]
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Snooze + Never-again actions",
+      "status": "pending",
+      "description": "**Goal:** Add snoozeRec + neverAgainRec; convert dismissRec to soft-delete.\n\n**Files:**\n- Modify: `lib/recs/server-actions.ts`\n- Create: `tests/unit/recs/dismissal-actions.test.ts`\n\n**Verify:** `pnpm vitest run tests/unit/recs/dismissal-actions.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/server-actions.ts\", \"tests/unit/recs/dismissal-actions.test.ts\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/dismissal-actions.test.ts\", \"acceptanceCriteria\": [\"snoozeRec sets snoozed_until +30d\", \"neverAgainRec sets flag + dismissed_at\", \"dismissRec is now soft-delete\"]}\n```",
+      "blockedBy": [1]
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: UI atoms (ConfidencePill, SlotBadge, LibraryBadge)",
+      "status": "pending",
+      "description": "**Goal:** Three small presentational components.\n\n**Files:**\n- Create: `components/recs/atoms/confidence-pill.tsx`\n- Create: `components/recs/atoms/slot-badge.tsx`\n- Create: `components/recs/atoms/library-badge.tsx`\n- Create: `tests/unit/recs/atoms.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/atoms.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/atoms/confidence-pill.tsx\", \"components/recs/atoms/slot-badge.tsx\", \"components/recs/atoms/library-badge.tsx\", \"tests/unit/recs/atoms.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/atoms.test.tsx\", \"acceptanceCriteria\": [\"3 confidence tiers render\", \"4 slot variants render\", \"LibraryBadge renders\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: New RecCard component",
+      "status": "pending",
+      "description": "**Goal:** Full rewrite — cover overlays, full reasoning, fit chips + slot badge, snooze/never split.\n\n**Files:**\n- Modify: `components/recs/rec-card.tsx`\n- Create: `tests/unit/recs/rec-card-v2.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/rec-card-v2.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/rec-card.tsx\", \"tests/unit/recs/rec-card-v2.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/rec-card-v2.test.tsx\", \"acceptanceCriteria\": [\"Full reasoning no clip\", \"Wildcard hides confidence\", \"Dismiss dropdown opens\", \"Library badge conditional\"]}\n```",
+      "blockedBy": [13, 14]
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: FilterChipPopover",
+      "status": "pending",
+      "description": "**Goal:** Interactive filter chip with inline popover for editing.\n\n**Files:**\n- Create: `components/recs/filter-chip-popover.tsx`\n- Create: `tests/unit/recs/filter-chip-popover.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/filter-chip-popover.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/filter-chip-popover.tsx\", \"tests/unit/recs/filter-chip-popover.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/filter-chip-popover.test.tsx\", \"acceptanceCriteria\": [\"3 variants (time/mood/platform)\", \"Popover opens + closes on select\", \"Mood multi-select max 2\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: RefinementInput",
+      "status": "pending",
+      "description": "**Goal:** Free-text input + quick chips + active pills + URL state.\n\n**Files:**\n- Create: `components/recs/refinement-input.tsx`\n- Create: `tests/unit/recs/refinement-input.test.tsx`\n\n**Verify:** `pnpm vitest run tests/unit/recs/refinement-input.test.tsx`\n\n```json:metadata\n{\"files\": [\"components/recs/refinement-input.tsx\", \"tests/unit/recs/refinement-input.test.tsx\"], \"verifyCommand\": \"pnpm vitest run tests/unit/recs/refinement-input.test.tsx\", \"acceptanceCriteria\": [\"Quick chips commit on click\", \"Enter commits text\", \"Active pills dismissable\", \"140-char clamp\", \"Max 5 active (drops oldest)\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 18: /play-next page rewire",
+      "status": "pending",
+      "description": "**Goal:** Replace wizard flow with live page — chips + refinement + 3x2 grid + URL state.\n\n**Files:**\n- Modify: `app/(app)/play-next/page.tsx`\n- Modify: `app/(app)/play-next/_client.tsx`\n\n**Verify:** Manual smoke + `pnpm tsc --noEmit && pnpm vitest run tests/`\n\n```json:metadata\n{\"files\": [\"app/(app)/play-next/page.tsx\", \"app/(app)/play-next/_client.tsx\"], \"verifyCommand\": \"pnpm tsc --noEmit && pnpm vitest run tests/\", \"acceptanceCriteria\": [\"3x2 grid renders\", \"Filter chips edit in-place\", \"Refinement input above grid\", \"URL reflects filters + refinements\", \"Empty + loading states\"]}\n```",
+      "blockedBy": [12, 15, 16, 17]
+    },
+    {
+      "id": 19,
+      "subject": "Task 19: recsv2 feature flag",
+      "status": "pending",
+      "description": "**Goal:** Gate new behavior behind a single flag with global + canary controls.\n\n**Files:**\n- Create: `lib/recs/feature-flag.ts`\n- Modify: `lib/recs/server-actions.ts`\n- Modify: `app/(app)/play-next/page.tsx`\n- Modify: `lib/env.ts`\n- Modify: `.env.example`\n- Create: `tests/unit/recs/feature-flag.test.ts`\n\n**Verify:** `pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/feature-flag.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/feature-flag.ts\", \"lib/recs/server-actions.ts\", \"app/(app)/play-next/page.tsx\", \"lib/env.ts\", \".env.example\", \"tests/unit/recs/feature-flag.test.ts\"], \"verifyCommand\": \"pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/feature-flag.test.ts\", \"acceptanceCriteria\": [\"Global flag honored\", \"Canary user override works\", \"Legacy path preserved\"]}\n```",
+      "blockedBy": [18]
+    },
+    {
+      "id": 20,
+      "subject": "Task 20: Playwright E2E",
+      "status": "pending",
+      "description": "**Goal:** Browser-driven test of core flow.\n\n**Files:**\n- Create: `tests/e2e/play-next-v2.spec.ts`\n- Modify: `components/recs/rec-card.tsx` (add data-testid)\n\n**Verify:** `pnpm playwright test play-next-v2`\n\n```json:metadata\n{\"files\": [\"tests/e2e/play-next-v2.spec.ts\", \"components/recs/rec-card.tsx\"], \"verifyCommand\": \"pnpm playwright test play-next-v2\", \"acceptanceCriteria\": [\"6 cards render\", \"Filter chip popover works\", \"Refinement adds + removes pill\", \"Wildcard slot visually distinct\", \"Dismiss split menu opens\"]}\n```",
+      "blockedBy": [19]
+    },
+    {
+      "id": 21,
+      "subject": "Task 21: Verification gate run",
+      "status": "pending",
+      "description": "**Goal:** Run all 12 automated + 4 manual checks; green = ready to merge.\n\n**Files:**\n- Create: `scripts/verify-play-next-v2.ts`\n\n**Verify:** `pnpm tsx scripts/verify-play-next-v2.ts`\n\n```json:metadata\n{\"files\": [\"scripts/verify-play-next-v2.ts\"], \"verifyCommand\": \"pnpm tsx scripts/verify-play-next-v2.ts\", \"acceptanceCriteria\": [\"All 12 automated checks pass\", \"4 manual checks documented + screenshotted\"]}\n```",
+      "blockedBy": [20]
+    }
+  ],
+  "lastUpdated": "2026-05-15T00:00:00.000Z"
+}
