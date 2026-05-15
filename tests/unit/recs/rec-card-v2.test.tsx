@@ -172,4 +172,20 @@ describe("RecCard v2 (static render)", () => {
       "var(--accent)",
     );
   });
+
+  // Production bug 2026-05-15: the "Not interested ▾" dropdown is the LAST
+  // element in the card and opens downward (absolute top-full). When the
+  // card ROOT carries `overflow-hidden` (it did, to clip the cover art to
+  // the rounded corners) the popover is clipped by the card box. Fix moves
+  // the corner-clip to the cover wrapper so the root no longer clips.
+  it("does not clip the dismiss popover: overflow-hidden lives on the cover wrapper, not the card root", () => {
+    const html = renderToStaticMarkup(<RecCard rec={baseRec} {...props} />);
+    const rootClass =
+      /data-testid="rec-card"[^>]*\bclass="([^"]*)"/.exec(html)?.[1] ?? "";
+    expect(rootClass).not.toBe("");
+    expect(rootClass).not.toContain("overflow-hidden");
+    // Corner-clipping of the cover art is preserved, just relocated to the
+    // aspect-ratio image wrapper.
+    expect(html).toMatch(/aspect-\[2\/3\][^"]*overflow-hidden/);
+  });
 });

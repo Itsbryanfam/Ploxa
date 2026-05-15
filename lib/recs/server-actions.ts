@@ -1144,7 +1144,17 @@ export async function dismissRec(
 /**
  * Owner-only 30-day snooze. Sets `snoozedUntil` so T5's softNegativePenalty
  * (read via getRecs' negMap) hard-excludes the game until it lapses, then
- * lets it decay back in. Does NOT set `dismissed` — a snooze is temporary.
+ * lets it decay back in.
+ *
+ * Also sets `dismissed=true`. A snooze IS a dismissal — the card leaves the
+ * grid and the user said "not now". The temporal nature lives entirely in
+ * `snoozedUntil` (getRecs' negMap re-admits the game once it lapses,
+ * regardless of `dismissed`, because the negMap SELECT is not filtered on
+ * `dismissed`). Without `dismissed=true` the row is `dismissed=false`, so
+ * `refillRecs` ("Show me more like these →", which DELETEs WHERE
+ * dismissed=false) wipes the snooze and the just-rejected game returns on
+ * the very next refill; the rerank negative-context (WHERE dismissed=true)
+ * also never sees it. This was the 2026-05-15 "same suggestions" bug.
  */
 export async function snoozeRec(
   recId: string,
@@ -1162,7 +1172,10 @@ export async function snoozeRec(
 
   await db
     .update(recommendations)
-    .set({ snoozedUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) })
+    .set({
+      snoozedUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      dismissed: true,
+    })
     .where(eq(recommendations.id, recId));
 
   revalidatePath("/play-next");
@@ -1171,9 +1184,11 @@ export async function snoozeRec(
 
 /**
  * Owner-only permanent exclusion. Sets `neverAgain` (hard-excluded forever by
- * T5's softNegativePenalty) plus `dismissedAt` so the row also drops via the
- * existing dismissal path. Intentionally does NOT delete the row (kept for
- * the rerank negative-context SELECT).
+ * T5's softNegativePenalty) plus `dismissedAt` (soft-negative timestamp) and
+ * `dismissed=true` so the row survives `refillRecs`' WHERE dismissed=false
+ * DELETE and feeds the rerank negative-context (WHERE dismissed=true) — same
+ * 2026-05-15 fix as snoozeRec. Intentionally does NOT delete the row (kept
+ * for the rerank negative-context SELECT).
  */
 export async function neverAgainRec(
   recId: string,
@@ -1191,7 +1206,7 @@ export async function neverAgainRec(
 
   await db
     .update(recommendations)
-    .set({ neverAgain: true, dismissedAt: new Date() })
+    .set({ neverAgain: true, dismissedAt: new Date(), dismissed: true })
     .where(eq(recommendations.id, recId));
 
   revalidatePath("/play-next");
@@ -1199,9 +1214,16 @@ export async function neverAgainRec(
 }
 
 /**
- * "Save for later" — creates a `backlog` log via `ensureLog` (which fires
- * `triggerOnLogWrite` → vector recompute + maybe milestone narrative refresh)
- * and dismisses the rec so it doesn't reappear in the current grid.
+ * "Save for later" — adds the game to the user's library via `ensureLog`
+ * (which fires `triggerOnLogWrite` → vector recompute + maybe milestone
+ * narrative refresh) and dismisses the rec so it doesn't reappear.
+ *
+ * Destination follows library semantics: a recommended game is one the user
+ * doesn't have (candidatePool excludes every logged game), so the default is
+ * `wishlist` ("want it, don't own it"). Only when an existing non-wishlist
+ * log already proves possession do we use `backlog` ("own it, not played").
+ * `ensureLog` is onConflictDoNothing for non-playing statuses, so an
+ * already-owned game keeps its real status; the message reflects intent.
  */
 export async function saveRecForLater(
   recId: string,
@@ -1224,6 +1246,21 @@ export async function saveRecForLater(
   if (!row) return { ok: false, reason: "not-found" };
   if (row.userId !== me.id) return { ok: false, reason: "unauthorized" };
 
+  // Ownership check. A recommended game normally has zero logs (candidatePool
+  // excludes every logged game), so this is almost always "no row" → wishlist.
+  // The branch is the safety net for a game already in the library in an
+  // owning status (a wishlist row does NOT count as owning it).
+  const [existingLog] = await db
+    .select({ status: logs.status })
+    .from(logs)
+    .where(and(eq(logs.userId, me.id), eq(logs.gameId, row.gameId)))
+    .limit(1);
+  const alreadyOwned =
+    existingLog != null && existingLog.status !== "wishlist";
+  const targetStatus: "backlog" | "wishlist" = alreadyOwned
+    ? "backlog"
+    : "wishlist";
+
   // Dismiss BEFORE ensureLog. ensureLog fires triggerOnLogWrite which
   // DELETE FROM recommendations WHERE user_id=$1 AND dismissed=false —
   // if we marked dismissed after the log write, the rec row would be
@@ -1239,11 +1276,16 @@ export async function saveRecForLater(
 
   // ensureLog derives userId from session — it would no-op if `me` were
   // gone here, but we already gated above so this is informational.
-  await ensureLog({ gameId: row.gameId, status: "backlog" });
+  await ensureLog({ gameId: row.gameId, status: targetStatus });
 
   revalidatePath("/play-next");
   revalidatePath("/library");
-  return { ok: true, message: "Added to your backlog." };
+  return {
+    ok: true,
+    message: alreadyOwned
+      ? "Added to your backlog."
+      : "Added to your wishlist.",
+  };
 }
 
 /**

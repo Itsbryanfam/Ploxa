@@ -137,9 +137,9 @@ export function RecCard({
       data-slot={rec.slot}
       initial={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-      className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg)]"
+      className="rounded-md border border-[var(--border)] bg-[var(--bg)]"
     >
-      <div className="relative aspect-[2/3] w-full bg-[var(--bg-elev)]">
+      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-md bg-[var(--bg-elev)]">
         {art ? (
           <Image
             src={art}

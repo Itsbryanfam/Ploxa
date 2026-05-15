@@ -103,7 +103,7 @@ const SECONDS = 1000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 describe("snoozeRec", () => {
-  it("sets snoozedUntil ~30d ahead for an owned rec (no dismissed flag)", async () => {
+  it("sets snoozedUntil ~30d ahead AND dismissed=true so the snooze survives refill", async () => {
     selectRow = { id: "rec-1", userId: "user-1" };
     const { snoozeRec } = await import("@/lib/recs/server-actions");
 
@@ -122,8 +122,13 @@ describe("snoozeRec", () => {
     expect(snoozedUntil.getTime()).toBeLessThanOrEqual(
       after + THIRTY_DAYS_MS + 5 * SECONDS,
     );
-    // A snooze is temporary — it must NOT flip the hard soft-delete.
-    expect(capturedSet).not.toHaveProperty("dismissed");
+    // Production bug 2026-05-15: a snooze is a dismissal. It MUST set
+    // dismissed=true so refillRecs ("Show me more like these →", which
+    // DELETEs WHERE dismissed=false) doesn't wipe the snooze row — and so
+    // the rerank negative-context (WHERE dismissed=true) sees it. The
+    // *temporal* nature lives in snoozedUntil, not in withholding dismissed.
+    expect(capturedSet?.dismissed).toBe(true);
+    // Snooze is temporary — it must NOT set the permanent never-again flag.
     expect(capturedSet).not.toHaveProperty("neverAgain");
     expect(deleteSpy).not.toHaveBeenCalled();
     expect(revalidateMock).toHaveBeenCalledWith("/play-next");
@@ -153,7 +158,7 @@ describe("snoozeRec", () => {
 });
 
 describe("neverAgainRec", () => {
-  it("sets neverAgain=true + dismissedAt for an owned rec (no row delete)", async () => {
+  it("sets neverAgain=true + dismissedAt + dismissed=true for an owned rec (no row delete)", async () => {
     selectRow = { id: "rec-1", userId: "user-1" };
     const { neverAgainRec } = await import("@/lib/recs/server-actions");
 
@@ -164,6 +169,10 @@ describe("neverAgainRec", () => {
     expect(r.ok).toBe(true);
     expect(capturedSet).not.toBeNull();
     expect(capturedSet?.neverAgain).toBe(true);
+    // Production bug 2026-05-15: like snooze, never-again must also flip
+    // dismissed=true so it survives refillRecs' WHERE dismissed=false DELETE
+    // and feeds the rerank negative-context (WHERE dismissed=true).
+    expect(capturedSet?.dismissed).toBe(true);
     const dismissedAt = capturedSet?.dismissedAt as Date;
     expect(dismissedAt).toBeInstanceOf(Date);
     expect(dismissedAt.getTime()).toBeGreaterThanOrEqual(before - SECONDS);
