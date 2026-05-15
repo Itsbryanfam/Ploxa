@@ -193,6 +193,7 @@ export function RecCard({
               {m.charAt(0).toUpperCase() + m.slice(1)}
             </span>
           ))}
+          {/* friends: literal blue — no blue theme token; matches SlotBadge's documented exception */}
           {friendsCount > 0 ? (
             <span className="inline-flex items-center rounded-md bg-[#3b82f6]/15 px-2 py-0.5 text-[11px] font-medium text-[#7aa7ff]">
               {friendsCount} played
@@ -209,6 +210,7 @@ export function RecCard({
             type="button"
             disabled={pending}
             onClick={onSave}
+            data-testid="rec-card-save"
             className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-dim)] hover:border-[var(--border-hover)] disabled:opacity-50"
           >
             Save for later
@@ -229,6 +231,7 @@ export function RecCard({
                 <button
                   type="button"
                   onClick={onSnooze}
+                  data-testid="rec-card-snooze"
                   className="block w-full rounded px-2 py-1 text-left text-xs text-[var(--text-dim)] hover:bg-[var(--bg-card)]"
                 >
                   Not for me
@@ -236,6 +239,7 @@ export function RecCard({
                 <button
                   type="button"
                   onClick={onNeverAgain}
+                  data-testid="rec-card-never"
                   className="block w-full rounded px-2 py-1 text-left text-xs text-[var(--text-dim)] hover:bg-[var(--bg-card)]"
                 >
                   Never show this again
@@ -276,6 +280,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => onPlay(undefined)}
+        data-testid="rec-card-play"
         className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play this →
@@ -289,6 +294,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => onPlay(overlap[0])}
+        data-testid="rec-card-play"
         className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play on {overlap[0]} →
@@ -302,6 +308,7 @@ function PlayThisButton({
         type="button"
         disabled={pending}
         onClick={() => setOpenPicker((o) => !o)}
+        data-testid="rec-card-play"
         className="w-full rounded bg-[var(--accent)] px-2 py-1 text-xs text-[var(--accent-fg)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
       >
         Play this ▾
