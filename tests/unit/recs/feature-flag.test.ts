@@ -42,4 +42,18 @@ describe("isRecsV2Enabled", () => {
     const m2 = await import("@/lib/recs/feature-flag");
     expect(m2.isRecsV2Enabled("u")).toBe(false);
   });
+
+  it("normalizes operator-typo flag values (case + surrounding space)", async () => {
+    vi.stubEnv("RECS_V2_USERS", "");
+    vi.stubEnv("NODE_ENV", "production");
+    // " FALSE " under pressure must still disable in prod (default would
+    // also be false here, so flip the env to prove the flag, not the default)
+    vi.stubEnv("RECS_V2_ENABLED", " FALSE ");
+    const off = await import("@/lib/recs/feature-flag");
+    expect(off.isRecsV2Enabled("u")).toBe(false);
+    vi.resetModules();
+    vi.stubEnv("RECS_V2_ENABLED", " True ");
+    const on = await import("@/lib/recs/feature-flag");
+    expect(on.isRecsV2Enabled("u")).toBe(true); // overrides prod default
+  });
 });

@@ -120,7 +120,7 @@
     {
       "id": 19,
       "subject": "Task 19: recsv2 feature flag",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Gate new behavior behind a single flag with global + canary controls.\n\n**Files:**\n- Create: `lib/recs/feature-flag.ts`\n- Modify: `lib/recs/server-actions.ts`\n- Modify: `app/(app)/play-next/page.tsx`\n- Modify: `lib/env.ts`\n- Modify: `.env.example`\n- Create: `tests/unit/recs/feature-flag.test.ts`\n\n**Verify:** `pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/feature-flag.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/recs/feature-flag.ts\", \"lib/recs/server-actions.ts\", \"app/(app)/play-next/page.tsx\", \"lib/env.ts\", \".env.example\", \"tests/unit/recs/feature-flag.test.ts\"], \"verifyCommand\": \"pnpm tsc --noEmit && pnpm vitest run tests/unit/recs/feature-flag.test.ts\", \"acceptanceCriteria\": [\"Global flag honored\", \"Canary user override works\", \"Legacy path preserved\"]}\n```",
       "blockedBy": [18]
     },
@@ -139,5 +139,5 @@
       "blockedBy": [20]
     }
   ],
-  "lastUpdated": "2026-05-15T23:30:00.000Z"
+  "lastUpdated": "2026-05-15T23:55:00.000Z"
 }
