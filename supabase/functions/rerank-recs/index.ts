@@ -47,6 +47,8 @@ Deno.serve(async (req) => {
     filters?: Filters;
     candidateIds?: number[];
     cacheKey?: string;
+    mode?: string;
+    userRefinements?: string[];
   };
   try {
     body = (await req.json()) as typeof body;
@@ -75,6 +77,15 @@ Deno.serve(async (req) => {
     return new Response("invalid filters shape", { status: 400 });
   }
 
+  // mode is accepted for caller-contract completeness (Task 12 uses it to
+  // decide full-vs-rerank-only on the Next side). This Edge function is
+  // given candidateIds and never retrieves a pool, so it has no re-retrieve
+  // step to skip — it always reranks the supplied set. Validate + default.
+  const mode = body.mode === "rerank-only" ? "rerank-only" : "full";
+  const userRefinements = Array.isArray(body.userRefinements)
+    ? body.userRefinements.filter((x): x is string => typeof x === "string").slice(0, 5)
+    : [];
+
   const databaseUrl = Deno.env.get("DATABASE_URL")!;
   const sql = postgres(databaseUrl, { prepare: false });
 
@@ -90,7 +101,7 @@ Deno.serve(async (req) => {
     //
     //      `dismissed` and `playing` are bounded by LIMIT to keep the
     //      prompt size predictable across very-active users.
-    const [fpRows, candidates, dismissed, playing] = await Promise.all([
+    const [fpRows, candidates, dismissed, playing, library] = await Promise.all([
       sql<
         Array<{
           narrative: string | null;
@@ -132,6 +143,13 @@ Deno.serve(async (req) => {
         ORDER BY l.updated_at DESC
         LIMIT 5
       `,
+      sql<Array<{ title: string }>>`
+        SELECT DISTINCT g.title
+        FROM logs l JOIN games g ON g.id = l.game_id
+        WHERE l.user_id = ${userId}
+        ORDER BY g.title
+        LIMIT 30
+      `,
     ]);
     const fp = fpRows[0];
 
@@ -165,6 +183,8 @@ Deno.serve(async (req) => {
         genres: d.genres ?? [],
       })),
       currentlyPlaying: playing,
+      libraryTitles: library.map((r) => r.title),
+      userRefinements,
     });
 
     let aiResult: Awaited<ReturnType<typeof callRouter>>;
@@ -264,6 +284,7 @@ Deno.serve(async (req) => {
       ok: true,
       recs: cleaned,
       modelVersion,
+      mode,
     });
   } catch (err) {
     console.error(
