@@ -497,4 +497,26 @@ describe("getRecs v2 — refinements", () => {
     expect(lastFetchBody?.mode).toBe("rerank-only");
     expect(lastFetchBody?.userRefinements).toEqual(["less grindy"]);
   });
+
+  it("sends a candidate pool WIDER than the 6-card grid so refinements can move the picks", async () => {
+    // Incident 2026-05-15: multiple active refinements → same games. The
+    // pre-fix code sent `bucketed` (≤ GRID_SIZE = 6) as candidateIds, so the
+    // Edge picked 5-of-6 and the refinement text was nearly inert. With
+    // refinements active the Edge must receive a substantially wider (still
+    // MMR-diversified) pool. The no-refinement path keeps the stratified
+    // 6-card grid (pinned by the partition contract test above).
+    queueFullRun({ refinements: true });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS, {
+      refinements: ["less grindy", "more story"],
+    });
+
+    expect(result.ok).toBe(true);
+    const ids = lastFetchBody?.candidateIds as number[];
+    expect(Array.isArray(ids)).toBe(true);
+    // All 12 fixtures clear the 1hr/platform/neg filters; the grid caps at
+    // 6. A refinement-aware pool must exceed that (here: all 12 diversified).
+    expect(ids.length).toBeGreaterThan(6);
+  });
 });
