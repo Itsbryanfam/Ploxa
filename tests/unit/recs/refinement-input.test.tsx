@@ -80,6 +80,8 @@ describe("RefinementInput (static render)", () => {
     expect(html).toContain("more story");
     for (const c of QUICK_CHIPS) expect(html).toContain(c);
     expect(html).toContain('data-testid="refinement-input"');
+    // a11y: placeholder is NOT an accessible name; the input must be labelled.
+    expect(html).toContain('aria-label="Refine recommendations"');
     expect(html).toContain('data-testid="refinement-submit"');
   });
 

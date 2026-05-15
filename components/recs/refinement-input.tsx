@@ -53,6 +53,11 @@ type Props = { active: string[]; onChange: (next: string[]) => void };
  *
  * T18 wires this onto /play-next and feeds `active` into getRecs'
  * `refinements` param.
+ *
+ * onChange contract: emits the FULL new active set (never deltas) on every
+ * user mutation. It is skipped ONLY on a no-op commit (empty/duplicate);
+ * remove/clearAll always emit a fresh array — consumers (T18) must dedupe by
+ * value, not array identity, before triggering a getRecs refetch.
  */
 export function RefinementInput({ active, onChange }: Props) {
   const [text, setText] = useState("");
@@ -82,6 +87,7 @@ export function RefinementInput({ active, onChange }: Props) {
               }
             }}
             placeholder={'e.g. "less grindy"'}
+            aria-label="Refine recommendations"
             maxLength={CHAR_CAP}
             data-testid="refinement-input"
             className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-elev)] px-2 py-1 text-xs text-[var(--text)] placeholder:text-[var(--text-faint)] focus:border-[var(--border-hover)] focus:outline-none"
