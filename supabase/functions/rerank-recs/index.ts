@@ -196,9 +196,9 @@ Deno.serve(async (req) => {
         feature: "recommendation",
         system,
         user,
-        // 600 tokens is enough for 5 picks at ~120 tokens each (JSON
-        // overhead + one-sentence reason).
-        maxTokens: 600,
+        // ~120 tokens per pick (JSON overhead + one-sentence reason);
+        // 720 covers the 6-card grid.
+        maxTokens: 720,
         // Telemetry parity with the Next-side router.
         telemetry: { sql, userId },
       });
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
         : 0;
       const reason = String(r.reason ?? "").slice(0, 280);
       cleaned.push({ gameId, score, reason });
-      if (cleaned.length === 5) break;
+      if (cleaned.length === 6) break;
     }
 
     if (cleaned.length === 0) {

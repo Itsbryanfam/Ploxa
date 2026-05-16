@@ -343,7 +343,7 @@ async function group4() {
   // extract the rerank region with the SAME anchors the unit test uses
   // (const REFINEMENT_MAX … return { system, user: userBlocks.join("\n") };)
   // and assert those are byte-identical, plus both files set
-  // RERANK_PROMPT_VERSION = "v2".
+  // RERANK_PROMPT_VERSION = "v3".
   const libPrompts = await readFile("lib/taste/prompts.ts", "utf8").catch(
     () => "",
   );
@@ -351,9 +351,9 @@ async function group4() {
     "supabase/functions/_shared/prompts.ts",
     "utf8",
   ).catch(() => "");
-  const versionRe = /RERANK_PROMPT_VERSION\s*=\s*"v2"/;
-  const libVersionV2 = versionRe.test(libPrompts);
-  const denoVersionV2 = versionRe.test(denoPrompts);
+  const versionRe = /RERANK_PROMPT_VERSION\s*=\s*"v3"/;
+  const libVersionOk = versionRe.test(libPrompts);
+  const denoVersionOk = versionRe.test(denoPrompts);
 
   function rerankRegion(src: string): string | null {
     const start = src.indexOf("const REFINEMENT_MAX");
@@ -367,14 +367,14 @@ async function group4() {
   const anchorsFound = libRegion !== null && denoRegion !== null;
   const regionIdentical = anchorsFound && libRegion === denoRegion;
   const mirrorOk =
-    libVersionV2 && denoVersionV2 && anchorsFound && regionIdentical;
+    libVersionOk && denoVersionOk && anchorsFound && regionIdentical;
   record({
     group,
-    name: 'G4.6 — T11 mirror: RERANK_PROMPT_VERSION="v2" both files + rerank region byte-identical',
+    name: 'G4.6 — T11 mirror: RERANK_PROMPT_VERSION="v3" both files + rerank region byte-identical',
     status: mirrorOk ? "pass" : "fail",
     detail: mirrorOk
       ? "rerank region (const REFINEMENT_MAX … userBlocks.join) byte-identical across lib + Deno mirror"
-      : `libV2=${libVersionV2} denoV2=${denoVersionV2} anchorsFound=${anchorsFound} regionIdentical=${regionIdentical}`,
+      : `libVerOk=${libVersionOk} denoVerOk=${denoVersionOk} anchorsFound=${anchorsFound} regionIdentical=${regionIdentical}`,
     gate: "4",
   });
 

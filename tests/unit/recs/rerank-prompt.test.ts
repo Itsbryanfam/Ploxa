@@ -27,8 +27,8 @@ const baseInput: RerankPromptInput = {
 };
 
 describe("buildRerankPrompt — v2 additions", () => {
-  it("RERANK_PROMPT_VERSION bumped to v2 (string)", () => {
-    expect(RERANK_PROMPT_VERSION).toBe("v2");
+  it("RERANK_PROMPT_VERSION bumped to v3 (string)", () => {
+    expect(RERANK_PROMPT_VERSION).toBe("v3");
   });
 
   it("includes user refinements block when non-empty", () => {
@@ -61,7 +61,7 @@ describe("buildRerankPrompt — v2 additions", () => {
   it("still renders the pre-existing prompt blocks (regression guard)", () => {
     const { user, system } = buildRerankPrompt(baseInput);
     expect(user).toMatch(/Candidate games/);          // candidate list block
-    expect(system).toMatch(/Pick exactly 5/);          // system instruction
+    expect(system).toMatch(/Pick exactly 6/);          // system instruction
   });
 
   it("sanitizes \\r, \\t and other control chars in refinements", () => {

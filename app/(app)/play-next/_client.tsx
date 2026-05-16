@@ -3,7 +3,7 @@
 import { AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { FilterChipPopover } from "@/components/recs/filter-chip-popover";
 import { MascotPrompt } from "@/components/recs/mascot-prompt";
@@ -13,6 +13,11 @@ import { MOODS, TIMES, type Mood, type TimeBudget } from "@/lib/recs/moods";
 import { getRecs, refillRecs, type RecResult } from "@/lib/recs/server-actions";
 
 type Platform = "steam" | "xbox" | "psn";
+
+// Coalesce a burst of rapid filter/refinement changes into one getRecs.
+// ~350ms: long enough to swallow quick successive clicks, short enough that
+// a single deliberate change still feels responsive.
+const LOAD_DEBOUNCE_MS = 350;
 
 /**
  * Live recommendation page for /play-next (play-next redesign, T18).
@@ -82,14 +87,24 @@ export function PlayNextClient({
   // Reset on refill so the freshly-rebuilt grid renders cleanly.
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
+  // Monotonic request id for last-write-wins. Rapid filter changes can put
+  // several getRecs in flight; only the newest may commit state (Next
+  // serializes Server Actions, so an older/slower one can resolve last and
+  // would otherwise clobber the grid with a stale selection's results).
+  const reqIdRef = useRef(0);
+  // Pending debounced load timer (rapid-change coalescing — see scheduleLoad).
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const loadRecs = useCallback(
     (t: TimeBudget, m: Mood[], p: Platform[], r: string[]) => {
+      const myId = ++reqIdRef.current;
       startTransition(async () => {
         try {
           const result = await getRecs(
             { time: t, moods: m, platforms: p },
             { refinements: r },
           );
+          if (myId !== reqIdRef.current) return; // superseded by a newer load
           setRecsState(result);
           setDismissedIds(new Set());
         } catch {
@@ -97,10 +112,37 @@ export function PlayNextClient({
           // serverless timeout, a DB race) must NOT leave the page pinned
           // on the pending mascot forever. Surface a recoverable error —
           // changing any filter/refinement re-invokes loadRecs.
+          if (myId !== reqIdRef.current) return;
           setRecsState({ ok: false, reason: "error" });
           setDismissedIds(new Set());
         }
       });
+    },
+    [],
+  );
+
+  // Debounced wrapper for rapid filter/refinement changes. Each change fires
+  // its own getRecs and Next serializes Server Actions, so without coalescing
+  // a flurry of quick changes queues N sequential slow reranks and
+  // `useTransition`'s `pending` never clears — the page looks locked until a
+  // manual refresh (production report 2026-05-15). Collapse rapid changes
+  // into ONE load for the settled selection. The chip relabel + URL sync stay
+  // immediate (synchronous) — only the data fetch waits out the burst.
+  const scheduleLoad = useCallback(
+    (t: TimeBudget, m: Mood[], p: Platform[], r: string[]) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        loadRecs(t, m, p, r);
+      }, LOAD_DEBOUNCE_MS);
+    },
+    [loadRecs],
+  );
+
+  // Cancel a queued debounced load on unmount.
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     },
     [],
   );
@@ -120,14 +162,21 @@ export function PlayNextClient({
   // intentionally filters-only; an active refinement is not re-applied here.
   const onRefill = useCallback(() => {
     if (!time || moods.length === 0 || platforms.length === 0) return;
+    // Deliberate button press — run now, but cancel any queued debounced
+    // load and take the newest request id so a slow in-flight load can't
+    // clobber the refill result.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const myId = ++reqIdRef.current;
     startTransition(async () => {
       try {
         const next = await refillRecs({ time, moods, platforms });
+        if (myId !== reqIdRef.current) return;
         setRecsState(next);
         setDismissedIds(new Set());
       } catch {
         // Same dead-end guard as loadRecs: a thrown refill must not pin the
         // page on the pending mascot. Show the recoverable error state.
+        if (myId !== reqIdRef.current) return;
         setRecsState({ ok: false, reason: "error" });
         setDismissedIds(new Set());
       }
@@ -210,7 +259,7 @@ export function PlayNextClient({
             if (t === timeOrDefault) return; // skip redundant rerank on same-time re-click
             setTime(t);
             syncUrl({ time: t });
-            loadRecs(t, moodsOrDefault, platformsOrDefault, refinements);
+            scheduleLoad(t, moodsOrDefault, platformsOrDefault, refinements);
           }}
         />
         <FilterChipPopover
@@ -220,7 +269,7 @@ export function PlayNextClient({
             setMoods(m);
             syncUrl({ moods: m });
             if (m.length > 0) {
-              loadRecs(timeOrDefault, m, platformsOrDefault, refinements);
+              scheduleLoad(timeOrDefault, m, platformsOrDefault, refinements);
             }
           }}
         />
@@ -232,7 +281,7 @@ export function PlayNextClient({
             setPlatforms(p);
             syncUrl({ platforms: p });
             if (p.length > 0) {
-              loadRecs(timeOrDefault, moodsOrDefault, p, refinements);
+              scheduleLoad(timeOrDefault, moodsOrDefault, p, refinements);
             }
           }}
         />
@@ -250,7 +299,7 @@ export function PlayNextClient({
           // syncUrl reads `refinements` from closure (stale until the async
           // setState flushes) — pass the override so the URL is correct now.
           syncUrl({ refinements: nextRefine });
-          loadRecs(timeOrDefault, moodsOrDefault, platformsOrDefault, nextRefine);
+          scheduleLoad(timeOrDefault, moodsOrDefault, platformsOrDefault, nextRefine);
         }}
       />
 
