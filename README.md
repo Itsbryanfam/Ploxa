@@ -12,7 +12,7 @@
 [![Supabase](https://img.shields.io/badge/Supabase-Auth_+_Postgres-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
 [![Drizzle](https://img.shields.io/badge/Drizzle_ORM-C5F74F?style=for-the-badge&logo=drizzle&logoColor=black)](https://orm.drizzle.team/)
 [![Vercel](https://img.shields.io/badge/deployed_on-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/)
-[![Tests](https://img.shields.io/badge/tests-369%20passing-brightgreen?style=for-the-badge)](#-testing)
+[![Tests](https://img.shields.io/badge/tests-926%20passing-brightgreen?style=for-the-badge)](#-testing)
 
 </div>
 
@@ -35,8 +35,9 @@ The unclaimed visual position the project was built for: every game tracker on t
 | 3 — Library Imports | Steam (official) + Xbox (OpenXBL) + manual; PSN deferred | ✅ |
 | 4 — Taste Fingerprint | Weighted vector aggregation, AI narrative, recs | ✅ |
 | 5 — Social Layer | Follows, feed, comments, lists, notifications, moderation | ✅ **beta launch** |
-| 6 — Year-in-Review | Spotify-Wrapped-style annual retrospective | ⬜ next |
-| 7 — Polish + Launch | Commissioned mascot art, public launch | ⬜ |
+| 6 — Recaps | Year-in-Review + Monthly + Featured List retrospectives | ✅ |
+| 6.5 — Play-Next v2 | Always-live stratified 6-card grid, conversational refinement, recency-aware scoring | ✅ |
+| 7 — Polish + Launch | Commissioned mascot art, marketing landing, public launch | ⬜ next |
 
 ## 🧠 How it works
 
@@ -53,6 +54,8 @@ request  ──►  Cerebras (Llama 3.1, free tier)
 Every call writes a row to `ai_calls` so the cost dashboard sees Edge Function traffic with the same fidelity as Next-side traffic. The Next-side router and the Deno Edge mirror share prompt versions through a vendored `_shared/prompts.ts` — bumping `NARRATIVE_PROMPT_VERSION` triggers re-narration on next drift-cron tick.
 
 Catalog data flows through **two enrichment passes**: RAWG provides the base game record (cover, genres, description, platforms), then IGDB fills mechanics + game modes + player perspectives via a 151-entry hand-curated vocabulary. Games IGDB can't map cleanly get a final pass through `gpt-4o-mini` strict-mode JSON classification — final mechanics coverage sits at **99.9%** across the live catalog.
+
+The **play-next** surface is an always-live recommendation pipeline, not a wizard: a taste-vector prefilter builds the candidate pool, every survivor gets a composite score (taste · mood · time-fit · social · library · recency/quality, minus a time-decayed soft-negative for snoozed/never-again picks), MMR diversifies the pool, and a stratified bucketer fills a fixed **6-card grid** (3 Comfort + Backlog + Friends + Wildcard, with graceful demotion). The AI router then re-ranks that shortlist, honoring freeform conversational refinements ("less grindy", "more story") layered on top of the hard filters. Filter changes are debounced with last-write-wins so a rapid burst can't deadlock the grid.
 
 ## 🛠️ Tech
 
@@ -79,8 +82,9 @@ Catalog data flows through **two enrichment passes**: RAWG provides the base gam
 - **Multi-provider AI router with telemetry parity.** Same `callRouter()` signature on the Next side and inside Supabase Edge Functions. Every attempt — success or fail — writes to `ai_calls` for cost tracking. 30-second per-provider timeout cuts the worst-case tail, not the median.
 - **Library imports via adapter pattern.** Steam uses the official Web API. Xbox uses OpenXBL (unofficial but stable). PSN is deferred — the `psn-api` lib is experimental and Sony breaks it quarterly. Manual imports cover Switch + everything else. The adapter shape is the same across providers so the UI degrades gracefully when an unofficial source falls over.
 - **Pixel art as accent, Raycast polish as default.** Dark-mode-first design tokens, generous whitespace, refined micro-interactions, custom shelf-frame around game posters, hand-drawn status icons. Body UI is `Geist Sans` modern; the pixel chrome is `Pixelify Sans` retro. Two visual languages on purpose.
+- **Always-live recommendation grid.** No 4-step wizard — `/play-next` is a single screen where filter chips and a freeform refinement box re-rank a stratified 6-card grid (Comfort / Backlog / Friends / Wildcard) in place. Composite scoring blends taste, mood, time-fit, social signal, and a recency/quality lean so a higher-rated sequel beats its dated original; a time-decayed soft-negative remembers what you snoozed.
 - **Privacy-first defaults across the social layer.** Profiles are public by default but every individual log/review/list can be flipped private. Blocked-pair check happens at the visibility chokepoint (`withBlockedFilter`), not per-feature. Private profile + non-owner returns an indistinguishable 404 — never reveals whether the username exists.
-- **369 tests + 4 Playwright e2e.** Unit + integration + RPC-hardening + privacy-gate snapshot tests. `pnpm build` is the canonical pre-push gate (catches Next 16 Server Action validation that `tsc` + `vitest` miss).
+- **926 tests + 9 Playwright e2e specs.** Unit + integration + RPC-hardening + privacy-gate snapshot tests. `pnpm build` is the canonical pre-push gate (catches Next 16 Server Action validation that `tsc` + `vitest` miss).
 
 ## 🚀 Run it locally
 
@@ -128,7 +132,7 @@ Each free tier is generous enough for development and early users. None require 
 ## 🧪 Testing
 
 ```bash
-pnpm test               # Vitest — 369 tests, ~2s
+pnpm test               # Vitest — 926 tests, ~6s
 pnpm test:watch         # Watch mode
 pnpm test:coverage      # v8 coverage
 pnpm e2e                # Playwright e2e (auto-starts dev server)
@@ -142,7 +146,7 @@ Three layers, three responsibilities:
 
 - **Unit** (`tests/unit/`) — pure functions and tight server modules. Cover the cost engine, prompt builders, taste aggregator + tier ladder, profile-summary bounds (T13 perf invariant), RPC argument hardening, soft-delete masking, notification routing, drift detection.
 - **Integration** (`tests/integration/`) — server helpers against in-memory mocks. Cover the AI rate-limit atomic-cap invariant against a mock-redis. Caught a regression flagged by an earlier audit.
-- **E2E** (`tests/e2e/`) — Playwright + Chromium, auto-spawns `pnpm dev`. Test users created via Supabase admin API with the `pw_test_` prefix and torn down per test. Cover the `/og/review/[id]` privacy gate and a couple of cross-page flows.
+- **E2E** (`tests/e2e/`) — Playwright + Chromium, auto-spawns `pnpm dev`. Test users created via Supabase admin API with the `pw_test_` prefix and torn down per test. Nine specs cover the privacy/OG-metadata gate, the admin + auto-flag moderation paths, comment threads, follow/feed, lists, the notifications inbox, the Recaps pageant, and the play-next v2 grid flow.
 
 `pnpm build` is the canonical pre-push gate because Next 16's Server Action validation (only async functions exported from `"use server"` files) isn't caught by `tsc` or `vitest` — a deploy regression from the settings-overhaul branch is what taught us that.
 
@@ -197,7 +201,7 @@ tests/
 
 ## 🗺️ Roadmap
 
-The full plan lives in `docs/plan.html` (open in browser for the rendered version). Phases 0–5 are live, Phase 6 (Year-in-Review) is next, Phase 7 is the public launch — including commissioned mascot art and a marketing landing pass.
+The full plan lives in `docs/plan.html` (open in browser for the rendered version). Phases 0–6 are live (Phase 6 = Recaps), and the play-next recommendation surface was then redesigned into the always-live stratified grid described above. Phase 7 — the public launch, including commissioned mascot art and a marketing landing pass — is next.
 
 ---
 
