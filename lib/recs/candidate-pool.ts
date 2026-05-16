@@ -18,6 +18,9 @@ export type CandidateGame = {
   mechanics: string[] | null;
   platforms: string[] | null;
   playtimeAvgHours: number | null;
+  // RAWG rating 0..5 (null for older catalog rows). Threaded for the v2
+  // recencyQuality scoring axis (2026-05-15).
+  rawgRating: number | null;
   similarityScore: number;
 };
 
@@ -158,6 +161,7 @@ export async function candidatePool(
     mechanics: games.mechanics,
     platforms: games.platforms,
     playtimeAvgHours: games.playtimeAvgHours,
+    rawgRating: games.rawgRating,
   };
 
   // Cold-start fallback: zero positive signal across all three axes →
@@ -178,6 +182,7 @@ export async function candidatePool(
       out.push({
         ...g,
         playtimeAvgHours: g.playtimeAvgHours != null ? Number(g.playtimeAvgHours) : null,
+        rawgRating: g.rawgRating != null ? Number(g.rawgRating) : null,
         // No taste signal yet — score is 0 across the board. The slice at
         // the end honors the caller's `limit` opt so we still cap output.
         similarityScore: 0,
@@ -219,6 +224,7 @@ export async function candidatePool(
     scored.push({
       ...g,
       playtimeAvgHours: g.playtimeAvgHours != null ? Number(g.playtimeAvgHours) : null,
+      rawgRating: g.rawgRating != null ? Number(g.rawgRating) : null,
       similarityScore: s,
     });
   }

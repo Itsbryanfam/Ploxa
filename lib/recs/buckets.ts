@@ -26,7 +26,7 @@ type AssignOpts = {
 const SLOT_TARGETS = { comfort: 3, backlog: 1, friends: 1, wildcard: 1 } as const;
 // Derive the grid size from SLOT_TARGETS so a re-tune can't silently desync
 // the demotion cap from the slot budget (cf. the SCORE_WEIGHTS sum guard).
-const GRID_SIZE =
+export const GRID_SIZE =
   SLOT_TARGETS.comfort + SLOT_TARGETS.backlog + SLOT_TARGETS.friends + SLOT_TARGETS.wildcard;
 const BACKING_FLOOR = 0.5;
 

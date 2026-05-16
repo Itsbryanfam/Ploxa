@@ -5,7 +5,7 @@ import type { TasteTier } from "@/lib/taste/tier";
 
 /** Bump on any prompt-text change. Logged in narrativeModelVersion for traceability. */
 export const NARRATIVE_PROMPT_VERSION = "v2";
-export const RERANK_PROMPT_VERSION = "v2"; // T11: + userRefinements + library-citing
+export const RERANK_PROMPT_VERSION = "v3"; // v3: pick 6 (was 5) to fill the 6-card grid
 
 export type NarrativePromptInput = {
   vectors: VectorBundle;
@@ -181,11 +181,11 @@ export function buildRerankPrompt(input: RerankPromptInput): {
   const moodList = input.filters.moods.join(" + ");
   const system = [
     "You are recommending the next game for a player from a candidate list.",
-    "Pick exactly 5 from the candidates. Score each in [0, 1].",
+    "Pick exactly 6 from the candidates. Score each in [0, 1].",
     `Write ONE sentence of reasoning per game (max 25 words) that EXPLICITLY references the player's filter context (mood: ${moodList}; time: ${input.filters.time}).`,
     "Reasoning style: concrete and observed (e.g. 'Quick puzzle loops with no fail state — fits your half-hour window.'). Forbidden: emoji, hedging, the phrases 'you love' / 'you enjoy', quotation marks around titles.",
     "Output ONLY valid JSON matching this exact schema:",
-    `{ "recs": [{ "gameId": <int>, "score": <0..1>, "reason": "<one sentence>" }, ... 5 items] }`,
+    `{ "recs": [{ "gameId": <int>, "score": <0..1>, "reason": "<one sentence>" }, ... 6 items] }`,
     "No prose before or after the JSON. No code fences. Just the object.",
   ].join("\n");
 

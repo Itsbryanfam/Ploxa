@@ -7,6 +7,7 @@ const baseInput = {
   timeFit: 1.0,
   social: 1.0,
   libraryBonus: 1.0,
+  recencyQuality: 1.0,
   softNegPenalty: 1.0,
 };
 
@@ -17,7 +18,8 @@ describe("SCORE_WEIGHTS", () => {
       SCORE_WEIGHTS.mood +
       SCORE_WEIGHTS.timeFit +
       SCORE_WEIGHTS.social +
-      SCORE_WEIGHTS.libraryBonus;
+      SCORE_WEIGHTS.libraryBonus +
+      SCORE_WEIGHTS.recencyQuality;
     expect(total).toBeCloseTo(1.0, 5);
   });
 });
@@ -38,6 +40,7 @@ describe("composeScore", () => {
       timeFit: 0,
       social: 0,
       libraryBonus: 0,
+      recencyQuality: 0,
     });
     expect(onlyTaste).toBeCloseTo(SCORE_WEIGHTS.taste, 5);
   });
@@ -49,6 +52,7 @@ describe("composeScore", () => {
       timeFit: 0,
       social: 0,
       libraryBonus: 0,
+      recencyQuality: 0,
     });
     expect(onlyMood).toBeCloseTo(SCORE_WEIGHTS.mood, 5);
   });
@@ -73,6 +77,7 @@ describe("composeScore axis weight isolation", () => {
     timeFit: 0,
     social: 0,
     libraryBonus: 0,
+    recencyQuality: 0,
     softNegPenalty: 1,
   };
 
@@ -82,6 +87,7 @@ describe("composeScore axis weight isolation", () => {
     "timeFit",
     "social",
     "libraryBonus",
+    "recencyQuality",
   ] as const)("applies %s at exactly its SCORE_WEIGHTS value", (axis) => {
     const only = composeScore({ ...zeroed, [axis]: 1 });
     expect(only).toBeCloseTo(SCORE_WEIGHTS[axis], 5);
@@ -95,6 +101,7 @@ describe("composeScore axis weight isolation", () => {
       timeFit: 1,
       social: 1,
       libraryBonus: 1,
+      recencyQuality: 0,
       softNegPenalty: 1,
     });
     expect(s).toBeCloseTo(

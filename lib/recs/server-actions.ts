@@ -16,7 +16,7 @@ import {
   tasteFingerprints,
 } from "@/lib/db/schema";
 import { ensureLog } from "@/lib/logs/server-actions";
-import { assignBuckets, type ScoredCandidate } from "@/lib/recs/buckets";
+import { assignBuckets, GRID_SIZE, type ScoredCandidate } from "@/lib/recs/buckets";
 import { cacheKey } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
 import { applyMMR } from "@/lib/recs/diversity-mmr";
@@ -201,7 +201,7 @@ async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
     cached.length >= 4 && cached.every((c) => c.generatedAt > vectorsAt);
 
   if (cacheStillFresh) {
-    const recs = await hydrateRecs(cached.slice(0, 5));
+    const recs = await hydrateRecs(cached.slice(0, GRID_SIZE));
     if (recs.length >= 4) {
       return { ok: true, tier: fpReady.tier, recs, algorithm: "hybrid" };
     }
@@ -509,7 +509,7 @@ export async function getRecs(
       cached.length >= 4 && cached.every((c) => c.generatedAt > vectorsAt);
 
     if (cacheStillFresh) {
-      const recs = await hydrateRecs(cached.slice(0, 5));
+      const recs = await hydrateRecs(cached.slice(0, GRID_SIZE));
       if (recs.length >= 4) {
         return { ok: true, tier: fpReady.tier, recs, algorithm: "hybrid" };
       }
@@ -642,12 +642,31 @@ export async function getRecs(
       },
       now,
     );
+    // recencyQuality: blended released-year + rawg_rating, [0,1]. Without
+    // this an original and its sequel (near-identical taste vectors) tie and
+    // the older/lower id wins arbitrarily — "Risk of Rain" over the higher-
+    // rated "Risk of Rain 2" (2026-05-15). Missing signal → neutral 0.5
+    // (NOT 0, which would punish catalog rows lacking the field).
+    const relYear = c.released ? c.released.getFullYear() : null;
+    const recency =
+      relYear != null
+        ? Math.max(
+            0,
+            Math.min(1, (relYear - 1995) / (now.getFullYear() - 1995)),
+          )
+        : 0.5;
+    const quality =
+      c.rawgRating != null
+        ? Math.max(0, Math.min(1, c.rawgRating / 5))
+        : 0.5;
+    const recencyQuality = 0.5 * recency + 0.5 * quality;
     const composite = composeScore({
       taste,
       mood,
       timeFit,
       social,
       libraryBonus: inLibrary ? 1 : 0,
+      recencyQuality,
       softNegPenalty: penalty,
     });
     return {
@@ -1043,6 +1062,7 @@ async function metadataOnlyRecs(
           platforms: g.platforms,
           playtimeAvgHours:
             g.playtimeAvgHours != null ? Number(g.playtimeAvgHours) : null,
+          rawgRating: g.rawgRating != null ? Number(g.rawgRating) : null,
           // rawgRating is numeric → string from Drizzle. Older catalog rows
           // can be null; default to 0 so they sort last but don't crash.
           similarityScore: g.rawgRating != null ? Number(g.rawgRating) : 0,
@@ -1068,7 +1088,7 @@ async function metadataOnlyRecs(
     return { ok: false, reason: "no-candidates" };
   }
 
-  const top = filtered.slice(0, 5);
+  const top = filtered.slice(0, GRID_SIZE);
 
   // Top-5 user genre keys, ordered by vector weight. Used to compute the
   // genre-overlap clause of the templated reasoning sentence.
