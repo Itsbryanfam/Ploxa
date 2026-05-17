@@ -28,6 +28,10 @@ import { isRecsV2Enabled } from "@/lib/recs/feature-flag";
 import { moodMatchScore } from "@/lib/recs/mood-affinity";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
 import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
+import {
+  assembleRefinedFresh,
+  refinementEdgeCandidateIds,
+} from "@/lib/recs/refinement-grid";
 import { composeScore } from "@/lib/recs/scoring";
 import {
   computeSocialScore,
@@ -896,13 +900,18 @@ export async function getRecs(
   // returns still get slotted via `slotByGameId` (unknown ids default to
   // 'comfort'). The no-refinement path is unchanged — it keeps the
   // stratified 6 so the rail layout is exact.
+  //
+  // The wide pool is DISCOVERY-DOMINATED with only a bounded owned tail
+  // (`refinementEdgeCandidateIds`). A plain `applyMMR(mmrInput)` over ALL
+  // scored candidates is owned-heavy for a heavy-backlog user (owned games
+  // dominate `composite` — they ARE the taste vector + the live
+  // libraryBonus), so the AI was forced to return an all-owned refined grid
+  // (prod 2026-05-17, follow-up to PR #20). Discovery feeds the 5
+  // rerankable slots; the bounded owned tail keeps the Backlog slot
+  // fillable.
   const edgeCandidateIds =
     refinements.length > 0
-      ? applyMMR(mmrInput, {
-          lambda: 0.7,
-          topN: 40,
-          similarity: cosineSimilarity,
-        }).map((m) => m.id)
+      ? refinementEdgeCandidateIds(mmrInput, scoredById, cosineSimilarity)
       : bucketed.map((b) => b.gameId);
 
   // Resolve the Edge Function URL. Prefer the explicit `SUPABASE_FUNCTIONS_URL`
@@ -1226,16 +1235,16 @@ export async function getRecs(
         ),
       );
 
-      // Hydrate from the rows we already read, overriding each row's slot
-      // with the freshly-computed assignment (the DB value we read was the
-      // pre-UPDATE default; the UPDATE above persisted the correct slot for
-      // the cache-hit path, but we don't pay for a second SELECT here —
-      // unknown picks (not bucketed) fall back to the row's own pre-UPDATE
-      // value (the schema default)).
-      fresh = picked.map((p) => ({
-        ...p,
-        slot: slotByFinalPick.get(p.gameId) ?? p.slot,
-      }));
+      // assignBuckets' placement is AUTHORITATIVE: keep only the picks it
+      // actually placed, each carrying its canonical slot, in the Edge's
+      // score-desc order. A pick assignBuckets refused (an owned game it
+      // will not put in comfort/friends/wildcard) is DROPPED — never
+      // default-rendered as 'comfort'. The old `?? p.slot` fallback rendered
+      // those refused owned picks under the schema default, which is exactly
+      // how the refinement path flooded heavy-backlog users' grids with
+      // owned games (prod 2026-05-17). A resulting <6 grid is accepted
+      // thin-pool degradation, not owned-padding.
+      fresh = assembleRefinedFresh(picked, finalBucketed);
     }
 
     const recs = await hydrateRecs(fresh);
