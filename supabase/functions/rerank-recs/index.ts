@@ -34,6 +34,46 @@ function safeParseJson(text: string): unknown {
   }
 }
 
+type RerankItem = { gameId: number; score: number; reason: string };
+
+/**
+ * Post-parse output SCHEMA validation (Task 10 — Codex remediation).
+ *
+ * `safeParseJson` only guarantees the model emitted *some* JSON. This asserts
+ * the parsed value structurally matches the contract the system prompt
+ * demands: `{ recs: [{ gameId:<int>, score:<number>, reason:<string> }, …] }`
+ * with a non-empty `recs` array whose EVERY element is a well-typed object.
+ *
+ * On any violation the caller routes into the EXISTING `ai-bad-output` 502
+ * fallback (same path the pre-existing "recs not a non-empty array" check
+ * already used) — no new failure branch is introduced. This hardens the
+ * gate from "recs is a non-empty array" to "recs is a non-empty array AND
+ * every item is schema-valid", so a refinement-poisoned or otherwise
+ * malformed model response can't slip partially-typed rows into the
+ * downstream coercion loop / DB write.
+ */
+function validateRerankSchema(
+  parsed: unknown,
+): { recs: RerankItem[] } | null {
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const recs = (parsed as { recs?: unknown }).recs;
+  if (!Array.isArray(recs) || recs.length === 0) return null;
+  const out: RerankItem[] = [];
+  for (const item of recs) {
+    if (item == null || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+    const { gameId, score, reason } = item as Record<string, unknown>;
+    if (typeof gameId !== "number" || !Number.isInteger(gameId)) return null;
+    if (typeof score !== "number" || !Number.isFinite(score)) return null;
+    if (typeof reason !== "string") return null;
+    out.push({ gameId, score, reason });
+  }
+  return { recs: out };
+}
+
 /**
  * Coerce one untrusted body vector map into a clean Record<string, number>,
  * dropping any non-finite numeric entries. Returns `{}` for anything that
@@ -319,18 +359,23 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, reason: "ai-router-failed" }, { status: 502 });
     }
 
-    // 5. Parse + validate. The candidateIdSet guard rejects hallucinated
-    //    gameIds (model invents an ID not in the candidate pool) and
-    //    duplicates (model picks the same game twice). Score is clamped
-    //    to [0,1] because the DB column is numeric(5,4) and we trust no
-    //    AI output. Reason is truncated to 280 chars to bound the column.
-    const parsed = safeParseJson(aiResult.text) as
-      | { recs?: Array<{ gameId?: unknown; score?: unknown; reason?: unknown }> }
-      | null;
+    // 5. Parse + SCHEMA-validate + sanitize. `safeParseJson` only proves the
+    //    model emitted some JSON; `validateRerankSchema` then asserts the
+    //    parsed value structurally matches the required
+    //    `{ recs: [{ gameId:<int>, score:<number>, reason:<string> }, …] }`
+    //    contract (Task 10). A schema violation routes into the SAME
+    //    pre-existing `ai-bad-output` 502 fallback the loose shape-check
+    //    used — no new failure branch. The candidateIdSet guard below then
+    //    rejects hallucinated gameIds (model invents an ID not in the
+    //    candidate pool) and duplicates (model picks the same game twice).
+    //    Score is clamped to [0,1] because the DB column is numeric(5,4)
+    //    and we trust no AI output. Reason is truncated to 280 chars to
+    //    bound the column.
+    const parsed = validateRerankSchema(safeParseJson(aiResult.text));
 
-    if (!parsed || !Array.isArray(parsed.recs) || parsed.recs.length === 0) {
+    if (!parsed) {
       console.error(
-        "rerank-recs: AI returned unparseable response",
+        "rerank-recs: AI returned unparseable or schema-invalid response",
         aiResult.text.slice(0, 300),
       );
       return Response.json({ ok: false, reason: "ai-bad-output" }, { status: 502 });
