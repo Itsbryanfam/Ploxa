@@ -72,6 +72,7 @@ function createChain(final: unknown[]) {
     "delete",
     "insert",
     "values",
+    "groupBy",
   ];
   for (const m of methods) {
     chain[m] = vi.fn((...args: unknown[]) => {

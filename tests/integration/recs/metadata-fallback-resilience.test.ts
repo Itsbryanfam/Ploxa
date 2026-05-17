@@ -105,7 +105,7 @@ vi.mock("@/lib/recs/social-score", async () => {
 const selectQueue: unknown[][] = [];
 function selectChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "from", "where", "orderBy", "limit", "innerJoin"]) {
+  for (const m of ["select", "from", "where", "orderBy", "limit", "innerJoin", "groupBy"]) {
     chain[m] = vi.fn(() => chain);
   }
   chain.then = (ok: (r: unknown[]) => unknown) => Promise.resolve(ok(rows));

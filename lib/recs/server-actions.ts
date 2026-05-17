@@ -5,7 +5,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -684,12 +684,23 @@ export async function getRecs(
   // partial index covers this lookup). Covers BOTH lanes — a never-again /
   // active-snooze on a backlog game still hard-excludes it from the rail.
   const candIds = candidates.map((c) => c.id);
+  // Dismissal/snooze/never-again state — one deterministic row per gameId via
+  // SQL aggregation (Task 14). `max(snoozed_until)` is order-independent: the
+  // latest (most-future) snooze always wins regardless of DB row return order,
+  // so an active snooze can never be masked by an older expired one.
+  // `bool_or(never_again)` is equivalent to the old `||` collapse. `max(
+  // dismissed_at)` is kept because softNegativePenalty consumes it for its
+  // time-decayed soft-negative score. GROUP BY game_id guarantees exactly one
+  // row per candidate, so the JS-side map is a simple 1:1 population — no
+  // reduce needed. SQL validity: max(timestamptz)→timestamptz, bool_or(boolean)
+  // →boolean, GROUP BY game_id with only aggregates + grouped column in SELECT
+  // — no bare non-grouped column, no Postgres "must appear in GROUP BY" error.
   const negRows = await db
     .select({
       gameId: recommendations.gameId,
-      dismissedAt: recommendations.dismissedAt,
-      snoozedUntil: recommendations.snoozedUntil,
-      neverAgain: recommendations.neverAgain,
+      snoozedUntil: max(recommendations.snoozedUntil),
+      neverAgain: sql<boolean>`bool_or(${recommendations.neverAgain})`,
+      dismissedAt: max(recommendations.dismissedAt),
     })
     .from(recommendations)
     .where(
@@ -697,21 +708,13 @@ export async function getRecs(
         eq(recommendations.userId, me.id),
         inArray(recommendations.gameId, candIds),
       ),
-    );
-  // Collapse to one state per gameId (most-recent non-null wins; any
-  // never-again / active snooze sticks across rows).
+    )
+    .groupBy(recommendations.gameId);
+  // One row per gameId from the aggregate — direct population, no reduce.
   const negMap = new Map<
     number,
     { dismissedAt: Date | null; snoozedUntil: Date | null; neverAgain: boolean }
-  >();
-  for (const r of negRows) {
-    const prev = negMap.get(r.gameId);
-    negMap.set(r.gameId, {
-      dismissedAt: r.dismissedAt ?? prev?.dismissedAt ?? null,
-      snoozedUntil: r.snoozedUntil ?? prev?.snoozedUntil ?? null,
-      neverAgain: r.neverAgain || prev?.neverAgain || false,
-    });
-  }
+  >(negRows.map((r) => [r.gameId, r]));
 
   const filtered: CandidateGame[] = candidates.filter((g) => {
     if (!isTimeFeasible(g.playtimeAvgHours, filters.time)) return false;
