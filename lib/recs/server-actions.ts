@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/schema";
 import { ensureLog } from "@/lib/logs/server-actions";
 import { assignBuckets, GRID_SIZE, type ScoredCandidate } from "@/lib/recs/buckets";
-import { cacheKey } from "@/lib/recs/cache";
+import { cacheKey, sha256Hex } from "@/lib/recs/cache";
 import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
 import { applyMMR } from "@/lib/recs/diversity-mmr";
 import { isRecsV2Enabled } from "@/lib/recs/feature-flag";
@@ -467,6 +467,26 @@ export async function getRecs(
     platforms: filters.platforms,
   });
 
+  // Refinement *session* cache key. A refinement run ("less grindy") is
+  // session-only by spec ("Refined results session-only, not persisted")
+  // and MUST NOT overwrite the user's unrefined cached set for this filter
+  // tuple: the rerank Edge function unconditionally DELETEs+INSERTs rows
+  // under the cacheKey it's handed (regardless of `mode` — `mode` only
+  // selects the prompt), so reusing the bare base `key` on a refinement
+  // run poisons the base cache until vectors re-aggregate. Derive a
+  // distinct, DETERMINISTIC key from the base key + a hash of the sorted
+  // refinements so (i) the base cache is isolated, (ii) the same
+  // refinements reuse the same session slot, and (iii) per-row actions
+  // still work because the rec rows still exist (just under this key —
+  // dismiss/save/play resolve a rec by primary id, not by cache_key).
+  // No refinements ⇒ `writeKey === key`, so the no-refinement path is
+  // byte-unchanged (Edge payload + slot UPDATE + re-read all use bare
+  // `key`). Same `sha256Hex` primitive as `cacheKey` — one hash scheme.
+  const writeKey =
+    refinements.length > 0
+      ? `${key}:r:${sha256Hex(JSON.stringify([...refinements].sort())).slice(0, 8)}`
+      : key;
+
   // 1. Cache check — non-dismissed rows for this key, ordered by score desc.
   //    Refinements bypass the cache entirely: a user nudging the results
   //    explicitly asked for a fresh re-rank, so a stale cache hit would be
@@ -774,7 +794,10 @@ export async function getRecs(
           // grid) so the refinement text can actually change the picks; see
           // `edgeCandidateIds` above.
           candidateIds: edgeCandidateIds,
-          cacheKey: key,
+          // `writeKey` === bare `key` on the no-refinement path (byte-
+          // unchanged); a distinct session key when refinements are active
+          // so the Edge's DELETE+INSERT can't clobber the base cache.
+          cacheKey: writeKey,
           mode: refinements.length > 0 ? "rerank-only" : "full",
           userRefinements: refinements,
         }),
@@ -818,7 +841,11 @@ export async function getRecs(
           .where(
             and(
               eq(recommendations.userId, me.id),
-              eq(recommendations.cacheKey, key),
+              // Match the key the Edge actually wrote under: bare `key` on
+              // the no-refinement path (unchanged), the session key on a
+              // refinement run so we update the session rows, not the
+              // user's unrefined base-cache rows.
+              eq(recommendations.cacheKey, writeKey),
               eq(recommendations.dismissed, false),
               inArray(recommendations.gameId, gids),
             ),
@@ -826,7 +853,9 @@ export async function getRecs(
       ),
     );
 
-    // Re-read the rows the Edge Function just wrote atomically under cacheKey.
+    // Re-read the rows the Edge Function just wrote atomically under
+    // `writeKey` (=== bare `key` with no refinements; the session key on a
+    // refinement run — never reads or clobbers base-cache rows).
     const fresh = await db
       .select({
         id: recommendations.id,
@@ -840,7 +869,7 @@ export async function getRecs(
       .where(
         and(
           eq(recommendations.userId, me.id),
-          eq(recommendations.cacheKey, key),
+          eq(recommendations.cacheKey, writeKey),
           eq(recommendations.dismissed, false),
         ),
       )
@@ -890,7 +919,13 @@ export async function getRecs(
   // 4. AI failure → metadata fallback with banner. Set the banner after the
   //    helper returns so we don't duplicate the helper's "sparse banner"
   //    logic; AI failure on sharpening/full overrides any inner banner.
-  const fallback = await metadataOnlyRecs(me.id, fpReady, filters, key);
+  //    Pass `writeKey`, not bare `key`: metadataOnlyRecs persists
+  //    "similarity" rows under the key it's handed, so on a refinement run
+  //    whose Edge rerank failed, using bare `key` here would poison the
+  //    user's unrefined base cache exactly like the Edge path would —
+  //    the same isolation must cover the fallback write. `writeKey === key`
+  //    with no refinements, so the no-refinement fallback is byte-unchanged.
+  const fallback = await metadataOnlyRecs(me.id, fpReady, filters, writeKey);
   if (fallback.ok) {
     fallback.banner = "AI ranking unavailable — basic matching shown.";
   }
