@@ -238,3 +238,73 @@ export const IGDB_MECHANICS: ReadonlySet<string> = new Set([
   "underwater",
   "guitar playing",
 ]);
+
+// ── Mood-affinity vocabulary bridge (Task 8, 2026-05-16) ─────────────
+// `lib/recs/mood-affinity.ts` describes each mood with hyphenated /
+// abbreviated affinity tokens (`life-sim`, `co-op`, `story-only`, …).
+// Those tokens were authored against an imagined vocabulary and never
+// reconciled with the REAL catalog, so an exact lowercased `Set.has()`
+// match never fired against actual `games.mechanics` (curated IGDB,
+// space-delimited — `life simulation`, `online co-op`, `story driven`)
+// nor `games.genres` (RAWG names, mixed-case — `RPG`, `Casual`).
+//
+// These two maps are the ONLY canonicalization layer: an affinity token
+// (or a catalog value) is canonicalized by lowercasing and looking it up
+// here; if absent it canonicalizes to its own lowercased self. This keeps
+// matching deterministic and is intentionally CONSERVATIVE — only tokens
+// with a genuine real-term equivalent are mapped. Tokens with no catalog
+// equivalent (`no-pressure`, `relaxing`, `cozy`, `skill-based`,
+// `time-pressure`, `choices-matter`, `branching-narrative`, `voice-acted`,
+// `twitch`, `idle`, `no-fail`, `single-player-only`, …) are deliberately
+// LEFT OUT so they stay unmatched rather than forcing a wrong mapping
+// that would mis-rank. Single-word IGDB terms that already matched
+// pre-Task-8 (`permadeath`, `exploration`, `competitive`, `pvp`,
+// `roguelike`, `simulation`) need NO entry — self-canonicalization
+// preserves them (explicit no-regression test in mood-affinity.test.ts).
+//
+// Values are lowercased real terms drawn verbatim from IGDB_MECHANICS
+// (mechanics) / the live RAWG `games.genres` distinct set (genres).
+
+/** affinity mechanic token → real lowercased IGDB_MECHANICS term. */
+export const MOOD_MECHANIC_CANONICAL: ReadonlyMap<string, string> = new Map([
+  ["life-sim", "life simulation"],
+  ["co-op", "online co-op"],
+  // The catalog has no generic "online multiplayer" mechanic; `online co-op`
+  // is its closest curated equivalent (pvp is a separate boost token).
+  ["online-multiplayer", "online co-op"],
+  ["story-only", "story driven"],
+  ["narrative-only", "story driven"],
+]);
+
+/** affinity genre token → real lowercased RAWG `games.genres` name. */
+export const MOOD_GENRE_CANONICAL: ReadonlyMap<string, string> = new Map([
+  ["puzzle", "puzzle"],
+  ["casual", "casual"],
+  ["indie", "indie"],
+  ["strategy", "strategy"],
+  ["fighting", "fighting"],
+  ["rpg", "rpg"],
+  ["adventure", "adventure"],
+  // RAWG has no "life sim"/"narrative"/"visual novel"/"roguelike"/"clicker"/
+  // "runner"/"party" GENRE; `life-sim`/`mmo` get the closest RAWG genre.
+  // (`life-sim`'s mechanic side maps to `life simulation` separately.)
+  ["life-sim", "simulation"],
+  ["mmo", "massively multiplayer"],
+]);
+
+/**
+ * Canonicalize one mechanic string (an affinity token OR a `games.mechanics`
+ * value) to a comparable lowercased form. Falls back to the lowercased input
+ * when no alias exists — so already-real single-word terms and the real
+ * catalog values both canonicalize to themselves and still compare equal.
+ */
+export function canonicalizeMechanicTerm(term: string): string {
+  const lower = term.trim().toLowerCase();
+  return MOOD_MECHANIC_CANONICAL.get(lower) ?? lower;
+}
+
+/** Genre counterpart of {@link canonicalizeMechanicTerm} (RAWG vocabulary). */
+export function canonicalizeGenreTerm(term: string): string {
+  const lower = term.trim().toLowerCase();
+  return MOOD_GENRE_CANONICAL.get(lower) ?? lower;
+}
