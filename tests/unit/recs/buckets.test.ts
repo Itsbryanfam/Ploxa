@@ -186,6 +186,48 @@ describe("assignBuckets", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  // Prod regression (2026-05-17, PR #19 follow-up). The cortez account has
+  // 176 backlog-lane logs, so the user's OWNED games ARE the taste vector and
+  // dominate `composite` (plus the now-live libraryBonus). assignBuckets must
+  // still confine `inLibrary` to the SINGLE Backlog slot — Comfort, Friends,
+  // Wildcard and demotion-fill are discovery-only (`!inLibrary`). Pre-fix the
+  // top composites (all inLibrary) flooded Comfort+Wildcard, so the user saw
+  // a grid of games they already own. The discriminating signal is the
+  // OWNED-CARD COUNT (must be exactly 1, in slot:'backlog'), not the grid
+  // size — a leak shows up as owned cards in comfort/wildcard/friends.
+  it("confines inLibrary to the backlog slot only — owned games never leak into comfort/friends/wildcard (prod flood 2026-05-17)", () => {
+    const cands = [
+      // 5 owned backlog-lane games, all out-scoring discovery (they ARE the
+      // taste vector for a 176-backlog user) — the pre-fix flood driver.
+      mkCand(1, 0.98, { inLibrary: true }),
+      mkCand(2, 0.96, { inLibrary: true }),
+      mkCand(3, 0.94, { inLibrary: true }),
+      mkCand(4, 0.92, { inLibrary: true }),
+      mkCand(5, 0.9, { inLibrary: true }),
+      // discovery candidates — lower composite, but the ONLY valid fillers
+      // for comfort/friends/wildcard.
+      mkCand(6, 0.6), // → comfort
+      mkCand(7, 0.58), // → comfort
+      mkCand(8, 0.56), // → comfort
+      mkCand(9, 0.54, { socialScore: 0.5 }), // → friends
+      mkCand(10, 0.52, { genres: ["roguelike"] }), // → wildcard
+    ];
+    const out = assignBuckets(cands, {
+      exploredGenres: new Set(["puzzle"]),
+      seed: 1,
+    });
+    const owned = out.filter((c) => c.inLibrary);
+    // Exactly ONE owned card, and it MUST be the Backlog slot.
+    expect(owned).toHaveLength(1);
+    expect(owned[0]?.slot).toBe("backlog");
+    // No non-backlog slot may be an owned game.
+    for (const c of out) {
+      if (c.slot !== "backlog") {
+        expect(c.inLibrary).toBe(false);
+      }
+    }
+  });
+
   // Task 4: no-special regression pin — when NO special-eligible game is in
   // the top-3, the returned 6 games AND their slot labels must be identical in
   // membership and slot labels to the pre-Task-4 output. This pins the exact
