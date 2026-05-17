@@ -553,11 +553,11 @@ describe("getRecs — flag-off kill-switch (legacy path)", () => {
     if (!result.ok) throw new Error(`expected ok result, got: ${JSON.stringify(result)}`);
     // Legacy path invokes the Edge and returns algorithm "ai" (same as v2 for
     // sharpening/full tier with a successful rerank).
+    expect(result.algorithm).toBe("ai");
     expect(result.recs.length).toBeGreaterThanOrEqual(1);
     for (const r of result.recs) {
-      // hydrateRecs defaults slot to "comfort" for any row that lacks it
-      // (schema-independent of migration 0018, so the legacy path compiles and
-      // runs whether or not 0018 is applied). The slot must always be defined.
+      // hydrateRecs defaults slot to "comfort" for any row that lacks it.
+      // The slot must always be defined.
       expect(r.slot).toBeDefined();
       expect(SLOTS.has(r.slot)).toBe(true);
     }
