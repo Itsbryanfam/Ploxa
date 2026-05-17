@@ -914,6 +914,29 @@ export async function getRecs(
       slot: "comfort" | "backlog" | "friends" | "wildcard";
     }[];
 
+    // Shared reader: both branches SELECT the same six columns from the rows
+    // the Edge wrote under `writeKey` (dismissed===false, desc score). Declared
+    // once here so the two branches can't drift apart.
+    const readSessionRows = () =>
+      db
+        .select({
+          id: recommendations.id,
+          gameId: recommendations.gameId,
+          score: recommendations.score,
+          reason: recommendations.reason,
+          algorithm: recommendations.algorithm,
+          slot: recommendations.slot,
+        })
+        .from(recommendations)
+        .where(
+          and(
+            eq(recommendations.userId, me.id),
+            eq(recommendations.cacheKey, writeKey),
+            eq(recommendations.dismissed, false),
+          ),
+        )
+        .orderBy(desc(recommendations.score));
+
     if (refinements.length === 0) {
       // ── NO-REFINEMENT PATH — BYTE-UNCHANGED ──────────────────────────
       const bySlot = new Map<string, number[]>();
@@ -944,24 +967,7 @@ export async function getRecs(
 
       // Re-read the rows the Edge Function just wrote atomically under
       // `writeKey` (=== bare `key` with no refinements).
-      fresh = await db
-        .select({
-          id: recommendations.id,
-          gameId: recommendations.gameId,
-          score: recommendations.score,
-          reason: recommendations.reason,
-          algorithm: recommendations.algorithm,
-          slot: recommendations.slot,
-        })
-        .from(recommendations)
-        .where(
-          and(
-            eq(recommendations.userId, me.id),
-            eq(recommendations.cacheKey, writeKey),
-            eq(recommendations.dismissed, false),
-          ),
-        )
-        .orderBy(desc(recommendations.score));
+      fresh = await readSessionRows();
     } else {
       // ── REFINEMENT PATH — slot over the FINAL rerank picks ───────────
       // Read the Edge's final picks FIRST (under the session `writeKey` —
@@ -969,24 +975,7 @@ export async function getRecs(
       // SAME slot re-read SELECT the no-refinement path runs, just ordered
       // before the UPDATE because the wide-pool picks are only knowable
       // from what the Edge persisted.
-      const picked = await db
-        .select({
-          id: recommendations.id,
-          gameId: recommendations.gameId,
-          score: recommendations.score,
-          reason: recommendations.reason,
-          algorithm: recommendations.algorithm,
-          slot: recommendations.slot,
-        })
-        .from(recommendations)
-        .where(
-          and(
-            eq(recommendations.userId, me.id),
-            eq(recommendations.cacheKey, writeKey),
-            eq(recommendations.dismissed, false),
-          ),
-        )
-        .orderBy(desc(recommendations.score));
+      const picked = await readSessionRows();
 
       // Re-run the canonical assigner (Tasks 3/4) over JUST the final
       // picks, carrying each pick's already-computed composite / inLibrary
@@ -1039,7 +1028,8 @@ export async function getRecs(
       // with the freshly-computed assignment (the DB value we read was the
       // pre-UPDATE default; the UPDATE above persisted the correct slot for
       // the cache-hit path, but we don't pay for a second SELECT here —
-      // unknown picks (not bucketed) fall back to the row's own value).
+      // unknown picks (not bucketed) fall back to the row's own pre-UPDATE
+      // value (the schema default)).
       fresh = picked.map((p) => ({
         ...p,
         slot: slotByFinalPick.get(p.gameId) ?? p.slot,
