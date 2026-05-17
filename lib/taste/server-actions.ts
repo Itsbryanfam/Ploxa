@@ -33,6 +33,31 @@ export type FingerprintSnapshot = {
   narrative: string | null;
   narrativeGeneratedAt: Date | null;
   logCount: number;
+  /**
+   * Cheap log-derived facts surfaced from the SAME `logs⋈games` aggregation
+   * this snapshot already performs, so the /play-next pipeline doesn't
+   * re-scan `logs` for them (Task 11 — Codex remediation). Pre-T11 a single
+   * /play-next load issued the `getFingerprint` aggregation PLUS an
+   * independent `SELECT logs.gameId` exclusion scan inside `candidatePool`
+   * PLUS an independent `logs⋈games` explored-genres scan in `getRecs` —
+   * three scans of the same user's logs per load. These two fields let the
+   * consumers reuse this aggregation instead.
+   *
+   * `loggedGameIds` — the set of every `logs.gameId` for this user. Sourced
+   * from the join-based aggregation (an orphaned log whose game row was
+   * deleted is absent here), which is OUTPUT-EQUIVALENT to a `FROM logs`-only
+   * id scan for `candidatePool`'s exclusion: candidates always come from the
+   * `games` table, so an orphaned (game-less) logged id can never match a
+   * candidate and excluding it is a no-op either way.
+   *
+   * `exploredGenres` / `genreFrequency` — lowercased union / per-genre count
+   * of `games.genres` over the user's logged rows. Exactly what `getRecs`'
+   * standalone explored-genres scan + `assignBuckets`/`pickWildcard`
+   * precondition (lowercased) required.
+   */
+  loggedGameIds: Set<number>;
+  exploredGenres: Set<string>;
+  genreFrequency: Map<string, number>;
 };
 
 /**
@@ -68,8 +93,13 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
   if (!isOwner && !targetProfile.isPublic) return null;
 
   // Single join query pulling everything aggregateFingerprint needs.
+  // `gameId` is selected solely so the /play-next pipeline can reuse this
+  // ONE scan for its logged-id exclusion instead of issuing a second
+  // `SELECT logs.gameId` of the same user's logs (Task 11) — it does not
+  // feed aggregateFingerprint.
   const rows = await db
     .select({
+      gameId: logs.gameId,
       status: logs.status,
       rating: logs.rating,
       hasPublishedReview: sql<boolean>`EXISTS (SELECT 1 FROM ${reviews} WHERE ${reviews.logId} = ${logs.id} AND ${reviews.publishedAt} IS NOT NULL)`,
@@ -96,6 +126,22 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
     playtimeAvgHours: r.playtimeAvgHours != null ? Number(r.playtimeAvgHours) : null,
   }));
 
+  // Derive the cheap log-facts the /play-next pipeline used to re-scan for,
+  // from the SAME `rows` (Task 11). Genres lowercased here so the
+  // assignBuckets/pickWildcard precondition (mixed-case RAWG/IGDB genres
+  // break the wildcard slot) holds for any consumer without re-lowercasing.
+  const loggedGameIds = new Set<number>();
+  const exploredGenres = new Set<string>();
+  const genreFrequency = new Map<string, number>();
+  for (const r of rows) {
+    loggedGameIds.add(r.gameId);
+    for (const raw of r.genres ?? []) {
+      const g = raw.toLowerCase();
+      exploredGenres.add(g);
+      genreFrequency.set(g, (genreFrequency.get(g) ?? 0) + 1);
+    }
+  }
+
   const agg = aggregateFingerprint({ rows: inputRows });
 
   // Pull the persisted narrative (if any) without forcing a write.
@@ -115,6 +161,9 @@ export async function getFingerprint(userId: string): Promise<FingerprintSnapsho
     narrative: fpRows[0]?.narrative ?? null,
     narrativeGeneratedAt: fpRows[0]?.narrativeGeneratedAt ?? null,
     logCount: inputRows.length,
+    loggedGameIds,
+    exploredGenres,
+    genreFrequency,
   };
 }
 

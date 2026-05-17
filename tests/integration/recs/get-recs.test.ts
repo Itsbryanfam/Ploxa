@@ -98,6 +98,18 @@ function createChain(final: unknown[]) {
 }
 
 const chainQueue: ReturnType<typeof createChain>[] = [];
+// Every chain a `db.select()` actually consumed, in order (Task 11
+// scan-count + shape assertion). A `logs⋈games` scan is identifiable by an
+// `innerJoin` call recorded on its chain; getRecs' plain selects
+// (cache/vectors/negRows/re-read/hydrate) never call `.innerJoin()`, and
+// getFingerprint/candidatePool/backlogPool are mocked (their internal joins
+// don't reach this db mock) — so any consumed chain with an `innerJoin` is
+// exactly the standalone explored-genres `logs⋈games` scan this task
+// eliminates.
+const consumedSelects: ReturnType<typeof createChain>[] = [];
+function chainMethods(c: ReturnType<typeof createChain>): string[] {
+  return (c as unknown as { _calls: ChainCall[] })._calls.map((x) => x.method);
+}
 function queue(final: unknown[]) {
   const c = createChain(final);
   chainQueue.push(c);
@@ -155,11 +167,14 @@ vi.mock("@/lib/db", async () => {
   return {
     schema,
     db: {
-      // SELECT consumes the queued chain (its resolved rows matter).
+      // SELECT consumes the queued chain (its resolved rows matter). Also
+      // recorded into `consumedSelects` for the Task 11 scan-count/shape
+      // assertion.
       select: vi.fn(() => {
         const next = chainQueue.shift();
         if (!next) throw new Error("test setup bug: chainQueue empty (select)");
         (next.select as (...a: unknown[]) => unknown)();
+        consumedSelects.push(next);
         return next;
       }),
       // UPDATE returns a fresh standalone chain resolving to [] — it does
@@ -210,9 +225,25 @@ const VECTORS = {
   playerPerspective: {},
 };
 
+// Task 11: getFingerprint now also surfaces the cheap log-derived facts the
+// pipeline used to re-scan `logs` for (loggedGameIds / exploredGenres /
+// genreFrequency), computed from the SAME aggregation. The mock returns them
+// EMPTY by default — byte-equivalent to the pre-T11 fixture, where the
+// removed standalone `loggedGenreRows` SELECT was queued as `[]` (→ empty
+// Set/Map) and `candidatePool` (mocked) ignored its own logged-id scan. An
+// empty exploredGenres makes pickWildcard treat every candidate genre as
+// unexplored — identical to the old empty-scan behavior, so rec output is
+// unchanged. `loggedGameIds` is consumed only by the (mocked) candidatePool
+// here, so its value is inert in these tests but kept shape-correct.
+const EMPTY_LOG_FACTS = {
+  loggedGameIds: new Set<number>(),
+  exploredGenres: new Set<string>(),
+  genreFrequency: new Map<string, number>(),
+};
 const getFingerprintMock = vi.fn(async () => ({
   tier: "full" as const,
   vectors: VECTORS,
+  ...EMPTY_LOG_FACTS,
 }));
 vi.mock("@/lib/taste/server-actions", () => ({
   getFingerprint: getFingerprintMock,
@@ -328,6 +359,7 @@ const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
 
 beforeEach(() => {
   chainQueue.length = 0;
+  consumedSelects.length = 0;
   recordedUpdates.length = 0;
   lastFetchBody = null;
   fetchMock.mockClear();
@@ -339,6 +371,7 @@ beforeEach(() => {
   getFingerprintMock.mockImplementation(async () => ({
     tier: "full" as const,
     vectors: VECTORS,
+    ...EMPTY_LOG_FACTS,
   }));
   fetchSocialSignalsMock.mockClear();
   enforceRateLimitMock.mockClear();
@@ -393,16 +426,18 @@ function queueFullRun(opts: { refinements: boolean }) {
   }
   // 3. negRows SELECT (recommendations) — no dismissals
   queue([]);
-  // 4. loggedGenreRows SELECT (logs ⋈ games) — no explored genres
-  //    NOTE: the pre-fix `libRows` SELECT (unconditional "all logged ids")
-  //    was REMOVED — `libraryIds` now comes from the (mocked) backlog lane,
-  //    which consumes no db chain. So the v2 chain dropped one entry here.
-  queue([]);
-  // (fetchSocialSignals + backlogPool are mocked separately — no db chain)
+  // NOTE — Task 11: the standalone `loggedGenreRows` SELECT (logs ⋈ games,
+  // explored-genres) was REMOVED from getRecs — `exploredGenres` /
+  // `genreFrequency` now come from the live `getFingerprint` snapshot
+  // (mocked, EMPTY_LOG_FACTS), which consumes NO db chain. The pre-T11
+  // `libRows` SELECT was already removed in the Backlog-bucket revival
+  // (`libraryIds` ← mocked backlog lane). So the v2 no-refinement chain
+  // is now: cache, vectors, negRows, [Edge], re-read, hydrate.
+  // (fetchSocialSignals + backlogPool + getFingerprint are mocked — no db chain)
   // (post-rerank slot UPDATEs use independent no-op chains — not queued)
-  // 5. fresh re-read SELECT (recommendations)
+  // 4. fresh re-read SELECT (recommendations)
   queue(recRows([1, 2, 3, 4, 5]));
-  // 6. hydrateRecs games SELECT
+  // 5. hydrateRecs games SELECT
   queue(gameRows([1, 2, 3, 4, 5]));
 }
 
@@ -593,6 +628,7 @@ describe("getRecs v2 — full sharpening/tier orchestration", () => {
       tier: "full" as const,
       vectors: VECTORS,
       narrative: liveNarrative,
+      ...EMPTY_LOG_FACTS,
     }));
     queueFullRun({ refinements: false });
     const { getRecs } = await import("@/lib/recs/server-actions");
@@ -629,6 +665,65 @@ describe("getRecs v2 — full sharpening/tier orchestration", () => {
     expect(lastFetchBody?.narrative).toBeNull();
     // vectors still forwarded from the live fingerprint.
     expect(lastFetchBody?.vectors).toEqual(VECTORS);
+  });
+
+  // ── Task 11: collapse redundant per-load `logs` scans ────────────────
+  // A single /play-next load (full tier, no refinements) must NOT issue the
+  // standalone explored-genres `logs⋈games` scan nor the standalone
+  // `SELECT logs.gameId` exclusion scan. Both are now sourced from the
+  // single `getFingerprint` aggregation. The `candidatePool` /
+  // `backlogPool` / `getFingerprint` self-scans are mocked away, so the
+  // ONLY way a `logs⋈games` join chain reaches the db mock is the
+  // standalone explored-genres scan this task eliminates.
+  it("does NOT issue a logs⋈games scan from getRecs (explored-genres scan eliminated, Task 11)", async () => {
+    queueFullRun({ refinements: false });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS);
+    expect(result.ok).toBe(true);
+
+    // No consumed select chain performed an innerJoin → the standalone
+    // `logs⋈games` explored-genres scan is gone (it was the only joined
+    // select getRecs itself ever issued).
+    const joinedSelects = consumedSelects.filter((c) =>
+      chainMethods(c).includes("innerJoin"),
+    );
+    expect(joinedSelects.length).toBe(0);
+
+    // Exact consumed-select inventory for the no-refinement full run:
+    //   cache, vectors, negRows, post-Edge re-read, hydrate games  → 5.
+    // Pre-T11 this was 6 (the extra standalone `loggedGenreRows`
+    // `logs⋈games` scan). The `queueFullRun` queue length is the contract;
+    // an off-count would have thrown "chainQueue empty" or left a chain
+    // unconsumed. Pin the number explicitly so a reintroduced scan fails
+    // here loudly rather than silently desyncing the positional queue.
+    expect(consumedSelects.length).toBe(5);
+  });
+
+  it("output-equivalence: rec ids + slots are the deterministic fixture set (Task 11 is a pure data-sourcing dedupe)", async () => {
+    // The dedupe must not change WHICH games are recommended or their
+    // slots. The post-Edge re-read + hydrate fixtures pin ids 1..5 with the
+    // persisted slot 'comfort' (hydrateRecs uses the DB slot on the
+    // no-refinement path; this anchor is independent of the wall-clock-
+    // seeded bucket stage). Identical before vs after this task.
+    queueFullRun({ refinements: false });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok result");
+    expect(result.algorithm).toBe("ai");
+    expect(result.recs.map((r) => r.gameId)).toEqual([1, 2, 3, 4, 5]);
+    // Slots come from the re-read fixture (all 'comfort'); the dedupe does
+    // not perturb the returned slot.
+    expect(result.recs.map((r) => r.slot)).toEqual([
+      "comfort",
+      "comfort",
+      "comfort",
+      "comfort",
+      "comfort",
+    ]);
   });
 });
 
@@ -791,11 +886,12 @@ describe("getRecs v2 — refinements", () => {
     };
     backlogPoolMock.mockImplementationOnce(async () => [backlogGame]);
 
-    // Refinement-path chain order: negRows, loggedGenreRows, post-Edge
-    // re-read (recommendations), hydrateRecs games. The Edge "picked" ids
-    // 1..4 + 999, so the re-read AND the games hydration both carry 999.
+    // Refinement-path chain order (Task 11 — `loggedGenreRows` SELECT
+    // removed; exploredGenres now from the mocked getFingerprint snapshot):
+    // negRows, post-Edge re-read (recommendations), hydrateRecs games. The
+    // Edge "picked" ids 1..4 + 999, so the re-read AND the games hydration
+    // both carry 999.
     queue([]); // negRows
-    queue([]); // loggedGenreRows
     queue(recRows([1, 2, 3, 4, 999])); // post-Edge re-read (Edge's final picks)
     queue(gameRows([1, 2, 3, 4, 999])); // hydrateRecs games
 

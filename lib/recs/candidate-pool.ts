@@ -273,6 +273,23 @@ export async function candidatePool(
     limit?: number;
     vectors?: VectorBundle;
     seed?: number; // reserved: Task 12 passes this for reproducible tie-ordering; unused here
+    /**
+     * The user's logged game-id set, supplied by the caller from the live
+     * `getFingerprint()` snapshot (Task 11). When present, the standalone
+     * `SELECT logs.gameId` exclusion scan below is SKIPPED — a single
+     * /play-next load already paid for that read inside the `getFingerprint`
+     * `logs⋈games` aggregation, so re-scanning the same user's logs here is
+     * pure waste for a power user with 1000+ logs.
+     *
+     * Output-equivalent to the self-query: the snapshot's ids come from the
+     * join-based aggregation (orphaned logs whose game row was deleted are
+     * absent), but every candidate here originates from the `games` table,
+     * so an orphaned (game-less) logged id can never match a candidate —
+     * excluding it or not is a no-op. When OMITTED (standalone callers, the
+     * candidate-pool unit suites) we still self-query: this function must
+     * stand alone, not assume a fingerprint snapshot exists.
+     */
+    loggedGameIds?: Set<number>;
   } = {},
 ): Promise<CandidateGame[]> {
   // Defense-in-depth: every caller derives userId from getCachedUser(),
@@ -311,11 +328,22 @@ export async function candidatePool(
   // status-filtered re-add), not in a partial discovery filter — a partial
   // filter here would duplicate owned games (once as a leaked discovery
   // `inLibrary:false` card, once as a backlog-lane `inLibrary:true` card).
-  const loggedRows = await db
-    .select({ gameId: logs.gameId })
-    .from(logs)
-    .where(eq(logs.userId, userId));
-  const loggedIds = new Set(loggedRows.map((r) => r.gameId));
+  //
+  // Task 11: reuse the caller-supplied logged-id set (from the live
+  // `getFingerprint` aggregation that the /play-next load already ran)
+  // instead of re-scanning `logs` here. Fall back to the self-query only
+  // when no set was supplied (standalone callers / unit suites) — see the
+  // `loggedGameIds` opt doc for the output-equivalence argument.
+  let loggedIds: Set<number>;
+  if (opts.loggedGameIds) {
+    loggedIds = opts.loggedGameIds;
+  } else {
+    const loggedRows = await db
+      .select({ gameId: logs.gameId })
+      .from(logs)
+      .where(eq(logs.userId, userId));
+    loggedIds = new Set(loggedRows.map((r) => r.gameId));
+  }
 
   // Pick the top-N positive keys per axis to drive the prefilter. Negative
   // (anti-signal) keys are dropped — they shouldn't *expand* the pool.

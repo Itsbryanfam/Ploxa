@@ -174,9 +174,20 @@ const VECTORS = {
   playerPerspective: {},
 };
 
+// Task 11: getFingerprint now also surfaces loggedGameIds / exploredGenres /
+// genreFrequency from its single aggregation. EMPTY here — byte-equivalent
+// to the pre-T11 fixture (the removed standalone `loggedGenreRows` SELECT
+// was queued as `[]`); the cache-key contracts don't depend on lane/genre
+// content. candidatePool is mocked so `loggedGameIds` is inert here.
+const EMPTY_LOG_FACTS = {
+  loggedGameIds: new Set<number>(),
+  exploredGenres: new Set<string>(),
+  genreFrequency: new Map<string, number>(),
+};
 const getFingerprintMock = vi.fn(async () => ({
   tier: "full" as const,
   vectors: VECTORS,
+  ...EMPTY_LOG_FACTS,
 }));
 vi.mock("@/lib/taste/server-actions", () => ({
   getFingerprint: getFingerprintMock,
@@ -310,6 +321,7 @@ beforeEach(() => {
   getFingerprintMock.mockImplementation(async () => ({
     tier: "full" as const,
     vectors: VECTORS,
+    ...EMPTY_LOG_FACTS,
   }));
   fetchSocialSignalsMock.mockClear();
   enforceRateLimitMock.mockClear();
@@ -359,11 +371,12 @@ function queueFullRun(opts: { refinements: boolean }) {
     queue([{ vectorsGeneratedAt: new Date(2000, 0, 1) }]); // 2. vectors SELECT
   }
   queue([]); // 3. negRows SELECT (recommendations)
-  // (libRows SELECT REMOVED — `libraryIds` now comes from the mocked
-  //  backlog lane, which consumes no db chain. The v2 chain lost one entry.)
-  queue([]); // 4. loggedGenreRows SELECT (logs ⋈ games)
-  queue(recRows([1, 2, 3, 4, 5])); // 5. post-Edge re-read SELECT
-  queue(gameRows([1, 2, 3, 4, 5])); // 6. hydrateRecs games SELECT
+  // (libRows SELECT REMOVED — `libraryIds` ← mocked backlog lane, no chain.
+  //  loggedGenreRows SELECT REMOVED (Task 11) — exploredGenres now from the
+  //  mocked getFingerprint snapshot, no chain. The v2 chain lost two
+  //  entries vs the original pre-Backlog-revival shape.)
+  queue(recRows([1, 2, 3, 4, 5])); // 4. post-Edge re-read SELECT
+  queue(gameRows([1, 2, 3, 4, 5])); // 5. hydrateRecs games SELECT
 }
 
 /**
@@ -467,15 +480,18 @@ describe("getRecs — refinement runs must not poison the unrefined base cache",
     expect(sessionKey).not.toBe(key);
 
     // On the refinement path the consumed SELECT order is (post Backlog-
-    // bucket revival — the unconditional `libRows` SELECT was removed; the
-    // backlog lane is mocked and consumes no chain):
-    //   [0] negRows, [1] loggedGenreRows,
-    //   [2] post-Edge re-read (recommendations), [3] hydrateRecs games.
+    // bucket revival — `libRows` SELECT removed; backlog lane mocked, no
+    // chain — AND post Task 11 — `loggedGenreRows` SELECT removed,
+    // exploredGenres now from the mocked getFingerprint snapshot, no chain):
+    //   [0] negRows,
+    //   [1] post-Edge re-read (recommendations), [2] hydrateRecs games.
     // The post-Edge re-read is the LAST recommendations SELECT before the
     // games hydration SELECT. It MUST query under the session key, never
     // the bare base key — otherwise refined hydration reads/clobbers
-    // base-key rows.
-    const reReadSelect = consumedSelects[2];
+    // base-key rows. (Index shifted 2→1 with the loggedGenreRows removal;
+    // the contract — re-read binds the session key, not the base key — is
+    // unchanged.)
+    const reReadSelect = consumedSelects[1];
     const reReadWhere = chainCalls(reReadSelect).find(
       (c) => c.method === "where",
     );

@@ -225,10 +225,13 @@ async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
   //    Pass live `fp.vectors` so the pool stays correct even when the
   //    persisted taste_fingerprints row hasn't been written yet (the
   //    refresh-fingerprint Edge Function only fires on milestone counts
-  //    and depends on AI providers being healthy).
+  //    and depends on AI providers being healthy). `loggedGameIds` is
+  //    threaded from the live fingerprint so candidatePool reuses the
+  //    aggregation's scan instead of its own `SELECT logs.gameId` (Task 11).
   const candidates = await candidatePool(me.id, {
     limit: 50,
     vectors: fpReady.vectors,
+    loggedGameIds: fpReady.loggedGameIds,
   });
   if (candidates.length === 0) {
     return { ok: false, reason: "no-candidates" };
@@ -580,8 +583,17 @@ export async function getRecs(
   // used a single unconditional "all logged ids" query: `inLibrary` was
   // ALWAYS false (the pool is exactly the non-logged set), so the Backlog
   // rail + `libraryBonus` were both structurally dead.
+  // `candidatePool` reuses the live fingerprint's logged-id set (Task 11)
+  // instead of issuing its own `SELECT logs.gameId` exclusion scan — the
+  // `getFingerprint` call above already paid for the `logs⋈games` read.
+  // `backlogPool` keeps its OWN status-filtered + scored `logs⋈games` query
+  // (Task 3 lane); its result set is not derivable from the aggregation, so
+  // it is intentionally NOT folded into this dedupe.
   const [discovery, backlog] = await Promise.all([
-    candidatePool(me.id, { vectors: fpReady.vectors }),
+    candidatePool(me.id, {
+      vectors: fpReady.vectors,
+      loggedGameIds: fpReady.loggedGameIds,
+    }),
     backlogPool(me.id, { vectors: fpReady.vectors }),
   ]);
   const backlogIds = new Set(backlog.map((c) => c.id));
@@ -656,29 +668,22 @@ export async function getRecs(
   // `libraryIds.has(c.id)` was ALWAYS false and `libraryBonus` was dead.
   // Sourcing it from the backlog lane makes `inLibrary` true exactly for
   // owned-but-unplayed candidates, which is what the Backlog slot +
-  // `libraryBonus` weight were designed to consume. Bulk social signals +
-  // lowercased explored-genre stats follow (T8/T9: games.genres is
-  // mixed-case; assignBuckets/pickWildcard require lowercased Set/Map
-  // members).
+  // `libraryBonus` weight were designed to consume.
   const libraryIds = backlogIds;
   const socialMap = await fetchSocialSignals(
     me.id,
     filtered.map((c) => c.id),
   );
-  const exploredGenres = new Set<string>();
-  const genreFrequency = new Map<string, number>();
-  const loggedGenreRows = await db
-    .select({ genres: games.genres })
-    .from(logs)
-    .innerJoin(games, eq(games.id, logs.gameId))
-    .where(eq(logs.userId, me.id));
-  for (const row of loggedGenreRows) {
-    for (const raw of row.genres ?? []) {
-      const g = raw.toLowerCase();
-      exploredGenres.add(g);
-      genreFrequency.set(g, (genreFrequency.get(g) ?? 0) + 1);
-    }
-  }
+  // Explored-genre stats for assignBuckets/pickWildcard. Task 11: these are
+  // taken from the live fingerprint snapshot — which already lowercased
+  // them from the SAME `logs⋈games` aggregation `getFingerprint` ran for
+  // `fp.vectors` — instead of issuing a SECOND `logs⋈games` scan of the
+  // same user's logged genres here. Byte-equivalent to the old inline scan:
+  // identical join, identical per-row `games.genres` lowercase + frequency
+  // tally; the precondition that members be lowercased (mixed-case
+  // RAWG/IGDB genres break the wildcard slot) is satisfied at the source.
+  const exploredGenres = fpReady.exploredGenres;
+  const genreFrequency = fpReady.genreFrequency;
 
   const byId = new Map(filtered.map((c) => [c.id, c]));
   const scored: ScoredCandidate[] = filtered.map((c) => {
@@ -1209,10 +1214,13 @@ async function metadataOnlyRecs(
   // Pass live `fp.vectors` (same rationale as the sharpening/full branch
   // in getRecs above): decouple the recs pipeline from the persisted
   // taste_fingerprints row so a missing/stale row doesn't return an
-  // empty pool when the user actually has plenty of signal.
+  // empty pool when the user actually has plenty of signal. `loggedGameIds`
+  // threaded from the live fingerprint so candidatePool reuses the
+  // aggregation's scan instead of its own `SELECT logs.gameId` (Task 11).
   let candidates = await candidatePool(userId, {
     limit: 50,
     vectors: fp.vectors,
+    loggedGameIds: fp.loggedGameIds,
   });
   const useFallback =
     fp.tier === "sparse" && (vectorMass < 2.0 || candidates.length === 0);
