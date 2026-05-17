@@ -77,7 +77,11 @@ vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 
-import { RecCard, guardedCardAction, buildSaveOnError } from "@/components/recs/rec-card";
+import {
+  RecCard,
+  guardedCardAction,
+  buildCardActionOnError,
+} from "@/components/recs/rec-card";
 import type { RecCard as RecCardData } from "@/lib/recs/server-actions";
 
 const baseRec: RecCardData = {
@@ -269,31 +273,34 @@ describe("guardedCardAction throw-guard contract", () => {
 /**
  * Card save throw-path — GENUINE BEHAVIORAL RED (Task 16 AC-4).
  *
- * Seam used: `buildSaveOnError(recId, onRestore)` — a factory exported from
- * rec-card.tsx that returns the exact `onError` callback that `doDismiss`
- * assembles when `onSave` calls it. The component's runtime behavior is
- * BYTE-IDENTICAL: the factory extracts only the already-inlined lambda so it
- * is importable for testing; nothing in the call path changes.
+ * Seam used: `buildCardActionOnError(onThrow?)` — the exported builder that
+ * `doDismiss` ITSELF CALLS in production:
  *
- * The real wiring (rec-card.tsx):
- *   onSave → doDismiss(saveAction, () => onRestore?.(rec.id))
- *   doDismiss → guardedCardAction(action, () => {
- *                 toast.error("Something went wrong — try again.");
- *                 onThrow?.();   // = () => onRestore?.(rec.id)
- *               })
+ *   rec-card.tsx doDismiss:
+ *     startTransition(() =>
+ *       guardedCardAction(action, buildCardActionOnError(onThrow)));
  *
- * buildSaveOnError("rec-1", restoreSpy) returns that combined callback.
- * The test then drives: guardedCardAction(throwingSaveAction, buildSaveOnError(...))
- * — the exact production code path, just without startTransition/onDismissed
- * (which are side-effects orthogonal to the toast+restore contract).
+ * This is NOT a hand-maintained parallel copy of an inline lambda (the prior
+ * `buildSaveOnError` was — it had ZERO production callers, so a future edit
+ * to doDismiss's inline lambda would have left this suite green while prod
+ * broke). Now the test imports and drives the EXACT function the component
+ * runs: `guardedCardAction(saveAction, buildCardActionOnError(restoreSpy))`
+ * is byte-for-byte the call doDismiss makes for `onSave`
+ * (`onThrow = () => onRestore?.(rec.id)`), minus only startTransition +
+ * onDismissed (UI side-effects orthogonal to the toast+restore contract).
+ *
+ * The equivalence is therefore enforced by a real call edge: any regression
+ * in `buildCardActionOnError` (drop the toast, change the message, stop
+ * calling onThrow) is a regression in the function doDismiss invokes, and
+ * this suite goes red.
  *
  * RED genuineness — proven via the pre-fix model:
  *   Pre-fix doDismiss had NO try/catch (startTransition(action) naked).
  *   Simulating that: a pass-through runner `async (a, _onErr) => a()` lets
- *   the throw propagate — onError callback is never reached.
- *   Running the pre-fix simulation FAILS: toast.error not called, onRestore
- *   not called. Running against the real guardedCardAction PASSES.
- *   See proof comment on the pre-fix simulation test below.
+ *   the throw propagate — the onError callback is never reached.
+ *   Running the pre-fix simulation FAILS the behavioral assertion: toast.error
+ *   not called, onRestore not called. Running against the real
+ *   guardedCardAction PASSES. See proof comment on the pre-fix model test.
  */
 describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
   beforeEach(() => {
@@ -303,12 +310,14 @@ describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
   /**
    * GENUINE BEHAVIORAL RED.
    *
-   * Drives the REAL save assembly via buildSaveOnError + guardedCardAction.
+   * Drives the REAL save assembly: `buildCardActionOnError` is the SAME
+   * function doDismiss calls (rec-card.tsx: `guardedCardAction(action,
+   * buildCardActionOnError(onThrow))`), fed through the SAME guardedCardAction.
    *
-   * Pre-fix simulation (shown in test below this one) FAILS this exact
-   * assertion pattern — not with "is not a function" but with:
-   *   AssertionError: expected toast.error to have been called with arguments:
-   *     [ 'Something went wrong — try again.' ] ... Times called: 0
+   * Pre-fix model (the test below this one) FAILS this exact assertion
+   * pattern — not with "is not a function" but with:
+   *   AssertionError: expected "error" to be called with arguments:
+   *     [ 'Something went wrong — try again.' ] ... Number of calls: 0
    * Post-fix (real guardedCardAction with try/catch): PASSES.
    */
   it("BEHAVIORAL RED: saveRecForLater throw → toast.error('Something went wrong…') AND onRestore called with rec.id", async () => {
@@ -317,11 +326,14 @@ describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
     vi.mocked(saveRecForLater).mockRejectedValue(new Error("DB down"));
 
     const restoreSpy = vi.fn();
-    const onError = buildSaveOnError(baseRec.id, restoreSpy);
+    // onSave's onThrow is `() => onRestore?.(rec.id)`; model that proxy and
+    // assert it received the rec id. buildCardActionOnError is the EXACT
+    // function doDismiss calls in production.
+    const onError = buildCardActionOnError(() => restoreSpy(baseRec.id));
 
     // Drive the REAL save action body (same closure onSave builds):
     const saveAction = async () => {
-      // This is the exact action passed to doDismiss in onSave (rec-card.tsx:139-143):
+      // This is the exact action onSave passes to doDismiss (rec-card.tsx onSave):
       const r = await saveRecForLater(baseRec.id);
       if (r.ok) toast.success(r.message);
       else toast.error("Couldn't save this one.");
@@ -338,7 +350,7 @@ describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
   });
 
   /**
-   * Pre-fix simulation — demonstrates the RED is BEHAVIORAL, not symbol-missing.
+   * Pre-fix model — demonstrates the RED is BEHAVIORAL, not symbol-missing.
    *
    * The pre-fix doDismiss was:
    *   startTransition(() => action())   ← no try/catch, no guardedCardAction call
@@ -347,18 +359,17 @@ describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
    *   async (a) => a()
    *
    * When saveRecForLater rejects the throw propagates past the runner,
-   * the onError callback is never invoked, toast.error is never called,
-   * and restoreSpy is never called.
+   * the onError callback (still the real buildCardActionOnError) is never
+   * invoked, so toast.error is never called and restoreSpy is never called.
    *
-   * If we ran the BEHAVIORAL assertion from the test above against this
-   * simulation it would fail with:
-   *   AssertionError: expected toast.error to have been called with arguments:
+   * Running the BEHAVIORAL assertion from the test above against this model
+   * fails with:
+   *   AssertionError: expected "error" to be called with arguments:
    *     [ 'Something went wrong — try again.' ]
    *   Number of calls: 0
-   * This confirms the RED is a BEHAVIORAL assertion failure, not a missing symbol.
-   *
-   * This test asserts the pre-fix behavior IS absent (i.e. no toast.error,
-   * no restore) as a regression guard proving the simulation model is correct.
+   * — a BEHAVIORAL assertion failure, NOT a missing symbol. This test asserts
+   * the pre-fix behavior IS absent (no generic toast, no restore) as a
+   * regression guard proving the simulation model is correct.
    */
   it("pre-fix model (pass-through runner): toast.error NOT called and onRestore NOT called — confirms behavioral RED is genuine", async () => {
     const { saveRecForLater } = await import("@/lib/recs/server-actions");
@@ -366,7 +377,7 @@ describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
     vi.mocked(saveRecForLater).mockRejectedValue(new Error("DB down"));
 
     const restoreSpy = vi.fn();
-    const onError = buildSaveOnError(baseRec.id, restoreSpy);
+    const onError = buildCardActionOnError(() => restoreSpy(baseRec.id));
 
     const saveAction = async () => {
       const r = await saveRecForLater(baseRec.id);

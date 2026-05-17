@@ -46,27 +46,25 @@ export async function guardedCardAction(
 }
 
 /**
- * Builds the exact `onError` callback that `doDismiss` assembles when
- * `onSave` calls it. Exported solely for testability — the component's
- * runtime behavior is BYTE-IDENTICAL; nothing in the call path changes.
+ * Builds the `onError` callback that `doDismiss` hands to `guardedCardAction`.
  *
- * The real `onSave → doDismiss` assembly is:
- *   doDismiss(saveAction, () => onRestore?.(rec.id))
- * which makes doDismiss build:
- *   () => { toast.error("Something went wrong — try again."); onThrow?.(); }
- * where onThrow = () => onRestore?.(rec.id).
+ * This is NOT a test-only parallel copy — `doDismiss` itself CALLS this
+ * builder (see `doDismiss` below: `guardedCardAction(action,
+ * buildCardActionOnError(onThrow))`). Extracting the lambda to a single
+ * exported function gives the test a REAL production call edge: a regression
+ * in this callback IS a regression in the function the component runs, so the
+ * equivalence is enforced by the call graph, not by a hand-maintained
+ * duplicate that a docstring claims is equivalent.
  *
- * This factory returns that combined callback so tests can drive
- *   guardedCardAction(throwingAction, buildSaveOnError(recId, restoreSpy))
- * and assert both toast.error AND onRestore called with the rec id.
+ * Returned callback: shows the generic throw toast, then runs `onThrow` (if
+ * supplied). The save path supplies `onThrow = () => onRestore?.(rec.id)` so
+ * a thrown save both toasts and restores the optimistically-hidden card;
+ * snooze/neverAgain/play pass no `onThrow` (they stay hidden on throw).
  */
-export function buildSaveOnError(
-  recId: string,
-  onRestore?: (id: string) => void,
-): () => void {
+export function buildCardActionOnError(onThrow?: () => void): () => void {
   return () => {
     toast.error("Something went wrong — try again.");
-    onRestore?.(recId);
+    onThrow?.();
   };
 }
 
@@ -134,10 +132,7 @@ export function RecCard({
   function doDismiss(action: () => Promise<void>, onThrow?: () => void) {
     onDismissed(rec.id);
     startTransition(() =>
-      guardedCardAction(action, () => {
-        toast.error("Something went wrong — try again.");
-        onThrow?.();
-      }),
+      guardedCardAction(action, buildCardActionOnError(onThrow)),
     );
   }
 
