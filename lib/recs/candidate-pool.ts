@@ -336,6 +336,10 @@ export async function candidatePool(
   // `loggedGameIds` opt doc for the output-equivalence argument.
   let loggedIds: Set<number>;
   if (opts.loggedGameIds) {
+    // Aliased read-only (NOT cloned): caller owns this Set (the shared
+    // FingerprintSnapshot). candidatePool must only call .has() — never
+    // mutate, or it silently corrupts the caller's snapshot. The O(n) copy
+    // is intentionally skipped (hot path, 1 000+ ids).
     loggedIds = opts.loggedGameIds;
   } else {
     const loggedRows = await db
