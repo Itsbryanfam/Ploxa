@@ -187,10 +187,11 @@ describe("assignBuckets", () => {
   });
 
   // Task 4: no-special regression pin — when NO special-eligible game is in
-  // the top-3, the returned 6 games AND their slot labels must be byte-identical
-  // to the pre-Task-4 output. This pins the exact membership+slots for the
-  // no-special path, proving the reorder is a no-op in that case.
-  it("no-special regression pin: output is byte-identical when no special-eligible game is in top-3", () => {
+  // the top-3, the returned 6 games AND their slot labels must be identical in
+  // membership and slot labels to the pre-Task-4 output. This pins the exact
+  // membership+slots for the no-special path, proving the reorder is a no-op
+  // in that case.
+  it("no-special regression pin: output is identical in membership and slot labels when no special-eligible game is in top-3", () => {
     // Specials are all ranked below the top-3 comfort tier, so reordering
     // Backlog/Friends/Wildcard before Comfort should produce the same result.
     const cands = [

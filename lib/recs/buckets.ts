@@ -49,6 +49,7 @@ export function assignBuckets(
   // 1. Backlog — highest-scored library candidate above floor.
   // Reserved FIRST so a top-composite inLibrary game wins its special slot
   // instead of being consumed by the Comfort tier (Task 4 fix).
+  // Backlog before Friends: an inLibrary+social game prefers its Backlog rail.
   const backlog = sorted.find(
     (c) => !used.has(c.gameId) && c.inLibrary && c.composite >= floor,
   );
