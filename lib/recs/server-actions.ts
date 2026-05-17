@@ -273,6 +273,14 @@ async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
           filters,
           candidateIds: filtered.map((c) => c.id),
           cacheKey: key,
+          // LIVE taste signal (Task 5 — Codex remediation). Same rationale
+          // as the v2 path: the legacy candidate pool already used
+          // `fpReady.vectors`; pass the SAME live values so the Edge rerank
+          // ordering + reasoning use live taste rather than the stale/missing
+          // persisted taste_fingerprints row. The Edge keeps its SQL read as
+          // a fallback (deploy-order safe).
+          vectors: fpReady.vectors,
+          narrative: fpReady.narrative ?? null,
         }),
       });
       if (resp.ok) {
@@ -833,6 +841,21 @@ export async function getRecs(
           cacheKey: writeKey,
           mode: refinements.length > 0 ? "rerank-only" : "full",
           userRefinements: refinements,
+          // LIVE taste signal (Task 5 — Codex remediation). The
+          // deterministic pool/score/MMR/bucket stages above already used
+          // `fpReady.vectors`; feed the SAME live values to the Edge so its
+          // AI rerank ORDERING + user-facing "why we picked this" reasoning
+          // match the live taste — not the persisted `taste_fingerprints`
+          // row the Edge would otherwise independently re-SELECT (that row
+          // only updates on log milestones / the drift cron and is
+          // documented as often-stale/missing). `narrative` is normalized to
+          // null (fp.narrative may be undefined for sparse/never-refreshed
+          // users) so the Edge gets an explicit "no live narrative → use
+          // your SQL fallback" signal rather than an absent key. The Edge
+          // retains its SQL read as a fallback, so this is forward/backward-
+          // compatible across deploy ordering.
+          vectors: fpReady.vectors,
+          narrative: fpReady.narrative ?? null,
         }),
       });
       if (resp.ok) {

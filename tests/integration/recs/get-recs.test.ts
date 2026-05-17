@@ -579,6 +579,57 @@ describe("getRecs v2 — full sharpening/tier orchestration", () => {
     expect(result).toEqual({ ok: false, reason: "no-candidates" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("passes the LIVE fingerprint vectors + narrative in the Edge request body", async () => {
+    // Task 5 (Codex remediation): the deterministic pipeline already
+    // computed a LIVE fingerprint (getFingerprint → fp.vectors / fp.narrative).
+    // The rerank Edge must order + explain picks from that SAME live signal,
+    // not the stale/missing persisted taste_fingerprints row it independently
+    // re-SELECTs. Pin the contract: the Edge payload carries the live
+    // `vectors` (deep-equal to fp.vectors) and `narrative` (=== fp.narrative).
+    const liveNarrative =
+      "Drawn to systemic RPGs with deep exploration and a fantasy bent.";
+    getFingerprintMock.mockImplementationOnce(async () => ({
+      tier: "full" as const,
+      vectors: VECTORS,
+      narrative: liveNarrative,
+    }));
+    queueFullRun({ refinements: false });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS);
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(lastFetchBody).not.toBeNull();
+    // Live vectors are forwarded verbatim (deep equality, non-empty).
+    expect(lastFetchBody?.vectors).toEqual(VECTORS);
+    expect(
+      Object.keys(lastFetchBody?.vectors as Record<string, unknown>).length,
+    ).toBeGreaterThan(0);
+    // Live narrative is forwarded verbatim (not null when present on fp).
+    expect(lastFetchBody?.narrative).toBe(liveNarrative);
+  });
+
+  it("forwards narrative as null (not undefined/missing) when the live fingerprint has none", async () => {
+    // sparse/never-refreshed users have fp.narrative == null. The body must
+    // still carry an explicit `narrative: null` so the Edge's "prefer body
+    // when present" selection treats it as a genuine absent-narrative signal
+    // and falls back to its SQL read — rather than the key being undefined.
+    // (Default getFingerprintMock returns no narrative field → undefined →
+    // must be normalized to null by getRecs.)
+    queueFullRun({ refinements: false });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS);
+
+    expect(result.ok).toBe(true);
+    expect(lastFetchBody).not.toBeNull();
+    expect("narrative" in (lastFetchBody as object)).toBe(true);
+    expect(lastFetchBody?.narrative).toBeNull();
+    // vectors still forwarded from the live fingerprint.
+    expect(lastFetchBody?.vectors).toEqual(VECTORS);
+  });
 });
 
 /**

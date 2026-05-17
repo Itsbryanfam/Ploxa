@@ -34,6 +34,89 @@ function safeParseJson(text: string): unknown {
   }
 }
 
+/**
+ * Coerce one untrusted body vector map into a clean Record<string, number>,
+ * dropping any non-finite numeric entries. Returns `{}` for anything that
+ * isn't a plain object — the caller treats an empty map as "no body signal"
+ * and falls back to the persisted SQL value.
+ */
+function cleanVector(v: unknown): Record<string, number> {
+  if (v == null || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, raw] of Object.entries(v as Record<string, unknown>)) {
+    const n = Number(raw);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
+}
+
+/**
+ * Body-vs-SQL selection (Task 5 — Codex remediation).
+ *
+ * Prefer the LIVE values the Next-side getRecs forwarded in the request
+ * body; fall back to the persisted `taste_fingerprints` row this function
+ * SELECTs ONLY when the body value is absent/empty. This keeps the deploy
+ * ordering non-fragile in BOTH directions:
+ *   - an un-redeployed Edge ignores the new body fields and uses SQL (old
+ *     behavior, still correct);
+ *   - a redeployed Edge called by a caller that doesn't send them still
+ *     works via the SQL fallback.
+ *
+ * "Empty" for a vector = no usable numeric entries (the live fingerprint of
+ * a brand-new user can be all-empty; that's a genuine "no signal" and the
+ * persisted row, if any, is the better source). "Empty" for narrative =
+ * null / blank string.
+ */
+function pickTasteSignal(
+  bodyVectors:
+    | { genre?: unknown; theme?: unknown; mechanic?: unknown }
+    | null
+    | undefined,
+  bodyNarrative: string | null | undefined,
+  sql: {
+    narrative: string | null;
+    genre: Record<string, number>;
+    theme: Record<string, number>;
+    mechanic: Record<string, number>;
+  } | undefined,
+): {
+  narrative: string | null;
+  vectors: {
+    genre: Record<string, number>;
+    theme: Record<string, number>;
+    mechanic: Record<string, number>;
+  };
+  source: { narrative: "body" | "sql"; vectors: "body" | "sql" };
+} {
+  const bGenre = cleanVector(bodyVectors?.genre);
+  const bTheme = cleanVector(bodyVectors?.theme);
+  const bMechanic = cleanVector(bodyVectors?.mechanic);
+  const bodyHasVectors =
+    Object.keys(bGenre).length > 0 ||
+    Object.keys(bTheme).length > 0 ||
+    Object.keys(bMechanic).length > 0;
+
+  const bNarr =
+    typeof bodyNarrative === "string" && bodyNarrative.trim().length > 0
+      ? bodyNarrative
+      : null;
+
+  return {
+    narrative: bNarr ?? sql?.narrative ?? null,
+    vectors: bodyHasVectors
+      ? { genre: bGenre, theme: bTheme, mechanic: bMechanic }
+      : {
+          genre: sql?.genre ?? {},
+          theme: sql?.theme ?? {},
+          mechanic: sql?.mechanic ?? {},
+        },
+    source: {
+      narrative: bNarr != null ? "body" : "sql",
+      vectors: bodyHasVectors ? "body" : "sql",
+    },
+  };
+}
+
 Deno.serve(async (req) => {
   // Auth: service-role key via `apikey` header. See _shared/auth.ts.
   // Same internal-service pattern as refresh-fingerprint (T4) — callers
@@ -49,6 +132,24 @@ Deno.serve(async (req) => {
     cacheKey?: string;
     mode?: string;
     userRefinements?: string[];
+    // LIVE taste signal forwarded by the Next-side getRecs (Task 5 — Codex
+    // remediation). The deterministic pool/score/MMR/bucket pipeline already
+    // computed these from a live getFingerprint() call; when present we
+    // prefer them over the persisted taste_fingerprints row this function
+    // independently SELECTs below (that row only updates on log milestones /
+    // the drift cron and is documented as often-stale/missing). Both fields
+    // are OPTIONAL: an un-redeployed Next caller (or any caller that doesn't
+    // send them) still works via the SQL fallback — deploy-order safe.
+    vectors?: {
+      genre?: Record<string, number>;
+      theme?: Record<string, number>;
+      mechanic?: Record<string, number>;
+      // The live VectorBundle also carries game_mode/player_perspective;
+      // the rerank prompt only consumes genre/theme/mechanic so we ignore
+      // the rest here (do not over-read untrusted JSON).
+      [k: string]: unknown;
+    } | null;
+    narrative?: string | null;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -163,13 +264,20 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Prefer the LIVE taste signal the Next side forwarded; fall back to the
+    // persisted `taste_fingerprints` row (`fp`, SELECTed above) ONLY when the
+    // body value is absent/empty (Task 5 — deploy-order-safe in both
+    // directions; see pickTasteSignal). The SQL read above is intentionally
+    // retained as that fallback.
+    const taste = pickTasteSignal(body.vectors, body.narrative, fp);
+
     // 4. Render the prompt + call the AI router.
     const { system, user } = buildRerankPrompt({
-      narrative: fp?.narrative ?? null,
+      narrative: taste.narrative,
       vectors: {
-        genre: fp?.genre ?? {},
-        theme: fp?.theme ?? {},
-        mechanic: fp?.mechanic ?? {},
+        genre: taste.vectors.genre,
+        theme: taste.vectors.theme,
+        mechanic: taste.vectors.mechanic,
       },
       filters,
       candidates: candidates.map((c) => ({
