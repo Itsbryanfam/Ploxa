@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FilterParams } from "@/lib/recs/moods";
 
@@ -498,6 +498,69 @@ describe("getRecs v2 — full sharpening/tier orchestration", () => {
 
     expect(result).toEqual({ ok: false, reason: "no-candidates" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Queue the DB chains for ONE successful legacy run (getRecsLegacy — the
+ * flag-OFF kill-switch path). Chain order mirrors the legacy implementation:
+ *
+ *   1. cache SELECT (recommendations) — empty → miss
+ *   2. vectors SELECT (tasteFingerprints) — old → stale
+ *   [candidatePool is mocked — no chain consumed]
+ *   [fetch (Edge) is mocked — no chain consumed]
+ *   3. fresh re-read SELECT (recommendations) — after Edge
+ *   4. hydrateRecs games SELECT
+ *
+ * This is deliberately SHORTER than queueFullRun (no negRows / libRows /
+ * loggedGenreRows — those are v2-only selects in getRecs, absent in
+ * getRecsLegacy which is a verbatim copy of the pre-v2 body).
+ */
+function queueLegacyRun() {
+  // 1. cache SELECT — empty → miss
+  queue([]);
+  // 2. vectors SELECT — old ⇒ stale
+  queue([{ vectorsGeneratedAt: new Date(2000, 0, 1) }]);
+  // 3. fresh re-read SELECT (after Edge function)
+  queue(recRows([1, 2, 3, 4, 5]));
+  // 4. hydrateRecs games SELECT
+  queue(gameRows([1, 2, 3, 4, 5]));
+}
+
+describe("getRecs — flag-off kill-switch (legacy path)", () => {
+  afterEach(() => {
+    // Unstub RECS_V2_ENABLED so subsequent describe blocks see the default
+    // (flag-on) behavior. vi.stubEnv is additive — without an explicit
+    // unstub the value leaks across describe boundaries even though
+    // beforeEach calls vi.resetModules().
+    vi.unstubAllEnvs();
+  });
+
+  it("returns ok with recs from the legacy algorithm when RECS_V2_ENABLED=false, every rec has a defined slot", async () => {
+    // Must stub the flag BEFORE importing server-actions (vi.resetModules() in
+    // beforeEach ensures the module is re-evaluated fresh after this stub).
+    vi.stubEnv("RECS_V2_ENABLED", "false");
+
+    // The legacy path (getRecsLegacy) has a shorter DB chain than v2: it omits
+    // the negRows / libRows / loggedGenreRows SELECTs that are v2-only.
+    // queueLegacyRun() matches the exact chain order of getRecsLegacy.
+    queueLegacyRun();
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(`expected ok result, got: ${JSON.stringify(result)}`);
+    // Legacy path invokes the Edge and returns algorithm "ai" (same as v2 for
+    // sharpening/full tier with a successful rerank).
+    expect(result.recs.length).toBeGreaterThanOrEqual(1);
+    for (const r of result.recs) {
+      // hydrateRecs defaults slot to "comfort" for any row that lacks it
+      // (schema-independent of migration 0018, so the legacy path compiles and
+      // runs whether or not 0018 is applied). The slot must always be defined.
+      expect(r.slot).toBeDefined();
+      expect(SLOTS.has(r.slot)).toBe(true);
+    }
   });
 });
 
