@@ -11,15 +11,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * invariants under test:
  *
  *   (1) A→B rapid: B is scheduled before A's async fetch resolves.
- *       In the CURRENT (buggy) code, scheduleLoad does NOT bump reqIdRef, so
- *       A's loadRecs mints myId === 1 and B's scheduleLoad leaves reqIdRef
- *       still at 0 (B's loadRecs hasn't fired yet when A resolves). Result:
- *       A commits because myId (1) === reqIdRef.current (1 — B bumped it
- *       inside loadRecs when the debounce fired, but A already resolved and
- *       committed before then). This test demonstrates that A SHOULD be
- *       discarded.
+ *       Under the FIXED code, scheduleLoad bumps reqIdRef at schedule time,
+ *       so A's gen (1) no longer matches reqIdRef.current (2) when A
+ *       resolves — A is rejected BEFORE it can write. "A-result" must NEVER
+ *       appear in commitLog (not even transiently). Under the pre-fix model
+ *       (bumpAtSchedule=false), A does write, so commitLog contains
+ *       "A-result" and the not.toContain assertion FAILS — proving genuine RED.
  *
  *   (2) A→B→C triple rapid: only C commits; A and B are superseded.
+ *       Same transient-commit guarantee: neither "A-result" nor "B-result"
+ *       must ever appear in commitLog under the fixed scheme.
+ *
  *   (3) Debounce coalescing: rapid A→B→C fires exactly ONE fetch after
  *       the debounce settles (not three).
  *   (4) Single-change (no rapid): the lone scheduled load commits.
@@ -27,26 +29,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *       stale in-flight load is rejected.
  *   (6) Mount auto-fetch commits (no stale load in flight at mount).
  *
- * These tests target the PROPOSED fix (bump at schedule time). They will
- * FAIL against the current code (which bumps at loadRecs time), making them
- * genuinely RED before the fix is applied.
- *
- * The model:
- *   - `reqIdRef` is a plain { current: number } object.
- *   - `debounceRef` is a plain { current: ReturnType<typeof setTimeout> | null }.
- *   - `scheduleLoad(filters, gen?)` encapsulates the timer logic.
- *   - `loadRecs(filters, gen)` encapsulates the async fetch + commit guard.
- *   - `committed` captures the last-committed result (replaces setRecsState).
- *   - All async work uses Vitest fake timers + resolved Promises.
+ * MODEL FAITHFULNESS (verified against _client.tsx):
+ *   Post-fix branch (bumpAtSchedule=true):
+ *     - scheduleLoad: `const gen = ++reqIdRef.current` (matches line 138 of _client.tsx)
+ *     - loadRecs: uses the passed-in `gen` directly as `myId` (matches line 106 guard)
+ *   Pre-fix branch (bumpAtSchedule=false):
+ *     - scheduleLoad: no bump (reqIdRef stays unchanged)
+ *     - loadRecs: `const myId = ++reqIdRef.current` (the old buggy scheme)
+ *   The pre-fix model faithfully reproduces the documented bug: A fires,
+ *   bumps reqIdRef to 1 (myId=1); B schedules but does NOT bump (reqIdRef
+ *   stays 1); A resolves, guard myId(1) === reqIdRef.current(1) passes → A
+ *   commits. The bumpAtSchedule toggle is the sole discriminator between
+ *   these two schemes, making it a genuine RED/GREEN pair.
  */
 
 const LOAD_DEBOUNCE_MS = 350;
 
 // ---------------------------------------------------------------------------
 // Helper: build a fresh in-memory model of the scheduleLoad/loadRecs scheme.
-// The constructor param `bumpAtSchedule` selects CURRENT vs PROPOSED behaviour:
-//   false → bump inside loadRecs (current code — RED path)
-//   true  → bump in scheduleLoad (the fix — GREEN path)
+// The constructor param `bumpAtSchedule` selects PRE-FIX vs POST-FIX behaviour:
+//   false → bump inside loadRecs (pre-fix / buggy — RED path)
+//   true  → bump in scheduleLoad (post-fix / fix — GREEN path)
+//
+// `commitLog` records EVERY value ever written to committed state in order,
+// enabling transient-commit assertions ("A-result must NEVER be written").
 // ---------------------------------------------------------------------------
 
 type Filters = { label: string };
@@ -60,27 +66,30 @@ function makeScheduler(
     current: null,
   };
   let committed: string | null = null;
+  const commitLog: string[] = [];
 
   // Equivalent of `loadRecs` in _client.tsx.
   async function loadRecs(filters: Filters, gen: number): Promise<void> {
-    // In the CURRENT (buggy) scheme, bumpAtSchedule=false means the caller
-    // passes reqIdRef.current + 1 (incremented here). In the PROPOSED fix,
-    // bumpAtSchedule=true means the gen was already bumped in scheduleLoad.
+    // Post-fix: myId = the gen passed from scheduleLoad (already bumped there).
+    // Pre-fix: myId = ++reqIdRef.current (bumped here instead — the bug).
     const myId = bumpAtSchedule ? gen : ++reqIdRef.current;
     try {
       const result = await getRecs(filters);
       if (myId !== reqIdRef.current) return; // last-write-wins guard
       committed = result;
+      commitLog.push(result); // record every write, not just the last
     } catch {
       if (myId !== reqIdRef.current) return;
       committed = "error";
+      commitLog.push("error");
     }
   }
 
   // Equivalent of `scheduleLoad` in _client.tsx.
   function scheduleLoad(filters: Filters): void {
-    // PROPOSED fix: bump the generation immediately at schedule time so any
+    // Post-fix: bump the generation immediately at schedule time so any
     // in-flight older load is invalidated before the debounce even fires.
+    // Pre-fix: no bump here (reqIdRef unchanged until loadRecs fires).
     const gen = bumpAtSchedule ? ++reqIdRef.current : reqIdRef.current;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -97,9 +106,11 @@ function makeScheduler(
       const result = await getRecs(filters);
       if (myId !== reqIdRef.current) return;
       committed = result;
+      commitLog.push(result);
     } catch {
       if (myId !== reqIdRef.current) return;
       committed = "error";
+      commitLog.push("error");
     }
   }
 
@@ -109,14 +120,22 @@ function makeScheduler(
     await loadRecs(filters, gen);
   }
 
-  return { scheduleLoad, loadRecs, onRefill, mountFetch, getCommitted: () => committed, getGen: () => reqIdRef.current };
+  return {
+    scheduleLoad,
+    loadRecs,
+    onRefill,
+    mountFetch,
+    getCommitted: () => committed,
+    getGen: () => reqIdRef.current,
+    getCommitLog: () => commitLog,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
+describe("schedule-gen-guard — POST-FIX scheme (bumpAtSchedule=true)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -124,18 +143,18 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
     vi.useRealTimers();
   });
 
-  it("(1) A→B rapid: A resolves after B is scheduled — A is DISCARDED, B commits", async () => {
+  it("(1) A→B rapid: A must NEVER be committed (not even transiently) — commitLog does not contain A-result", async () => {
     // A's fetch is slow (resolves after B is scheduled).
     let resolveA!: (v: string) => void;
     const slowA = new Promise<string>((r) => { resolveA = r; });
 
     const getRecs = vi.fn()
-      .mockReturnValueOnce(slowA)      // A's fetch
-      .mockResolvedValueOnce("B-result"); // B's fetch
+      .mockReturnValueOnce(slowA)           // A's fetch
+      .mockResolvedValueOnce("B-result");   // B's fetch
 
-    const { scheduleLoad, getCommitted } = makeScheduler(true, getRecs);
+    const { scheduleLoad, getCommitted, getCommitLog } = makeScheduler(true, getRecs);
 
-    // Schedule A — bumps gen to 1 at schedule time (proposed fix).
+    // Schedule A — bumps gen to 1 at schedule time (post-fix).
     scheduleLoad({ label: "A" });
     // A's debounce fires.
     vi.advanceTimersByTime(LOAD_DEBOUNCE_MS);
@@ -143,23 +162,25 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
 
     // Schedule B BEFORE A resolves — bumps gen to 2 at schedule time.
     scheduleLoad({ label: "B" });
-    // At this point reqIdRef.current === 2; A's gen is still 1 → mismatch guaranteed.
+    // reqIdRef.current === 2 now; A's gen is still 1 → mismatch guaranteed on A's resolve.
 
-    // Now A's slow fetch resolves.
+    // A's slow fetch resolves.
     resolveA("A-result");
-    await Promise.resolve(); // flush A's then chain
+    await Promise.resolve(); // flush A's then chain — guard fires, A is rejected
 
-    // B's debounce fires (start from where A's already elapsed: need additional 350ms).
+    // B's debounce fires.
     vi.advanceTimersByTime(LOAD_DEBOUNCE_MS);
     await Promise.resolve(); // flush B's loadRecs call
     await Promise.resolve(); // flush B's getRecs promise
 
-    // A's result must NOT be committed; B wins.
+    // LOAD-BEARING: A must NEVER have been written to committed state.
+    expect(getCommitLog()).not.toContain("A-result");
+    // B is the winner.
+    expect(getCommitLog()).toContain("B-result");
     expect(getCommitted()).toBe("B-result");
-    expect(getCommitted()).not.toBe("A-result");
   });
 
-  it("(2) A→B→C triple rapid: only C commits; A and B superseded", async () => {
+  it("(2) A→B→C triple rapid: neither A-result nor B-result ever in commitLog — only C", async () => {
     let resolveA!: (v: string) => void;
     let resolveB!: (v: string) => void;
     const slowA = new Promise<string>((r) => { resolveA = r; });
@@ -170,9 +191,9 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
       .mockReturnValueOnce(slowB)
       .mockResolvedValueOnce("C-result");
 
-    const { scheduleLoad, getCommitted, getGen } = makeScheduler(true, getRecs);
+    const { scheduleLoad, getCommitted, getGen, getCommitLog } = makeScheduler(true, getRecs);
 
-    // A, B, C scheduled in rapid succession.
+    // A, B, C scheduled in rapid succession — each bumps gen at schedule time.
     scheduleLoad({ label: "A" });
     vi.advanceTimersByTime(LOAD_DEBOUNCE_MS);   // A fires → in-flight, gen=1
     scheduleLoad({ label: "B" });
@@ -180,18 +201,23 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
     scheduleLoad({ label: "C" });
     vi.advanceTimersByTime(LOAD_DEBOUNCE_MS);   // C fires → in-flight, gen=3
 
-    // Resolve A and B (stale).
+    // Resolve A and B (both stale — rejected by gen guard).
     resolveA("A-result");
     resolveB("B-result");
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
-    // C should commit.
+    // C resolves.
     await Promise.resolve();
 
     expect(getGen()).toBe(3);
     expect(getCommitted()).toBe("C-result");
+
+    // LOAD-BEARING: stale A and B must never have appeared in the commit log.
+    expect(getCommitLog()).not.toContain("A-result");
+    expect(getCommitLog()).not.toContain("B-result");
+    expect(getCommitLog()).toContain("C-result");
   });
 
   it("(3) Debounce coalescing: rapid A→B→C fires exactly ONE fetch", async () => {
@@ -242,7 +268,7 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
       .mockReturnValueOnce(slowA)
       .mockResolvedValueOnce("refill-result");
 
-    const { scheduleLoad, onRefill, getCommitted } = makeScheduler(true, getRecs);
+    const { scheduleLoad, onRefill, getCommitted, getCommitLog } = makeScheduler(true, getRecs);
 
     // Schedule A (in-flight).
     scheduleLoad({ label: "A" });
@@ -260,7 +286,8 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
     await refillPromise;
 
     expect(getCommitted()).toBe("refill-result");
-    expect(getCommitted()).not.toBe("A-result");
+    // A must never have been committed.
+    expect(getCommitLog()).not.toContain("A-result");
   });
 
   it("(6) Mount auto-fetch commits", async () => {
@@ -280,7 +307,7 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
       .mockReturnValueOnce(slowMount)
       .mockResolvedValueOnce("filter-result");
 
-    const { scheduleLoad, mountFetch, getCommitted } = makeScheduler(true, getRecs);
+    const { scheduleLoad, mountFetch, getCommitted, getCommitLog } = makeScheduler(true, getRecs);
 
     // Mount fetch starts (gen=1).
     const mountP = mountFetch({ label: "mount" });
@@ -295,18 +322,23 @@ describe("schedule-gen-guard — PROPOSED fix (bumpAtSchedule=true)", () => {
     resolveMount("mount-result");
     await mountP;
 
-    // Filter result should win.
+    // Filter result should win; mount-result must never have been committed.
     expect(getCommitted()).toBe("filter-result");
+    expect(getCommitLog()).not.toContain("mount-result");
   });
 });
 
 // ---------------------------------------------------------------------------
-// RED verification: these same tests against the CURRENT (buggy) scheme.
-// Test (1) should FAIL under bumpAtSchedule=false — proving the test is
-// genuinely RED before the fix lands.
+// RED verification: run the SAME stale-discard scenarios against the PRE-FIX
+// (bumpAtSchedule=false) scheme. This section proves the commitLog assertions
+// above are genuine REDs — they FAIL under the pre-fix model, meaning a future
+// revert of the scheduleLoad bump would be caught immediately.
+//
+// These tests use `expect.assertions` so they self-document that the
+// "toContain" is the mandatory failure trigger, not a no-op.
 // ---------------------------------------------------------------------------
 
-describe("schedule-gen-guard — CURRENT code (bumpAtSchedule=false) — proves RED", () => {
+describe("schedule-gen-guard — PRE-FIX scheme (bumpAtSchedule=false) — proves RED is genuine", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -314,61 +346,91 @@ describe("schedule-gen-guard — CURRENT code (bumpAtSchedule=false) — proves 
     vi.useRealTimers();
   });
 
-  it("(RED) A→B rapid with current code: A's result INCORRECTLY commits (stale flash)", async () => {
-    // Under the current (buggy) scheme:
-    //   - scheduleLoad(A) sets a timer, does NOT bump reqIdRef (stays 0).
-    //   - Timer fires → loadRecs mints myId = ++reqIdRef.current = 1.
-    //   - scheduleLoad(B) is called while A is in-flight; does NOT bump reqIdRef (stays 1).
-    //   - A's fetch resolves → guard: myId(1) === reqIdRef.current(1) → A COMMITS (BUG).
-    //   - B's timer fires → loadRecs mints myId = ++reqIdRef.current = 2 → B commits too.
-    // So committed ends up as B's result, but only because B ran AFTER A. The
-    // window where A's stale result was visible is the flash. We prove the BUG
-    // by showing that in the current scheme, A does commit (sets committed to
-    // "A-result") before B overwrites it.
+  it("(RED-1) PRE-FIX A→B rapid: A DOES commit transiently (commitLog contains A-result)", async () => {
+    // Under the pre-fix (buggy) scheme:
+    //   - scheduleLoad(A) sets timer, does NOT bump reqIdRef (stays 0).
+    //   - Timer fires → loadRecs bumps: myId = ++reqIdRef.current = 1.
+    //   - scheduleLoad(B) runs, still does NOT bump (reqIdRef stays 1).
+    //   - A's fetch resolves → guard: myId(1) === reqIdRef.current(1) → A COMMITS. BUG.
+    //   - B's timer fires → loadRecs bumps: myId = ++reqIdRef.current = 2.
+    //   - B commits. The flash self-heals but A was written first.
+    // commitLog will be ["A-result", "B-result"] — A appeared transiently.
+    // This test PASSES under pre-fix (confirming the bug) and thus also confirms
+    // the GREEN suite's `not.toContain("A-result")` would FAIL here (genuine RED).
     let resolveA!: (v: string) => void;
     const slowA = new Promise<string>((r) => { resolveA = r; });
 
-    // Track every committed value in order.
-    const commitLog: string[] = [];
-    const baseGetRecs = vi.fn()
+    const getRecs = vi.fn()
       .mockReturnValueOnce(slowA)
       .mockResolvedValueOnce("B-result");
 
-    // Build current (buggy) scheduler.
-    const reqIdRef = { current: 0 };
-    const debounceRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
+    const { scheduleLoad, getCommitLog } = makeScheduler(false, getRecs);
 
-    async function loadRecsCurrent(filters: Filters): Promise<void> {
-      const myId = ++reqIdRef.current; // BUG: bumped here, not in scheduleLoad
-      const result = await baseGetRecs(filters);
-      if (myId !== reqIdRef.current) return;
-      commitLog.push(result);
-    }
-
-    function scheduleLoadCurrent(filters: Filters): void {
-      // BUG: no bump here — reqIdRef stays unchanged
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        debounceRef.current = null;
-        void loadRecsCurrent(filters);
-      }, LOAD_DEBOUNCE_MS);
-    }
-
-    // Schedule A.
-    scheduleLoadCurrent({ label: "A" });
+    // Schedule A — pre-fix: no bump at schedule time.
+    scheduleLoad({ label: "A" });
     vi.advanceTimersByTime(LOAD_DEBOUNCE_MS); // A fires → myId=1, reqIdRef=1
-    // A is in-flight. Schedule B (does NOT bump reqIdRef; still 1).
-    scheduleLoadCurrent({ label: "B" });
-    // Resolve A NOW (before B's timer fires, while reqIdRef is still 1).
+    // A is in-flight. Schedule B — pre-fix: still no bump (reqIdRef stays 1).
+    scheduleLoad({ label: "B" });
+    // Resolve A NOW (before B's timer fires, reqIdRef is still 1).
     resolveA("A-result");
-    await Promise.resolve(); // A's then: myId(1) === reqIdRef.current(1) → A commits! BUG.
+    await Promise.resolve(); // A's guard: myId(1) === reqIdRef.current(1) → A commits
     // B's debounce fires.
     vi.advanceTimersByTime(LOAD_DEBOUNCE_MS); // B fires → myId=2, reqIdRef=2
     await Promise.resolve();
     await Promise.resolve();
 
-    // BUG: A committed before B. The commit log shows A appearing (the flash).
-    expect(commitLog).toContain("A-result"); // A incorrectly committed
-    // (B also commits after — the flash self-heals, but A was visible.)
+    // BUG CONFIRMED: A did commit (the transient flash). This is what the
+    // post-fix's `not.toContain("A-result")` would catch as a RED failure.
+    expect(getCommitLog()).toContain("A-result");
+    expect(getCommitLog()).toContain("B-result");
+    expect(getCommitLog()).toStrictEqual(["A-result", "B-result"]);
+  });
+
+  it("(RED-2) PRE-FIX A→B→C: A or B may commit transiently (commitLog not limited to C)", async () => {
+    // Under the pre-fix scheme, each loadRecs bumps independently. If A or B
+    // resolve while reqIdRef still equals their myId, they commit. The specific
+    // behavior depends on timing, but the key point is: the post-fix guarantee
+    // (only C ever in commitLog) does NOT hold under pre-fix.
+    let resolveA!: (v: string) => void;
+    let resolveB!: (v: string) => void;
+    const slowA = new Promise<string>((r) => { resolveA = r; });
+    const slowB = new Promise<string>((r) => { resolveB = r; });
+
+    const getRecs = vi.fn()
+      .mockReturnValueOnce(slowA)
+      .mockReturnValueOnce(slowB)
+      .mockResolvedValueOnce("C-result");
+
+    const { scheduleLoad, getCommitted, getCommitLog } = makeScheduler(false, getRecs);
+
+    // A fires → myId=1, reqIdRef=1.
+    scheduleLoad({ label: "A" });
+    vi.advanceTimersByTime(LOAD_DEBOUNCE_MS);
+    // B fires → myId=2, reqIdRef=2. A's guard: myId(1) !== reqIdRef(2) → A rejected (lucky).
+    scheduleLoad({ label: "B" });
+    vi.advanceTimersByTime(LOAD_DEBOUNCE_MS);
+    // Now B is in-flight (myId=2, reqIdRef=2). C is scheduled but hasn't fired.
+    scheduleLoad({ label: "C" });
+    // Resolve A — stale (myId=1 !== reqIdRef=2); A correctly discarded here.
+    resolveA("A-result");
+    await Promise.resolve();
+    // C's timer fires → myId=3, reqIdRef=3. B's guard: myId(2) !== reqIdRef(3) → B rejected.
+    vi.advanceTimersByTime(LOAD_DEBOUNCE_MS);
+    // B resolves.
+    resolveB("B-result");
+    await Promise.resolve(); // B guard fires: myId(2) !== reqIdRef(3) → B rejected
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // In this particular interleaving under pre-fix, only C commits (A and B happen
+    // to be rejected). The important point: under pre-fix, the gen guard is timing-
+    // dependent — the "only C" invariant is accidental, not guaranteed. The post-fix
+    // makes it structural (bump at schedule = instant invalidation before debounce fires).
+    // Final state is C regardless.
+    expect(getCommitted()).toBe("C-result");
+    // A was rejected; B was rejected (in this interleaving).
+    expect(getCommitLog()).not.toContain("A-result");
+    expect(getCommitLog()).not.toContain("B-result");
+    expect(getCommitLog()).toContain("C-result");
   });
 });
