@@ -430,15 +430,17 @@ export async function getRecs(
 
   // F-005: a non-empty refinement set bypasses the cache and forces a
   // host-paid Edge rerank on every call. Gate it per-user (the no-refinement
-  // path is cached and unaffected). 20 / 10min is far above any human tweak
-  // cadence but caps scripted abuse.
+  // path is cached and unaffected). 10 / 60s matches the spec rate
+  // (docs/superpowers/specs/2026-05-15-play-next-redesign-design.md §318:
+  // "10 refinement runs/min/user") and caps both scripted abuse and
+  // instantaneous burst at window start.
   if (refinements.length > 0) {
     try {
       await enforceRateLimit({
         scope: "recs:refine",
         identifier: me.id,
-        limit: 20,
-        windowSeconds: 600,
+        limit: 10,
+        windowSeconds: 60,
       });
     } catch (e) {
       if (e instanceof RateLimitedError) {

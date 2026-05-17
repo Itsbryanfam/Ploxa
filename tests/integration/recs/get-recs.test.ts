@@ -851,4 +851,34 @@ describe("getRecs v2 — refinements", () => {
       expect.objectContaining({ scope: "recs:refine", identifier: "u1" }),
     );
   });
+
+  it("enforces recs:refine at limit=10/windowSeconds=60 (spec §318: 10 refinement runs/min/user)", async () => {
+    // Task 9 (Codex remediation): pin the exact enforceRateLimit args so any
+    // future drift from the spec rate is caught. The non-refinement path must
+    // NOT call enforceRateLimit at all (asserted separately via call count).
+    queueFullRun({ refinements: true });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    await getRecs(FILTERS, { refinements: ["less grindy"] });
+
+    expect(enforceRateLimitMock).toHaveBeenCalledTimes(1);
+    expect(enforceRateLimitMock).toHaveBeenCalledWith({
+      scope: "recs:refine",
+      identifier: "u1",
+      limit: 10,
+      windowSeconds: 60,
+    });
+  });
+
+  it("does NOT call enforceRateLimit on the non-refinement path (F-005)", async () => {
+    // The no-refinement (cache/pipeline) path must never be rate-limited —
+    // it is cached and host-cost is negligible. Pin this so a future refactor
+    // cannot accidentally gate the free path.
+    queueFullRun({ refinements: false });
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    await getRecs(FILTERS);
+
+    expect(enforceRateLimitMock).not.toHaveBeenCalled();
+  });
 });
