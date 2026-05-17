@@ -31,7 +31,7 @@ import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
 import { composeScore } from "@/lib/recs/scoring";
 import { computeSocialScore, fetchSocialSignals } from "@/lib/recs/social-score";
 import { softNegativePenalty } from "@/lib/recs/soft-negative";
-import { timeFitScore } from "@/lib/recs/time-fit";
+import { isTimeFeasible, timeFitScore } from "@/lib/recs/time-fit";
 import { enforceRateLimit, RateLimitedError } from "@/lib/security/rate-limit";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
@@ -625,11 +625,8 @@ export async function getRecs(
     });
   }
 
-  const [minH, maxH] = timeWindow(filters.time);
   const filtered: CandidateGame[] = candidates.filter((g) => {
-    if (g.playtimeAvgHours != null) {
-      if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
-    }
+    if (!isTimeFeasible(g.playtimeAvgHours, filters.time)) return false;
     // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
     // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
     // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
@@ -1267,11 +1264,8 @@ async function metadataOnlyRecs(
       );
   }
 
-  const [minH, maxH] = timeWindow(filters.time);
   const filtered: CandidateGame[] = candidates.filter((g) => {
-    if (g.playtimeAvgHours != null) {
-      if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
-    }
+    if (!isTimeFeasible(g.playtimeAvgHours, filters.time)) return false;
     // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
     // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
     // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
