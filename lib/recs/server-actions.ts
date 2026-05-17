@@ -881,57 +881,171 @@ export async function getRecs(
   }
 
   if (rerankOk) {
-    // The Edge wrote rows with slot defaulting to 'comfort'. Persist the
-    // real bucket assignment (user decision A: getRecs post-rerank UPDATE)
-    // so the cache-hit path serves correct slots. One UPDATE per slot
+    // Persist the real bucket assignment over the rows the Edge wrote (they
+    // default to slot='comfort') so the cache-hit path serves correct rails
+    // (user decision A: getRecs post-rerank UPDATE). One UPDATE per slot
     // value (≤4 slots) keyed by gameId list — bounded, no N+1.
-    const bySlot = new Map<string, number[]>();
-    for (const [gid, slot] of slotByGameId) {
-      const arr = bySlot.get(slot) ?? [];
-      arr.push(gid);
-      bySlot.set(slot, arr);
-    }
-    await Promise.all(
-      [...bySlot.entries()].map(([slot, gids]) =>
-        db
-          .update(recommendations)
-          .set({ slot: slot as "comfort" | "backlog" | "friends" | "wildcard" })
-          .where(
-            and(
-              eq(recommendations.userId, me.id),
-              // Match the key the Edge actually wrote under: bare `key` on
-              // the no-refinement path (unchanged), the session key on a
-              // refinement run so we update the session rows, not the
-              // user's unrefined base-cache rows.
-              eq(recommendations.cacheKey, writeKey),
-              eq(recommendations.dismissed, false),
-              inArray(recommendations.gameId, gids),
-            ),
-          ),
-      ),
-    );
+    //
+    // Which gameIds get which slot differs by path:
+    //
+    //   NO-REFINEMENT (byte-unchanged): the Edge received EXACTLY the
+    //   stratified 6 (`bucketed`), so the slot universe is the base-6
+    //   `slotByGameId`. We persist those slots and re-read the DB rows
+    //   (UPDATE → re-read order preserved); hydrate uses the DB slot. The
+    //   partition-contract integration test pins this exact behavior.
+    //
+    //   REFINEMENT (Task 6 fix): the Edge received a WIDE MMR pool (≈40
+    //   ids), so its final picks can include games OUTSIDE the base 6.
+    //   Those are absent from `slotByGameId`, so before this fix they kept
+    //   the schema DEFAULT 'comfort' — collapsing refined grids toward
+    //   all-Comfort and destroying the Backlog/Friends/Wildcard rails. We
+    //   instead read the Edge's final picks first, then run the SAME
+    //   canonical `assignBuckets` (Tasks 3/4) over JUST those picks —
+    //   threading each pick's already-computed ScoredCandidate via
+    //   `scoredById` (no recompute) — and persist THOSE slots. The slot
+    //   re-read for hydration is the same SELECT either way (poison
+    //   contract (c): it queries under `writeKey`, never the base key).
+    let fresh: {
+      id: string;
+      gameId: number;
+      score: string;
+      reason: string | null;
+      algorithm: "similarity" | "ai" | "hybrid";
+      slot: "comfort" | "backlog" | "friends" | "wildcard";
+    }[];
 
-    // Re-read the rows the Edge Function just wrote atomically under
-    // `writeKey` (=== bare `key` with no refinements; the session key on a
-    // refinement run — never reads or clobbers base-cache rows).
-    const fresh = await db
-      .select({
-        id: recommendations.id,
-        gameId: recommendations.gameId,
-        score: recommendations.score,
-        reason: recommendations.reason,
-        algorithm: recommendations.algorithm,
-        slot: recommendations.slot,
-      })
-      .from(recommendations)
-      .where(
-        and(
-          eq(recommendations.userId, me.id),
-          eq(recommendations.cacheKey, writeKey),
-          eq(recommendations.dismissed, false),
+    if (refinements.length === 0) {
+      // ── NO-REFINEMENT PATH — BYTE-UNCHANGED ──────────────────────────
+      const bySlot = new Map<string, number[]>();
+      for (const [gid, slot] of slotByGameId) {
+        const arr = bySlot.get(slot) ?? [];
+        arr.push(gid);
+        bySlot.set(slot, arr);
+      }
+      await Promise.all(
+        [...bySlot.entries()].map(([slot, gids]) =>
+          db
+            .update(recommendations)
+            .set({
+              slot: slot as "comfort" | "backlog" | "friends" | "wildcard",
+            })
+            .where(
+              and(
+                eq(recommendations.userId, me.id),
+                // Match the key the Edge actually wrote under: bare `key`
+                // on the no-refinement path.
+                eq(recommendations.cacheKey, writeKey),
+                eq(recommendations.dismissed, false),
+                inArray(recommendations.gameId, gids),
+              ),
+            ),
         ),
-      )
-      .orderBy(desc(recommendations.score));
+      );
+
+      // Re-read the rows the Edge Function just wrote atomically under
+      // `writeKey` (=== bare `key` with no refinements).
+      fresh = await db
+        .select({
+          id: recommendations.id,
+          gameId: recommendations.gameId,
+          score: recommendations.score,
+          reason: recommendations.reason,
+          algorithm: recommendations.algorithm,
+          slot: recommendations.slot,
+        })
+        .from(recommendations)
+        .where(
+          and(
+            eq(recommendations.userId, me.id),
+            eq(recommendations.cacheKey, writeKey),
+            eq(recommendations.dismissed, false),
+          ),
+        )
+        .orderBy(desc(recommendations.score));
+    } else {
+      // ── REFINEMENT PATH — slot over the FINAL rerank picks ───────────
+      // Read the Edge's final picks FIRST (under the session `writeKey` —
+      // never the base key; satisfies poison contract (c)). This is the
+      // SAME slot re-read SELECT the no-refinement path runs, just ordered
+      // before the UPDATE because the wide-pool picks are only knowable
+      // from what the Edge persisted.
+      const picked = await db
+        .select({
+          id: recommendations.id,
+          gameId: recommendations.gameId,
+          score: recommendations.score,
+          reason: recommendations.reason,
+          algorithm: recommendations.algorithm,
+          slot: recommendations.slot,
+        })
+        .from(recommendations)
+        .where(
+          and(
+            eq(recommendations.userId, me.id),
+            eq(recommendations.cacheKey, writeKey),
+            eq(recommendations.dismissed, false),
+          ),
+        )
+        .orderBy(desc(recommendations.score));
+
+      // Re-run the canonical assigner (Tasks 3/4) over JUST the final
+      // picks, carrying each pick's already-computed composite / inLibrary
+      // / socialScore / genres from `scoredById` (every Edge candidate id
+      // came from the scored pool, so it is present; defensively skip any
+      // that somehow are not rather than fabricating a score). Same
+      // `exploredGenres` / `genreFrequency` / minute-bucketed `seed` as the
+      // base `assignBuckets` call so slotting stays deterministic.
+      const finalScored: ScoredCandidate[] = [];
+      for (const p of picked) {
+        const sc = scoredById.get(p.gameId);
+        if (sc) finalScored.push(sc);
+      }
+      const finalBucketed = assignBuckets(finalScored, {
+        exploredGenres,
+        genreFrequency,
+        seed: Math.floor(now.getTime() / 60000),
+      });
+      const slotByFinalPick = new Map(
+        finalBucketed.map((b) => [b.gameId, b.slot]),
+      );
+
+      const bySlot = new Map<string, number[]>();
+      for (const [gid, slot] of slotByFinalPick) {
+        const arr = bySlot.get(slot) ?? [];
+        arr.push(gid);
+        bySlot.set(slot, arr);
+      }
+      await Promise.all(
+        [...bySlot.entries()].map(([slot, gids]) =>
+          db
+            .update(recommendations)
+            .set({
+              slot: slot as "comfort" | "backlog" | "friends" | "wildcard",
+            })
+            .where(
+              and(
+                eq(recommendations.userId, me.id),
+                // The session key on a refinement run, so we update the
+                // session rows, not the user's unrefined base-cache rows.
+                eq(recommendations.cacheKey, writeKey),
+                eq(recommendations.dismissed, false),
+                inArray(recommendations.gameId, gids),
+              ),
+            ),
+        ),
+      );
+
+      // Hydrate from the rows we already read, overriding each row's slot
+      // with the freshly-computed assignment (the DB value we read was the
+      // pre-UPDATE default; the UPDATE above persisted the correct slot for
+      // the cache-hit path, but we don't pay for a second SELECT here —
+      // unknown picks (not bucketed) fall back to the row's own value).
+      fresh = picked.map((p) => ({
+        ...p,
+        slot: slotByFinalPick.get(p.gameId) ?? p.slot,
+      }));
+    }
+
     const recs = await hydrateRecs(fresh);
     // Symmetry with the cache-hit branch: if a catalog race deleted every
     // game between the Edge Function's INSERT and this re-read, return a

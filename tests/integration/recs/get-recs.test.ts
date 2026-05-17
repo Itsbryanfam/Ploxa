@@ -735,6 +735,93 @@ describe("getRecs v2 — refinements", () => {
     expect(ids.length).toBeGreaterThan(6);
   });
 
+  it("keeps slot semantics on the wide-pool path: a refined pick OUTSIDE the base 6 gets its real slot (not defaulted comfort)", async () => {
+    // Task 6 (Codex remediation). Pre-fix, the post-rerank slot UPDATE
+    // iterated only the base-6 `slotByGameId`. On a refinement run the Edge
+    // gets a WIDE MMR pool (~40 ids) and can pick games OUTSIDE that base 6;
+    // those were absent from the map so their `recommendations.slot` kept
+    // the schema DEFAULT 'comfort' — refined grids collapsed toward
+    // all-Comfort, destroying the Backlog/Friends/Wildcard rails.
+    //
+    // Deterministic construction (no reliance on MMR tie luck):
+    //   - 20 discovery candidates (ids 1..20). id 1 carries the chill-boost
+    //     genre ["puzzle"] so it is the unique highest-composite seed; ids
+    //     2..20 carry distinct non-chill genres ["g2".."g20"] (mood 0.5)
+    //     but are still well above both the bucket floor and id 999.
+    //     All share themes ["fantasy"] + mechanics ["exploration"].
+    //   - ONE owned backlog game id 999, genres ["puzzle"] (chill 1.0 →
+    //     clears the 0.5 floor at composite ≈ 0.57) but taste 0, and its
+    //     genre/theme/mechanic vector is IDENTICAL to discovery id 1, so
+    //     MMR's diversity term gives it the largest similarity penalty.
+    //     Its MMR value is the lowest of all 21 candidates, so it is the
+    //     LAST item MMR selects: OUTSIDE the base-6 bucket input
+    //     (`applyMMR topN:15`) but INSIDE the wide Edge pool
+    //     (`applyMMR topN:40`, only 21 items → all returned).
+    // The Edge then "picks" id 999 (the re-read fixture includes it). Since
+    // 999 is the only inLibrary final pick clearing the floor, the
+    // canonical assigner must put it in slot 'backlog'.
+    const discovery = Array.from({ length: 20 }, (_, i) => ({
+      id: i + 1,
+      slug: `disc-${i + 1}`,
+      title: `Disc ${i + 1}`,
+      released: new Date(2020, 0, 1),
+      coverUrl: null,
+      posterUrl: `https://img/${i + 1}.jpg`,
+      genres: i === 0 ? ["puzzle"] : [`g${i + 1}`],
+      themes: ["fantasy"],
+      mechanics: ["exploration"],
+      platforms: null,
+      playtimeAvgHours: 1,
+      similarityScore: 5,
+    }));
+    candidatePoolMock.mockImplementationOnce(async () => discovery);
+    const backlogGame = {
+      id: 999,
+      slug: "owned-game",
+      title: "Owned Game",
+      released: new Date(2021, 0, 1),
+      coverUrl: null,
+      posterUrl: "https://img/999.jpg",
+      genres: ["puzzle"], // chill 1.0 → composite clears the 0.5 floor
+      themes: ["fantasy"],
+      mechanics: ["exploration"], // identical vector to discovery id 1
+      platforms: null,
+      playtimeAvgHours: 1,
+      similarityScore: 0, // taste 0 — only library/mood/time carry it
+    };
+    backlogPoolMock.mockImplementationOnce(async () => [backlogGame]);
+
+    // Refinement-path chain order: negRows, loggedGenreRows, post-Edge
+    // re-read (recommendations), hydrateRecs games. The Edge "picked" ids
+    // 1..4 + 999, so the re-read AND the games hydration both carry 999.
+    queue([]); // negRows
+    queue([]); // loggedGenreRows
+    queue(recRows([1, 2, 3, 4, 999])); // post-Edge re-read (Edge's final picks)
+    queue(gameRows([1, 2, 3, 4, 999])); // hydrateRecs games
+
+    const { getRecs } = await import("@/lib/recs/server-actions");
+    const result = await getRecs(FILTERS, { refinements: ["less grindy"] });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok result");
+
+    // 999 must have been in the WIDE Edge pool (outside the base 6).
+    expect(lastFetchBody?.candidateIds as number[]).toContain(999);
+
+    // ── core Task-6 assertion ────────────────────────────────────────
+    // A `backlog` slot UPDATE must have fired keyed by 999 — i.e. the slot
+    // was assigned over the FINAL picks, not the base-6 grid (pre-fix there
+    // was no backlog UPDATE for 999 at all → it defaulted to comfort).
+    const backlogUpdate = recordedUpdates.find((u) => u.slot === "backlog");
+    expect(backlogUpdate).toBeDefined();
+    expect(backlogUpdate?.gameIds).toContain(999);
+
+    // And the returned card for 999 carries slot 'backlog' (not 'comfort').
+    const card999 = result.recs.find((r) => r.gameId === 999);
+    expect(card999).toBeDefined();
+    expect(card999?.slot).toBe("backlog");
+  });
+
   it("truncates each refinement to 120 chars before the Edge call (F-005)", async () => {
     queueFullRun({ refinements: true });
     const { getRecs } = await import("@/lib/recs/server-actions");
