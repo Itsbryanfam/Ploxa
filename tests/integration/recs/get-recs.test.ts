@@ -1003,7 +1003,10 @@ describe("getRecs v2 — rerank wall-clock budget (Task 12)", () => {
     vi.useFakeTimers();
     try {
       // An abort-aware fetch: never resolves on its own; rejects the moment
-      // its AbortSignal fires — exactly real fetch + AbortSignal.timeout.
+      // its AbortSignal fires. The signal comes from an AbortController whose
+      // setTimeout is triggered by the fake clock advancing past the budget —
+      // NOT AbortSignal.timeout (which is invisible to Vitest fake timers and
+      // would make this test untestable; see the WHY comment in server-actions.ts).
       const slowFetch = vi.fn(
         (_url: string, init?: RequestInit) =>
           new Promise<Response>((_resolve, reject) => {
@@ -1048,8 +1051,9 @@ describe("getRecs v2 — rerank wall-clock budget (Task 12)", () => {
       const resultPromise = getRecs(FILTERS);
 
       // Drive the whole pipeline (all resolved-promise awaits flush as the
-      // fake clock advances) and fire AbortSignal.timeout exactly at the 8s
-      // budget. 7999ms: still pending (budget not yet breached).
+      // fake clock advances). At 8000ms the AbortController's setTimeout fires,
+      // calling controller.abort() which triggers the fetch signal listener.
+      // 7999ms: still pending (budget not yet breached).
       await vi.advanceTimersByTimeAsync(7999);
       await vi.advanceTimersByTimeAsync(2); // cross the 8000ms budget
 

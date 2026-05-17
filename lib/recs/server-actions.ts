@@ -29,7 +29,11 @@ import { moodMatchScore } from "@/lib/recs/mood-affinity";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
 import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
 import { composeScore } from "@/lib/recs/scoring";
-import { computeSocialScore, fetchSocialSignals } from "@/lib/recs/social-score";
+import {
+  computeSocialScore,
+  fetchSocialSignals,
+  type SocialSignals,
+} from "@/lib/recs/social-score";
 import { softNegativePenalty } from "@/lib/recs/soft-negative";
 import { isTimeFeasible, timeFitScore } from "@/lib/recs/time-fit";
 import { enforceRateLimit, RateLimitedError } from "@/lib/security/rate-limit";
@@ -383,6 +387,52 @@ function cosineSimilarity(a: number[], b: number[]): number {
   }
   if (magA === 0 || magB === 0) return 0;
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+/**
+ * Shared by the happy-path enrich and the Task-12 timeout fallback so chip
+ * thresholds can't drift between the two call sites.
+ *
+ * `composite` is caller-specific: the happy path passes `sc?.composite ?? r.score`
+ * (persisted DB score); the timeout fallback passes `sc?.composite ?? 0`
+ * (in-memory composite). All other inputs are identical in-scope maps/filters.
+ */
+function liveFitChips(
+  gameId: number,
+  composite: number,
+  ctx: {
+    byId: Map<number, CandidateGame>;
+    scoredById: Map<number, ScoredCandidate>;
+    socialMap: Map<number, SocialSignals>;
+    filters: FilterParams;
+  },
+): { fitChips: RecCard["fitChips"]; confidence: RecCard["confidence"] } {
+  const cand = ctx.byId.get(gameId);
+  const sc = ctx.scoredById.get(gameId);
+  const sig = ctx.socialMap.get(gameId);
+  const tf = cand ? timeFitScore(cand.playtimeAvgHours, ctx.filters.time) : 0.5;
+  const moodMatches = cand
+    ? ctx.filters.moods.filter(
+        (m) =>
+          moodMatchScore(m, {
+            genres: cand.genres,
+            mechanics: cand.mechanics,
+          }) >= 0.5,
+      )
+    : [];
+  return {
+    fitChips: {
+      timeFit: (tf >= 0.8
+        ? "perfect"
+        : tf >= 0.4
+          ? "close"
+          : "loose") as "perfect" | "close" | "loose",
+      moodMatches,
+      inLibrary: sc?.inLibrary ?? false,
+      friendsCount: sig ? sig.friendsPlayed + sig.friendsLiked : 0,
+    },
+    confidence: deriveConfidence(composite),
+  };
 }
 
 /**
@@ -970,17 +1020,14 @@ export async function getRecs(
         const cand = byId.get(b.gameId);
         if (!cand) return null; // defensive: bucketed ⊆ filtered ⊆ byId
         const sc = scoredById.get(b.gameId);
-        const sig = socialMap.get(b.gameId);
-        const tf = timeFitScore(cand.playtimeAvgHours, filters.time);
-        const moodMatches = filters.moods.filter(
-          (m) =>
-            moodMatchScore(m, {
-              genres: cand.genres,
-              mechanics: cand.mechanics,
-            }) >= 0.5,
-        );
         const composite = sc?.composite ?? 0;
-        const overlap = moodMatches[0];
+        const chips = liveFitChips(b.gameId, composite, {
+          byId,
+          scoredById,
+          socialMap,
+          filters,
+        });
+        const overlap = chips.fitChips.moodMatches[0];
         const reason = overlap
           ? `A strong ${overlap} match for your time budget — picked while the full ranking caught up.`
           : `A solid match for your time budget — picked while the full ranking caught up.`;
@@ -998,17 +1045,7 @@ export async function getRecs(
           // Deterministic composite/similarity path — NOT a fresh AI rerank.
           algorithm: "similarity" as const,
           slot: b.slot,
-          fitChips: {
-            timeFit: (tf >= 0.8
-              ? "perfect"
-              : tf >= 0.4
-                ? "close"
-                : "loose") as "perfect" | "close" | "loose",
-            moodMatches,
-            inLibrary: sc?.inLibrary ?? false,
-            friendsCount: sig ? sig.friendsPlayed + sig.friendsLiked : 0,
-          },
-          confidence: deriveConfidence(composite),
+          ...chips,
         };
       })
       .filter((r): r is RecCard => r !== null);
@@ -1197,31 +1234,14 @@ export async function getRecs(
     // scoredById / byId / filters here).
     const enriched = recs.map((r): RecCard => {
       const sc = scoredById.get(r.gameId);
-      const cand = byId.get(r.gameId);
-      const sig = socialMap.get(r.gameId);
-      const tf = cand ? timeFitScore(cand.playtimeAvgHours, filters.time) : 0.5;
-      const moodMatches = cand
-        ? filters.moods.filter(
-            (m) =>
-              moodMatchScore(m, {
-                genres: cand.genres,
-                mechanics: cand.mechanics,
-              }) >= 0.5,
-          )
-        : [];
       return {
         ...r,
-        fitChips: {
-          timeFit: (tf >= 0.8
-            ? "perfect"
-            : tf >= 0.4
-              ? "close"
-              : "loose") as "perfect" | "close" | "loose",
-          moodMatches,
-          inLibrary: sc?.inLibrary ?? false,
-          friendsCount: sig ? sig.friendsPlayed + sig.friendsLiked : 0,
-        },
-        confidence: deriveConfidence(sc?.composite ?? r.score),
+        ...liveFitChips(r.gameId, sc?.composite ?? r.score, {
+          byId,
+          scoredById,
+          socialMap,
+          filters,
+        }),
       };
     });
     return { ok: true, tier: fpReady.tier, recs: enriched, algorithm: "ai" };
