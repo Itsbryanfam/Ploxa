@@ -1,0 +1,131 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-16-play-next-codex-remediation.md",
+  "lastUpdated": "2026-05-16T00:00:00Z",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 0: Branch + harness sanity",
+      "status": "pending",
+      "description": "Create branch fix/play-next-codex-remediation (never main). Confirm real package.json script aliases for vitest/playwright/build and scripts/verify-play-next-v2.ts. Record baseline green (~926 tests).\n\n```json:metadata\n{\"files\":[\"package.json\"],\"verifyCommand\":\"pnpm vitest run\",\"acceptanceCriteria\":[\"on fix/play-next-codex-remediation branch\",\"script aliases confirmed\",\"baseline recorded\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1: Restore real kill-switch (B2, P0 Critical)",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "Delete the static 'being upgraded' early-return in app/(app)/play-next/page.tsx so flag-OFF renders the client which self-dispatches to getRecsLegacy. Default any v2-only field the client reads.\n\n```json:metadata\n{\"files\":[\"app/(app)/play-next/page.tsx\",\"app/(app)/play-next/_client.tsx\",\"tests/integration/recs/get-recs.test.ts\",\"tests/e2e/play-next-v2.spec.ts\"],\"verifyCommand\":\"pnpm tsx scripts/verify-play-next-v2.ts && pnpm exec playwright test tests/e2e/play-next-v2.spec.ts\",\"acceptanceCriteria\":[\"flag-OFF renders legacy recs not placeholder\",\"flag-ON byte-unchanged\",\"G4.8 passes\",\"no client crash on absent v2 fields\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Stop refinement base-cache poisoning (B1, P0 Critical)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "Refinement runs write under a distinct session cache key (key + ':r:' + sha256(sorted refinements).slice(0,8)); base no-refinement read keeps using key. Edge DELETE/INSERT now isolated by the distinct key; row-level actions preserved.\n\n```json:metadata\n{\"files\":[\"supabase/functions/rerank-recs/index.ts\",\"lib/recs/server-actions.ts\",\"lib/recs/cache.ts\",\"tests/integration/recs/refinement-no-poison.test.ts\",\"tests/integration/recs/get-recs.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/integration/recs/refinement-no-poison.test.ts tests/integration/recs/get-recs.test.ts\",\"acceptanceCriteria\":[\"base-key rows unchanged after a refinement\",\"subsequent no-refinement returns original set\",\"refined picks still produce DB rows\",\"mode:full byte-unchanged\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Revive Backlog bucket — status-aware exclusion + lane (B4, P1 High)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "candidate-pool exclusion becomes status-aware (exclude only completed/dropped/playing). Add a backlog lane (backlog/wishlist logs, scored, inLibrary:true) merged into bucketing. server-actions sources inLibrary from the lane, not the unconditional logged set.\n\n```json:metadata\n{\"files\":[\"lib/recs/candidate-pool.ts\",\"lib/recs/server-actions.ts\",\"lib/recs/buckets.ts\",\"tests/unit/recs/candidate-pool-v2.test.ts\",\"tests/unit/recs/buckets.test.ts\",\"tests/integration/recs/get-recs.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/candidate-pool-v2.test.ts tests/unit/recs/buckets.test.ts tests/integration/recs/get-recs.test.ts\",\"acceptanceCriteria\":[\"backlog/wishlist game can fill Backlog slot\",\"completed/dropped/playing never appear\",\"discovery slots contain no owned games\",\"libraryBonus contributes for lane candidates\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Reserve special slots before Comfort (R2, P1) — blockedBy T3",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "Reorder assignBuckets: reserve Backlog/Friends/Wildcard over sorted BEFORE the Comfort fill, then Comfort from remainder, then existing demotion. No-special path membership pinned identical.\n\n```json:metadata\n{\"files\":[\"lib/recs/buckets.ts\",\"tests/unit/recs/buckets.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/buckets.test.ts\",\"acceptanceCriteria\":[\"top-score Friends-eligible game gets slot friends\",\"no-special path returns identical 6 ids\",\"demotion still fills 6\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Live vectors+narrative into rerank Edge (B3, P1 High)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "Add vectors:fpReady.vectors + narrative to the Edge payload. Edge prefers body vectors/narrative; persisted taste_fingerprints SQL becomes fallback only. Bump RERANK_PROMPT_VERSION iff prompt text changes.\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"supabase/functions/rerank-recs/index.ts\",\"supabase/functions/_shared/prompts.ts\",\"tests/unit/recs/rerank-prompt.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/rerank-prompt.test.ts\",\"acceptanceCriteria\":[\"payload includes live vectors+narrative\",\"Edge uses body when present, SQL fallback when absent\",\"prompt-version test updated iff prompt changed\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Slot semantics on refinement 40-pool path (B7, P1)",
+      "status": "pending",
+      "blockedBy": [5],
+      "description": "Assign slots over the final rerank picks (run assignBuckets on returned picks) instead of the base-6 slotByGameId, so refined grids keep Backlog/Friends/Wildcard. No-refinement path pinned.\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"tests/integration/recs/get-recs.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/integration/recs/get-recs.test.ts\",\"acceptanceCriteria\":[\"refined pick outside base 6 persists correct slot\",\"no-refinement slot output byte-unchanged\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: isTimeFeasible for v2 hard time filter (B9, P1)",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "Replace loose timeWindow filtering at v2 (~:571-575) + metadata fallback (~:1073-1077) with isTimeFeasible (null playtime still passes). Keep timeWindow only if legacy path still calls it.\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"lib/recs/time-fit.ts\",\"tests/unit/recs/time-fit.test.ts\",\"tests/integration/recs/get-recs.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/time-fit.test.ts tests/integration/recs/get-recs.test.ts\",\"acceptanceCriteria\":[\"1hr excludes 12h game\",\"multi-session includes 6h game\",\"null playtime still passes\",\"legacy path unaffected\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Canonicalize mood vocab + restore social weights (I2, P1)",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "Add a canonicalizer mapping affinity tokens <-> real IGDB/RAWG terms; match via canonical forms (genres RAWG-style, mechanics IGDB). Restore social coefficients to spec 0.3/0.5 inside the 2*(sigmoid-0.5) wrapper. Keep single-word matches.\n\n```json:metadata\n{\"files\":[\"lib/recs/mood-affinity.ts\",\"lib/igdb/vocabulary.ts\",\"lib/recs/social-score.ts\",\"tests/unit/recs/mood-affinity.test.ts\",\"tests/unit/recs/social-score.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/mood-affinity.test.ts tests/unit/recs/social-score.test.ts\",\"acceptanceCriteria\":[\"life simulation / story driven / online co-op now match\",\"social score for 1 like ~= spec, still <1\",\"single-word matches still fire\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Tighten refinement rate limit (I1, P2)",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "enforceRateLimit args for recs:refine -> limit:10, windowSeconds:60 (spec :318). Sliding-window/token-bucket noted as optional follow-up (needs new helper).\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"tests/unit/recs/rate-limit-refine.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/rate-limit-refine.test.ts\",\"acceptanceCriteria\":[\"11th refinement in 60s rejected\",\"non-refinement never limited\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Refinements as framed data + schema validation (I4, P2)",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "Render refinements as a JSON data block with 'preferences not instructions' framing; add post-parse output schema validation. Bump RERANK_PROMPT_VERSION + mirrors. Correct rerank-prompt.test.ts to the intended contract.\n\n```json:metadata\n{\"files\":[\"supabase/functions/_shared/prompts.ts\",\"supabase/functions/rerank-recs/index.ts\",\"tests/unit/recs/rerank-prompt.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/rerank-prompt.test.ts\",\"acceptanceCriteria\":[\"refinement inside data block with framing\",\"test asserts intended contract\",\"output schema validated post-parse\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Collapse redundant per-load log scans (I3, P2)",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "Thread logged-status map + exploredGenres out of the single getFingerprint live aggregation; pass into candidatePool + explored consumer; drop the duplicate full-logs queries. Rec output equivalence pinned.\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"lib/recs/candidate-pool.ts\",\"lib/taste/server-actions.ts\",\"tests/integration/recs/get-recs.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/integration/recs/get-recs.test.ts\",\"acceptanceCriteria\":[\"<=2 logs scans per load\",\"rec ids unchanged for fixture\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: 8s rerank budget + deterministic fallback (R3, P2)",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "Wrap the rerank-recs callRouter loop in an ~8s overall budget (do NOT lower shared ai-router 30s). On breach serve deterministic bucketed picks + 'slow' banner per spec :416.\n\n```json:metadata\n{\"files\":[\"supabase/functions/rerank-recs/index.ts\",\"lib/recs/server-actions.ts\",\"tests/integration/recs/get-recs.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/integration/recs/get-recs.test.ts\",\"acceptanceCriteria\":[\"slow provider -> <=~8s with deterministic picks + banner\",\"healthy path unchanged\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Order overlap prefilter before LIMIT 1000 (R1, P2 High)",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "Add SQL ORDER BY proxying overlap strength to the :210-214 prefilter query before .limit(PREFILTER_LIMIT). Cold-start branch unchanged.\n\n```json:metadata\n{\"files\":[\"lib/recs/candidate-pool.ts\",\"tests/unit/recs/candidate-pool-v2.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/candidate-pool-v2.test.ts\",\"acceptanceCriteria\":[\"top dot-product game retained when overlap > limit\",\"cold-start branch unchanged\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: Deterministic dismissal collapse (B8, P2)",
+      "status": "pending",
+      "blockedBy": [13],
+      "description": "Replace the unordered negRows query+reduce with a grouped aggregate: max(snoozed_until), bool_or(never_again) GROUP BY game_id. Drop dismissedAt from this map (unused in v2).\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"tests/unit/recs/dismissal-actions.test.ts\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/dismissal-actions.test.ts\",\"acceptanceCriteria\":[\"active snooze wins over expired regardless of row order\",\"neverAgain unchanged\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: Bump reqId at schedule time (B10, P2)",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "Move ++reqIdRef.current into scheduleLoad; capture gen, thread into loadRecs, guard gen!==current. Align mount fetch + onRefill to the same counter.\n\n```json:metadata\n{\"files\":[\"app/(app)/play-next/_client.tsx\",\"tests/e2e/play-next-v2.spec.ts\"],\"verifyCommand\":\"pnpm exec playwright test tests/e2e/play-next-v2.spec.ts\",\"acceptanceCriteria\":[\"A->B rapid change: A result discarded\",\"normal single change still renders\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: Guard card actions on throw path (I6, P2 Low)",
+      "status": "pending",
+      "blockedBy": [15],
+      "description": "try/catch around doDismiss/action handlers; generic failure toast on throw; restore card for onSave throw. Structured {ok:false} behavior unchanged.\n\n```json:metadata\n{\"files\":[\"components/recs/rec-card.tsx\",\"app/(app)/play-next/_client.tsx\",\"tests/unit/recs/rec-card-v2.test.tsx\"],\"verifyCommand\":\"pnpm vitest run tests/unit/recs/rec-card-v2.test.tsx\",\"acceptanceCriteria\":[\"thrown action -> failure toast\",\"onSave throw -> card restored\",\"structured failure unchanged\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: Align test contracts to spec (I5 a,c; P2)",
+      "status": "pending",
+      "blockedBy": [16],
+      "description": "server-actions.ts:417 slice 120->140; get-recs.test.ts:555 expect 140; e2e asserts exactly 6 on a seeded rich fixture. Do NOT touch soft-negative.test.ts (already correct). Depends transitively on T3/T4/T6/T7 (grid fills 6).\n\n```json:metadata\n{\"files\":[\"lib/recs/server-actions.ts\",\"tests/integration/recs/get-recs.test.ts\",\"tests/e2e/play-next-v2.spec.ts\"],\"verifyCommand\":\"pnpm vitest run tests/integration/recs/get-recs.test.ts && pnpm exec playwright test tests/e2e/play-next-v2.spec.ts\",\"acceptanceCriteria\":[\"140-char refinement reaches Edge un-clipped\",\"integration asserts 140\",\"e2e asserts ===6 on rich fixture\",\"soft-negative test untouched\"]}\n```"
+    }
+  ]
+}
