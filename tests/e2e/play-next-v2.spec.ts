@@ -29,10 +29,12 @@ import {
  *   - v2 getRecs degrades gracefully: with the rerank Edge Function
  *     unreachable locally it falls back to metadata-only matching with an
  *     "AI ranking unavailable" banner, so the grid still renders.
- *   - The rich-fixture happy path (13 logged games, ~5040 unlogged catalog
- *     candidates, default filters) deterministically returns EXACTLY 6 cards
- *     via metadataOnlyRecs (GRID_SIZE=6 = 3 Comfort + Backlog + Friends +
- *     Wildcard). We assert === 6 here. The thin-pool / degradation path
+ *   - The rich-fixture happy path (13 logged games, default filters)
+ *     deterministically returns EXACTLY 6 cards via metadataOnlyRecs
+ *     (GRID_SIZE=6 = 3 Comfort + Backlog + Friends + Wildcard). The pipeline
+ *     is: top-200 by rawgRating → minus ≤13 logged → slice 50 → time/platform
+ *     filter → slice GRID_SIZE(6). Determinism comes from 200≫50≫6, NOT from
+ *     catalog size. We assert === 6 here. The thin-pool / degradation path
  *     (< 6 feasible candidates after time/platform filtering) is legitimately
  *     allowed to yield fewer — it is NOT tested in this rich-fixture scenario.
  *   - There is no library/dismissed-recs seed helper and the bucket
@@ -109,10 +111,11 @@ test("core flow: grid, time filter, refinement add/remove, mood cap", async ({
 
   const cards = page.locator('[data-testid="rec-card"]');
   await expect(cards.first()).toBeVisible({ timeout: 30_000 });
-  // Rich-fixture assertion: 13 logged games → ~5040 unlogged candidates →
-  // metadataOnlyRecs deterministically fills the full GRID_SIZE=6 grid.
-  // Thin-pool / degradation paths (< 6 feasible candidates) are allowed to
-  // yield fewer — they are NOT exercised by this seed.
+  // Rich-fixture assertion: 13 logged games → top-200 popular pool minus ≤13
+  // logged → slice 50 → default-filter attrition still ≥ GRID_SIZE →
+  // metadataOnlyRecs deterministically fills all 6. Determinism comes from
+  // 200≫50≫6, NOT catalog size. Thin-pool / degradation paths (< 6 feasible
+  // candidates) are allowed to yield fewer — NOT exercised by this seed.
   expect(await cards.count()).toBe(6);
 
   // Time filter chip: opens an inline popover; picking a value auto-closes
