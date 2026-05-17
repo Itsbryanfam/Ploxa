@@ -98,6 +98,14 @@ const chainQueue: Chain[] = [];
 // Every chain a `db.select()` consumed, in consumption order — lets a test
 // reach back into a specific SELECT's recorded `.where()` argument.
 const consumedSelects: Chain[] = [];
+// Every row batch a `db.insert(...).values(rows)` recorded, in call order.
+// metadataOnlyRecs is the ONLY db.insert in server-actions.ts; it binds
+// `cacheKey: <the key arg>` on every row. The sparse early-return + the
+// AI-failure fallback both reach it, so the bound cacheKey here is exactly
+// the key getRecs handed metadataOnlyRecs — the observable under test for
+// the sparse-poison contract (mirrors how consumedSelects exposes the bound
+// cache_key on the Edge re-read SELECT for contract (c)).
+const consumedInsertRows: Array<Array<{ cacheKey?: unknown }>> = [];
 function queue(final: unknown[]) {
   const c = createChain(final);
   chainQueue.push(c);
@@ -159,6 +167,22 @@ vi.mock("@/lib/db", async () => {
         (c.update as (...a: unknown[]) => unknown)();
         return c;
       }),
+      // INSERT returns an independent no-op chain (it does NOT touch the
+      // select queue — the full v2 success path never inserts via `db`; the
+      // Edge writes server-side. ONLY metadataOnlyRecs (sparse + AI-failure
+      // fallback) calls db.insert). `.values(rows)` records the row batch so
+      // a test can recover the bound `cacheKey` — the sparse-poison
+      // observable. Resolves like the real awaited insert.
+      insert: vi.fn(() => {
+        const chain: Record<string, unknown> = {};
+        chain.values = vi.fn((rows: unknown) => {
+          consumedInsertRows.push(
+            rows as Array<{ cacheKey?: unknown }>,
+          );
+          return Promise.resolve(undefined);
+        });
+        return chain;
+      }),
     },
   };
 });
@@ -185,11 +209,22 @@ const EMPTY_LOG_FACTS = {
   exploredGenres: new Set<string>(),
   genreFrequency: new Map<string, number>(),
 };
-const getFingerprintMock = vi.fn(async () => ({
-  tier: "full" as const,
-  vectors: VECTORS,
-  ...EMPTY_LOG_FACTS,
-}));
+// `tier` typed as the production tier union (not the `"full"` literal) so a
+// per-test `.mockImplementation` can return a `"sparse"` snapshot (the
+// sparse-poison contract below) without a literal-type mismatch. The DEFAULT
+// runtime value is still `"full"` — no existing test's behavior changes; this
+// is a type-only widening to the exact domain production's `fpReady` narrows
+// to (`"sparse" | "sharpening" | "full"`).
+type FpTier = "sparse" | "sharpening" | "full";
+const getFingerprintMock = vi.fn(
+  async (): Promise<
+    { tier: FpTier; vectors: typeof VECTORS } & typeof EMPTY_LOG_FACTS
+  > => ({
+    tier: "full",
+    vectors: VECTORS,
+    ...EMPTY_LOG_FACTS,
+  }),
+);
 vi.mock("@/lib/taste/server-actions", () => ({
   getFingerprint: getFingerprintMock,
 }));
@@ -312,6 +347,7 @@ function fetchBody(): Record<string, unknown> {
 beforeEach(() => {
   chainQueue.length = 0;
   consumedSelects.length = 0;
+  consumedInsertRows.length = 0;
   lastFetchBody = null;
   fetchMock.mockClear();
   candidatePoolMock.mockClear();
@@ -393,6 +429,38 @@ async function baseKey(filters: FilterParams): Promise<string> {
     time: filters.time,
     platforms: filters.platforms,
   });
+}
+
+/**
+ * Recompute the production session cache key for a refinement set, using the
+ * SAME real (unmocked) `cacheKey` + `sha256Hex` primitives and the EXACT
+ * formula in getRecs (`${base}:r:${sha256Hex(JSON.stringify(sorted)).slice(
+ * 0,8)}`). Pins the precise production session key — not a guessed shape — so
+ * the sparse-poison assertion below fails pre-fix for the BEHAVIORAL reason
+ * (insert bound the bare base key, expected this session key).
+ */
+async function sessionKey(
+  filters: FilterParams,
+  refinements: string[],
+): Promise<string> {
+  const { sha256Hex } = await import("@/lib/recs/cache");
+  const base = await baseKey(filters);
+  return `${base}:r:${sha256Hex(JSON.stringify([...refinements].sort())).slice(0, 8)}`;
+}
+
+/** The `cacheKey` bound on the single metadataOnlyRecs insert batch. */
+function insertedCacheKey(): unknown {
+  if (consumedInsertRows.length !== 1) {
+    throw new Error(
+      `expected exactly ONE metadataOnlyRecs insert batch, got ${consumedInsertRows.length}`,
+    );
+  }
+  const rows = consumedInsertRows[0];
+  expect(rows.length).toBeGreaterThanOrEqual(1);
+  // metadataOnlyRecs binds the SAME cacheKey on every row in the batch.
+  const keys = new Set(rows.map((r) => r.cacheKey));
+  expect(keys.size).toBe(1);
+  return rows[0].cacheKey;
 }
 
 describe("getRecs — refinement runs must not poison the unrefined base cache", () => {
@@ -500,6 +568,86 @@ describe("getRecs — refinement runs must not poison the unrefined base cache",
     const boundKeys = extractStringParams(reReadWhere!.args[0]);
     expect(boundKeys).toContain(sessionKey);
     expect(boundKeys).not.toContain(key);
+  });
+
+  /**
+   * (d) SPARSE-TIER early-return write isolation — closes the T2 gap.
+   *
+   * `RefinementInput` is rendered for ALL tiers (never tier-gated in
+   * `_client.tsx`), so a sparse-tier user CAN apply a refinement. The sparse
+   * branch (`if (fpReady.tier === "sparse")`) returns early via
+   * `metadataOnlyRecs(...)` WITHOUT any refinement-aware re-rank — it never
+   * hits the Edge, but it DOES `db.insert(recommendations).values([{ ...,
+   * cacheKey }])`. Pre-fix it passed the BARE BASE `key`, so a sparse +
+   * refinement run wrote "similarity" rows under the unrefined base cache
+   * key: the next plain same-filter /play-next would cache-hit those
+   * refinement-run rows — the exact B1 poisoning mechanism Task 2 exists to
+   * eliminate, reachable via the sparse path and previously untested.
+   *
+   * Contract (Task 2 invariant, sparse path): after a sparse + refinement
+   * run, nothing is written under the bare base `key`; the write goes to the
+   * session `writeKey` (= `${base}:r:<hash>`), exactly like every other
+   * post-T2 refinement path. A subsequent NO-refinement sparse run still
+   * writes under the bare base `key` (writeKey === key — byte-unchanged).
+   *
+   * On the sparse + refinement path the cache-check block (gated by
+   * `refinements.length === 0`) is SKIPPED and the sparse branch returns
+   * before negRows / pool selects; candidatePool is mocked and the
+   * vectorMass of VECTORS (3.4) keeps `useFallback` false — so NO db.select
+   * is consumed; metadataOnlyRecs performs exactly ONE db.insert.
+   */
+  it("(d) SPARSE tier + refinement: write goes to the session key, NEVER the bare base key (T2 gap)", async () => {
+    getFingerprintMock.mockImplementation(async () => ({
+      tier: "sparse" as const,
+      vectors: VECTORS,
+      ...EMPTY_LOG_FACTS,
+    }));
+    const key = await baseKey(FILTERS);
+    const wKey = await sessionKey(FILTERS, ["less grindy"]);
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS, { refinements: ["less grindy"] });
+
+    expect(result.ok).toBe(true);
+    // Sparse path returns BEFORE the Edge rerank — no fetch at all.
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // THE behavioral assertion: the metadataOnlyRecs insert bound the
+    // session writeKey, NOT the bare base key. Pre-fix (bare `key` passed to
+    // metadataOnlyRecs) this is exactly `key` → fails here for the
+    // BEHAVIORAL reason (got base key, expected session key), not a symbol
+    // error. `wKey` is the exact production session key (real cacheKey +
+    // sha256Hex), so this also pins the precise key, not just "not base".
+    const bound = insertedCacheKey();
+    expect(bound).toBe(wKey);
+    // Task 2's invariant, two complementary framings: (i) the write did NOT
+    // land under the bare base key (no base-cache poisoning), and (ii) it
+    // landed under a session-scoped key derived from the base key.
+    expect(bound).not.toBe(key);
+    expect(typeof bound).toBe("string");
+    expect(bound as string).toMatch(new RegExp(`^${key}:r:[0-9a-f]{8}$`));
+  });
+
+  it("(d) plain SPARSE run (no refinements) still writes under the bare base key — byte-unchanged", async () => {
+    getFingerprintMock.mockImplementation(async () => ({
+      tier: "sparse" as const,
+      vectors: VECTORS,
+      ...EMPTY_LOG_FACTS,
+    }));
+    // No refinements ⇒ the cache-check block runs: cache SELECT (miss) +
+    // vectors SELECT. Cache miss → falls through to the sparse branch →
+    // metadataOnlyRecs with `writeKey === key` (bare base key).
+    queue([]); // cache SELECT (recommendations) — miss
+    queue([{ vectorsGeneratedAt: new Date(2000, 0, 1) }]); // vectors SELECT
+    const key = await baseKey(FILTERS);
+    const { getRecs } = await import("@/lib/recs/server-actions");
+
+    const result = await getRecs(FILTERS);
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // The plain sparse path is byte-unchanged: still the bare base key.
+    expect(insertedCacheKey()).toBe(key);
   });
 
   it("per-row actions stay addressable: refined picks still hydrate to rows with ids", async () => {

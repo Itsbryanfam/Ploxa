@@ -633,10 +633,20 @@ export async function getRecs(
   }
 
   // 2. Sparse tier — skip AI, use metadataOnlyRecs (T9 templated path +
-  //    T10 popularity fallback for thin vectors). Refinements don't apply
-  //    to the sparse path (no AI rerank there) — acceptable per dispatch.
+  //    T10 popularity fallback for thin vectors). The sparse path returns
+  //    early WITHOUT any refinement-aware re-rank logic, so a refinement
+  //    run does not change the sparse OUTPUT. But the WRITE must still use
+  //    `writeKey`, not bare `key`: metadataOnlyRecs unconditionally persists
+  //    "similarity" rows under the key it's handed, so a sparse-tier user
+  //    who applies a refinement would otherwise poison their unrefined base
+  //    cache (a later plain same-filter call would cache-hit those
+  //    refinement-run rows) — the exact B1 poisoning mechanism Task 2 was
+  //    created to eliminate. Same isolation + reasoning as the AI-failure
+  //    fallback sibling below (~`metadataOnlyRecs(..., writeKey)` at the
+  //    "AI failure → metadata fallback" comment). `writeKey === key` with
+  //    no refinements, so the plain sparse path is byte-unchanged.
   if (fpReady.tier === "sparse") {
-    return metadataOnlyRecs(me.id, fpReady, filters, key);
+    return metadataOnlyRecs(me.id, fpReady, filters, writeKey);
   }
 
   // 3. Sharpening / full — v2 pipeline. Pull a candidate pool (T10: 100

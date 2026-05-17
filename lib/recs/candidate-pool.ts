@@ -85,6 +85,13 @@ const BACKLOG_LANE_STATUSES = [
   const _noOverlap: _NoOverlap = true;
   void _allClassified;
   void _noOverlap;
+  // `DISCOVERY_EXCLUDED_STATUSES` is referenced ONLY in the `typeof` type
+  // positions above (the partition guard is purely compile-time; unlike
+  // `BACKLOG_LANE_STATUSES` it has no runtime `inArray(...)` use), so
+  // no-unused-vars flags it as "only used as a type". Discharge it with the
+  // SAME `void <symbol>;` idiom used for the guard bindings just above —
+  // semantics unchanged, the status arrays are untouched.
+  void DISCOVERY_EXCLUDED_STATUSES;
 }
 
 // How many top-keys per axis we push into the Postgres `&&` (array overlap)

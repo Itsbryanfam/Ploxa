@@ -207,16 +207,11 @@ describe("RecCard v2 (static render)", () => {
  *      `r.ok` branch fires toast itself; the guard is for outer throws only)
  *   3. SUCCESS path → onError() does NOT fire
  *
- * RED genuineness: pre-fix `guardedCardAction` did NOT EXIST (the export was
- * added in the fix commit). So a symbol-missing test would also be red pre-fix,
- * but for the wrong reason. These helper tests are kept because they validly
- * cover the throw-guard contract in isolation (a no-catch regression guard).
- * The GENUINE BEHAVIORAL RED — proving the card's save wiring calls toast.error
- * AND onRestore when saveRecForLater throws — lives in the "card save throw-path"
- * suite below; it is red pre-fix for the behavioral reason, not symbol-missing.
- *
- * Tests 2 & 3 pass both before and after (proving no regression on the
- * already-correct paths).
+ * These helper tests cover the throw-guard contract in isolation (a no-catch
+ * regression guard); tests 2 & 3 pass both before and after (no regression on
+ * the already-correct paths). The single authoritative RED-genuineness
+ * rationale (why the RED is BEHAVIORAL, not symbol-missing, proven via the
+ * pre-fix model) lives on the "card save throw-path" suite header below.
  */
 describe("guardedCardAction throw-guard contract", () => {
   it("THROW path: onError fires when the action throws", async () => {
@@ -307,19 +302,9 @@ describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
     vi.clearAllMocks();
   });
 
-  /**
-   * GENUINE BEHAVIORAL RED.
-   *
-   * Drives the REAL save assembly: `buildCardActionOnError` is the SAME
-   * function doDismiss calls (rec-card.tsx: `guardedCardAction(action,
-   * buildCardActionOnError(onThrow))`), fed through the SAME guardedCardAction.
-   *
-   * Pre-fix model (the test below this one) FAILS this exact assertion
-   * pattern — not with "is not a function" but with:
-   *   AssertionError: expected "error" to be called with arguments:
-   *     [ 'Something went wrong — try again.' ] ... Number of calls: 0
-   * Post-fix (real guardedCardAction with try/catch): PASSES.
-   */
+  // The genuine behavioral RED. Rationale + pre-fix-model proof: see the
+  // suite header above. Drives the REAL save assembly through the SAME
+  // buildCardActionOnError + guardedCardAction that doDismiss calls.
   it("BEHAVIORAL RED: saveRecForLater throw → toast.error('Something went wrong…') AND onRestore called with rec.id", async () => {
     const { saveRecForLater } = await import("@/lib/recs/server-actions");
     const { toast } = await import("sonner");
@@ -349,28 +334,11 @@ describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
     expect(restoreSpy).toHaveBeenCalledWith(baseRec.id);
   });
 
-  /**
-   * Pre-fix model — demonstrates the RED is BEHAVIORAL, not symbol-missing.
-   *
-   * The pre-fix doDismiss was:
-   *   startTransition(() => action())   ← no try/catch, no guardedCardAction call
-   *
-   * Simulated here as a pass-through runner (no try/catch):
-   *   async (a) => a()
-   *
-   * When saveRecForLater rejects the throw propagates past the runner,
-   * the onError callback (still the real buildCardActionOnError) is never
-   * invoked, so toast.error is never called and restoreSpy is never called.
-   *
-   * Running the BEHAVIORAL assertion from the test above against this model
-   * fails with:
-   *   AssertionError: expected "error" to be called with arguments:
-   *     [ 'Something went wrong — try again.' ]
-   *   Number of calls: 0
-   * — a BEHAVIORAL assertion failure, NOT a missing symbol. This test asserts
-   * the pre-fix behavior IS absent (no generic toast, no restore) as a
-   * regression guard proving the simulation model is correct.
-   */
+  // Pre-fix model (rationale: suite header above). Replays pre-fix doDismiss
+  // (naked `startTransition(() => action())`, no guardedCardAction) as a
+  // pass-through runner and asserts the pre-fix behavior IS absent (no
+  // generic toast, no restore) — proving the RED above is BEHAVIORAL, not
+  // symbol-missing. Regression guard that the simulation model is correct.
   it("pre-fix model (pass-through runner): toast.error NOT called and onRestore NOT called — confirms behavioral RED is genuine", async () => {
     const { saveRecForLater } = await import("@/lib/recs/server-actions");
     const { toast } = await import("sonner");
