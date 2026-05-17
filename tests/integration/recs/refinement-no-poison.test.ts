@@ -229,8 +229,14 @@ function makeCandidates(): Cand[] {
 }
 
 const candidatePoolMock = vi.fn(async () => makeCandidates() as Cand[]);
+// Backlog lane (play-next Backlog-bucket revival 2026-05-16). Empty by
+// default so the cache-key contracts (which don't depend on lane content)
+// are unaffected; mocked → consumes no db chain (the pre-fix `libRows`
+// SELECT it replaced was removed from getRecs).
+const backlogPoolMock = vi.fn(async () => [] as Cand[]);
 vi.mock("@/lib/recs/candidate-pool", () => ({
   candidatePool: candidatePoolMock,
+  backlogPool: backlogPoolMock,
 }));
 
 const fetchSocialSignalsMock = vi.fn(
@@ -298,6 +304,8 @@ beforeEach(() => {
   fetchMock.mockClear();
   candidatePoolMock.mockClear();
   candidatePoolMock.mockImplementation(async () => makeCandidates());
+  backlogPoolMock.mockClear();
+  backlogPoolMock.mockImplementation(async () => []);
   getFingerprintMock.mockClear();
   getFingerprintMock.mockImplementation(async () => ({
     tier: "full" as const,
@@ -351,10 +359,11 @@ function queueFullRun(opts: { refinements: boolean }) {
     queue([{ vectorsGeneratedAt: new Date(2000, 0, 1) }]); // 2. vectors SELECT
   }
   queue([]); // 3. negRows SELECT (recommendations)
-  queue([]); // 4. libRows SELECT (logs)
-  queue([]); // 5. loggedGenreRows SELECT (logs ⋈ games)
-  queue(recRows([1, 2, 3, 4, 5])); // 6. post-Edge re-read SELECT
-  queue(gameRows([1, 2, 3, 4, 5])); // 7. hydrateRecs games SELECT
+  // (libRows SELECT REMOVED — `libraryIds` now comes from the mocked
+  //  backlog lane, which consumes no db chain. The v2 chain lost one entry.)
+  queue([]); // 4. loggedGenreRows SELECT (logs ⋈ games)
+  queue(recRows([1, 2, 3, 4, 5])); // 5. post-Edge re-read SELECT
+  queue(gameRows([1, 2, 3, 4, 5])); // 6. hydrateRecs games SELECT
 }
 
 /**
@@ -457,14 +466,16 @@ describe("getRecs — refinement runs must not poison the unrefined base cache",
     const sessionKey = fetchBody().cacheKey as string;
     expect(sessionKey).not.toBe(key);
 
-    // On the refinement path the consumed SELECT order is:
-    //   [0] negRows, [1] libRows, [2] loggedGenreRows,
-    //   [3] post-Edge re-read (recommendations), [4] hydrateRecs games.
+    // On the refinement path the consumed SELECT order is (post Backlog-
+    // bucket revival — the unconditional `libRows` SELECT was removed; the
+    // backlog lane is mocked and consumes no chain):
+    //   [0] negRows, [1] loggedGenreRows,
+    //   [2] post-Edge re-read (recommendations), [3] hydrateRecs games.
     // The post-Edge re-read is the LAST recommendations SELECT before the
     // games hydration SELECT. It MUST query under the session key, never
     // the bare base key — otherwise refined hydration reads/clobbers
     // base-key rows.
-    const reReadSelect = consumedSelects[3];
+    const reReadSelect = consumedSelects[2];
     const reReadWhere = chainCalls(reReadSelect).find(
       (c) => c.method === "where",
     );

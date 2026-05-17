@@ -268,8 +268,15 @@ function makeCandidates(): Cand[] {
 }
 
 const candidatePoolMock = vi.fn(async () => makeCandidates() as Cand[]);
+// Backlog lane (play-next Backlog-bucket revival 2026-05-16). Defaults to an
+// empty lane so the pre-existing pipeline assertions (which model a
+// no-backlog user) are byte-unchanged; the backlog-specific test overrides
+// it. Mocked → no DB chain consumed (the real libRows SELECT it replaced was
+// removed from getRecs, so the chain queues drop that entry).
+const backlogPoolMock = vi.fn(async () => [] as Cand[]);
 vi.mock("@/lib/recs/candidate-pool", () => ({
   candidatePool: candidatePoolMock,
+  backlogPool: backlogPoolMock,
 }));
 
 // Keep the REAL computeSocialScore; only stub the DB-backed bulk fetch.
@@ -326,6 +333,8 @@ beforeEach(() => {
   fetchMock.mockClear();
   candidatePoolMock.mockClear();
   candidatePoolMock.mockImplementation(async () => makeCandidates());
+  backlogPoolMock.mockClear();
+  backlogPoolMock.mockImplementation(async () => []);
   getFingerprintMock.mockClear();
   getFingerprintMock.mockImplementation(async () => ({
     tier: "full" as const,
@@ -384,15 +393,16 @@ function queueFullRun(opts: { refinements: boolean }) {
   }
   // 3. negRows SELECT (recommendations) — no dismissals
   queue([]);
-  // 4. libRows SELECT (logs) — empty library
+  // 4. loggedGenreRows SELECT (logs ⋈ games) — no explored genres
+  //    NOTE: the pre-fix `libRows` SELECT (unconditional "all logged ids")
+  //    was REMOVED — `libraryIds` now comes from the (mocked) backlog lane,
+  //    which consumes no db chain. So the v2 chain dropped one entry here.
   queue([]);
-  // 5. loggedGenreRows SELECT (logs ⋈ games) — no explored genres
-  queue([]);
-  // (fetchSocialSignals is mocked separately — no db chain consumed)
+  // (fetchSocialSignals + backlogPool are mocked separately — no db chain)
   // (post-rerank slot UPDATEs use independent no-op chains — not queued)
-  // 6. fresh re-read SELECT (recommendations)
+  // 5. fresh re-read SELECT (recommendations)
   queue(recRows([1, 2, 3, 4, 5]));
-  // 7. hydrateRecs games SELECT
+  // 6. hydrateRecs games SELECT
   queue(gameRows([1, 2, 3, 4, 5]));
 }
 
@@ -469,11 +479,81 @@ describe("getRecs v2 — full sharpening/tier orchestration", () => {
     expect(new Set(allIds)).toEqual(bucketedUniverse);
   });
 
+  it("surfaces a real owned-but-unplayed game in slot:'backlog' (Backlog rail revived)", async () => {
+    // Acceptance criterion: a user with a backlog/wishlist log scoring above
+    // the bucket floor gets a REAL game in the Backlog slot — instead of the
+    // pre-fix silent demotion to a 4th Comfort card.
+    //
+    // Deterministic construction (no randomness):
+    //  - Discovery override: 8 uniform STRONG candidates (taste 1.0 +
+    //    timeFit≈1.0 + chill mood 1.0, released 2020) → composite ≈ 0.80.
+    //    They occupy the 3 Comfort + Friends + Wildcard slots.
+    //  - Backlog lane: ONE owned game (id 999), taste 0 but chill mood 1.0
+    //    + timeFit≈1.0 + libraryBonus → composite ≈ 0.57: clears the 0.5
+    //    floor yet is strictly below the 0.80 discovery leaders, so it is
+    //    NOT consumed by the top-3 Comfort tier. It is the ONLY inLibrary
+    //    candidate, so `buckets.ts`'s Backlog `find` (inLibrary &&
+    //    composite>=floor) resolves to it.
+    // playtime 1 == the "1hr" budget peak ⇒ timeFitScore≈1.0; genres
+    // ["puzzle"] + mechanics ["exploration"] are both chill-boosted ⇒
+    // moodMatchScore("chill")=1.0. These make the floor-clear/not-top-3
+    // arithmetic robust rather than coincidental.
+    const strongDiscovery = Array.from({ length: 8 }, (_, i) => ({
+      id: i + 1,
+      slug: `disc-${i + 1}`,
+      title: `Disc ${i + 1}`,
+      released: new Date(2020, 0, 1),
+      coverUrl: null,
+      posterUrl: `https://img/${i + 1}.jpg`,
+      genres: ["puzzle"],
+      themes: ["fantasy"],
+      mechanics: ["exploration"],
+      platforms: null,
+      playtimeAvgHours: 1,
+      similarityScore: 5,
+    }));
+    candidatePoolMock.mockImplementationOnce(async () => strongDiscovery);
+    const backlogGame = {
+      id: 999,
+      slug: "owned-game",
+      title: "Owned Game",
+      released: new Date(2021, 0, 1),
+      coverUrl: null,
+      posterUrl: "https://img/999.jpg",
+      genres: ["puzzle"],
+      themes: ["fantasy"],
+      mechanics: ["exploration"],
+      platforms: null,
+      playtimeAvgHours: 1,
+      similarityScore: 0, // taste 0 — only library/mood/time carry it
+    };
+    backlogPoolMock.mockImplementationOnce(async () => [backlogGame]);
+    queueFullRun({ refinements: false });
+
+    const { getRecs } = await import("@/lib/recs/server-actions");
+    const result = await getRecs(FILTERS);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok result");
+
+    // The post-rerank slot UPDATE partitions the bucketed grid by slot. A
+    // `backlog` slot UPDATE must have fired, and its gameId set must be
+    // exactly the backlog-lane game — proving the rail is reachable and the
+    // owned game (not a discovery card) filled it.
+    const backlogUpdate = recordedUpdates.find((u) => u.slot === "backlog");
+    expect(backlogUpdate).toBeDefined();
+    expect(backlogUpdate?.gameIds).toEqual([999]);
+
+    // And it was sent to the Edge as part of the candidate set.
+    expect(lastFetchBody?.candidateIds as number[]).toContain(999);
+  });
+
   it("returns { ok:false, reason:'no-candidates' } when the pool is empty", async () => {
-    // cache miss + vectors, then candidatePool → []
+    // BOTH lanes empty (discovery pool + backlog lane) → merged set empty.
     queue([]);
     queue([{ vectorsGeneratedAt: new Date(2000, 0, 1) }]);
     candidatePoolMock.mockImplementationOnce(async () => []);
+    backlogPoolMock.mockImplementationOnce(async () => []);
 
     const { getRecs } = await import("@/lib/recs/server-actions");
     const result = await getRecs(FILTERS);

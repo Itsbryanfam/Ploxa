@@ -1,9 +1,10 @@
 import "server-only";
 
-import { arrayOverlaps, desc, eq, or } from "drizzle-orm";
+import { and, arrayOverlaps, desc, eq, inArray, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { games, logs, tasteFingerprints } from "@/lib/db/schema";
+import type { LogStatus } from "@/lib/db/schema-types";
 import type { VectorBundle } from "@/lib/taste/vectors";
 
 export type CandidateGame = {
@@ -23,6 +24,68 @@ export type CandidateGame = {
   rawgRating: number | null;
   similarityScore: number;
 };
+
+/**
+ * Log-status partition for the two-lane candidate sourcing (play-next
+ * Backlog-bucket revival, 2026-05-16).
+ *
+ * `log_status` enum = backlog | playing | completed | dropped | on_hold |
+ * wishlist. Every value falls into exactly ONE of the two sets below — the
+ * union is the full enum, so no logged game leaks into the discovery lane.
+ *
+ *  - DISCOVERY_EXCLUDED_STATUSES — "done with it / currently on it". A
+ *    discovery recommendation for one of these is wrong: the user finished
+ *    it (`completed`), quit it (`dropped` — this catalog has no separate
+ *    `abandoned`; `dropped` is its semantic equivalent), or is mid-play
+ *    (`playing`). These never enter ANY slot.
+ *
+ *  - BACKLOG_LANE_STATUSES — owned/intended-but-not-active. `backlog` ("own
+ *    it, not started"), `wishlist` ("want it"), and `on_hold` (started, paused,
+ *    intend to return). `on_hold` is a deliberate judgment call: it is NOT
+ *    "done with it" (that's completed/dropped) and NOT "currently on it"
+ *    (that's playing) — it's exactly the Backlog-rail spirit ("you said you'd
+ *    come back to this"). Surfacing it in the backlog lane is better product
+ *    behavior than dropping it entirely, which is what excluding it
+ *    everywhere would do. These are STILL excluded from discovery (we don't
+ *    re-pitch an owned game as a fresh discovery) but DO feed the backlog
+ *    lane with `inLibrary: true`.
+ *
+ * Exhaustiveness is asserted at module load so a future enum addition fails
+ * `next build` here instead of silently leaking the new status into
+ * discovery.
+ */
+const DISCOVERY_EXCLUDED_STATUSES = [
+  "completed",
+  "dropped",
+  "playing",
+] as const satisfies readonly LogStatus[];
+
+const BACKLOG_LANE_STATUSES = [
+  "backlog",
+  "wishlist",
+  "on_hold",
+] as const satisfies readonly LogStatus[];
+
+// Compile-time partition guard: every LogStatus must be in exactly one set.
+// If a new enum value is added without classifying it, this errors at module
+// load (next build) rather than silently letting the status leak into the
+// discovery pool.
+{
+  type Partitioned =
+    | (typeof DISCOVERY_EXCLUDED_STATUSES)[number]
+    | (typeof BACKLOG_LANE_STATUSES)[number];
+  type _AllClassified = LogStatus extends Partitioned ? true : never;
+  type _NoOverlap = (typeof DISCOVERY_EXCLUDED_STATUSES)[number] &
+    (typeof BACKLOG_LANE_STATUSES)[number] extends never
+    ? true
+    : never;
+  // These bindings exist only to surface the conditional-type errors above
+  // (a `never` type makes the assignment fail to compile).
+  const _allClassified: _AllClassified = true;
+  const _noOverlap: _NoOverlap = true;
+  void _allClassified;
+  void _noOverlap;
+}
 
 // How many top-keys per axis we push into the Postgres `&&` (array overlap)
 // prefilter. 8 is a balance: small enough that the GIN index lookup stays
@@ -49,6 +112,117 @@ function topPositiveKeys(vec: Record<string, number>, n: number): string[] {
   const positive = Object.entries(vec).filter(([, v]) => v > 0);
   positive.sort((a, b) => b[1] - a[1]);
   return positive.slice(0, n).map(([k]) => k);
+}
+
+// Columns both lanes pull from `games`. Declared once so the discovery
+// prefilter SELECT and the backlog-lane join SELECT stay byte-identical in
+// shape (and so `CandidateGame` mapping is uniform across lanes).
+const GAME_SELECT = {
+  id: games.id,
+  slug: games.slug,
+  title: games.title,
+  released: games.released,
+  coverUrl: games.coverUrl,
+  posterUrl: games.posterUrl,
+  genres: games.genres,
+  themes: games.themes,
+  mechanics: games.mechanics,
+  platforms: games.platforms,
+  playtimeAvgHours: games.playtimeAvgHours,
+  rawgRating: games.rawgRating,
+} as const;
+
+type GameRow = {
+  id: number;
+  slug: string;
+  title: string;
+  released: Date | null;
+  coverUrl: string | null;
+  posterUrl: string | null;
+  genres: string[] | null;
+  themes: string[] | null;
+  mechanics: string[] | null;
+  platforms: string[] | null;
+  playtimeAvgHours: string | number | null;
+  rawgRating: string | number | null;
+};
+
+/**
+ * The dot-product taste score used for `similarityScore`. Identical math to
+ * the discovery overlap branch, extracted so the backlog lane scores its
+ * candidates EXACTLY the same way (the design's "score the backlog lane with
+ * the same composite scoring used for discovery"). Returns the unbounded sum
+ * of vector weights over the row's genre/theme/mechanic tags; downstream
+ * (`server-actions.ts`) clamps it to the [0,1] `taste` axis via `/5`.
+ */
+function similarityFor(
+  g: Pick<GameRow, "genres" | "themes" | "mechanics">,
+  genreVec: Record<string, number>,
+  themeVec: Record<string, number>,
+  mechanicVec: Record<string, number>,
+): number {
+  let s = 0;
+  for (const k of g.genres ?? []) s += genreVec[k] ?? 0;
+  for (const k of g.themes ?? []) s += themeVec[k] ?? 0;
+  for (const k of g.mechanics ?? []) s += mechanicVec[k] ?? 0;
+  return s;
+}
+
+function toCandidate(g: GameRow, similarityScore: number): CandidateGame {
+  return {
+    id: g.id,
+    slug: g.slug,
+    title: g.title,
+    released: g.released,
+    coverUrl: g.coverUrl,
+    posterUrl: g.posterUrl,
+    genres: g.genres,
+    themes: g.themes,
+    mechanics: g.mechanics,
+    platforms: g.platforms,
+    playtimeAvgHours: g.playtimeAvgHours != null ? Number(g.playtimeAvgHours) : null,
+    rawgRating: g.rawgRating != null ? Number(g.rawgRating) : null,
+    similarityScore,
+  };
+}
+
+/**
+ * Resolve the live or persisted taste vectors for a user. Shared by
+ * `candidatePool` (discovery lane) and `backlogPool` so both lanes score
+ * against the SAME vector source — passing `opts.vectors` (the live
+ * `getFingerprint()` snapshot) is the fast path; the persisted
+ * `taste_fingerprints` row is the legacy fallback.
+ */
+async function resolveVectors(
+  userId: string,
+  vectors?: VectorBundle,
+): Promise<{
+  genreVec: Record<string, number>;
+  themeVec: Record<string, number>;
+  mechanicVec: Record<string, number>;
+}> {
+  if (vectors) {
+    return {
+      genreVec: vectors.genre,
+      themeVec: vectors.theme,
+      mechanicVec: vectors.mechanic,
+    };
+  }
+  const [fpRow] = await db
+    .select({
+      genreVector: tasteFingerprints.genreVector,
+      themeVector: tasteFingerprints.themeVector,
+      mechanicVector: tasteFingerprints.mechanicVector,
+    })
+    .from(tasteFingerprints)
+    .where(eq(tasteFingerprints.userId, userId))
+    .limit(1);
+  return {
+    genreVec: (fpRow?.genreVector as Record<string, number> | undefined) ?? {},
+    themeVec: (fpRow?.themeVector as Record<string, number> | undefined) ?? {},
+    mechanicVec:
+      (fpRow?.mechanicVector as Record<string, number> | undefined) ?? {},
+  };
 }
 
 /**
@@ -111,32 +285,32 @@ export async function candidatePool(
   // work with. Spec: docs/superpowers/specs/2026-05-15-play-next-redesign-design.md
   const limit = opts.limit ?? 100;
 
-  let genreVec: Record<string, number>;
-  let themeVec: Record<string, number>;
-  let mechanicVec: Record<string, number>;
-  if (opts.vectors) {
-    // Fast path: caller already aggregated vectors live (getFingerprint).
-    genreVec = opts.vectors.genre;
-    themeVec = opts.vectors.theme;
-    mechanicVec = opts.vectors.mechanic;
-  } else {
-    // Legacy path: read from the persisted row. Returns empty maps if no
-    // refresh has succeeded yet, in which case every game scores 0.
-    const [fpRow] = await db
-      .select({
-        genreVector: tasteFingerprints.genreVector,
-        themeVector: tasteFingerprints.themeVector,
-        mechanicVector: tasteFingerprints.mechanicVector,
-      })
-      .from(tasteFingerprints)
-      .where(eq(tasteFingerprints.userId, userId))
-      .limit(1);
-    genreVec = (fpRow?.genreVector as Record<string, number> | undefined) ?? {};
-    themeVec = (fpRow?.themeVector as Record<string, number> | undefined) ?? {};
-    mechanicVec = (fpRow?.mechanicVector as Record<string, number> | undefined) ?? {};
-  }
+  // Fast path: caller already aggregated vectors live (getFingerprint).
+  // Legacy path: read from the persisted row (empty maps if no refresh has
+  // succeeded yet, in which case every game scores 0). Shared with
+  // backlogPool so both lanes score against the same vector source.
+  const { genreVec, themeVec, mechanicVec } = await resolveVectors(
+    userId,
+    opts.vectors,
+  );
 
-  // Pull every game the user has already logged — exclude these from candidates.
+  // Status-aware exclusion (play-next Backlog-bucket revival 2026-05-16).
+  //
+  // DISCOVERY is the catalog scan, so it excludes EVERY logged game
+  // (`loggedIds`) regardless of status, for two distinct reasons:
+  //   - completed/dropped/playing ("done with it / currently on it"): must
+  //     never appear in ANY slot.
+  //   - backlog/wishlist/on_hold (owned-but-unplayed): must not appear as a
+  //     *discovery* card (an `inLibrary:false` leak into Comfort/Wildcard).
+  //     They re-enter the candidate set via the SEPARATE backlog lane
+  //     (`backlogPool`, below) tagged `inLibrary:true`, which is their only
+  //     path back.
+  //
+  // The status partition that makes this status-aware lives in the lane
+  // SPLIT (this exclude-all-logged discovery scan + `backlogPool`'s
+  // status-filtered re-add), not in a partial discovery filter — a partial
+  // filter here would duplicate owned games (once as a leaked discovery
+  // `inLibrary:false` card, once as a backlog-lane `inLibrary:true` card).
   const loggedRows = await db
     .select({ gameId: logs.gameId })
     .from(logs)
@@ -149,21 +323,6 @@ export async function candidatePool(
   const topThemes = topPositiveKeys(themeVec, TOP_KEYS_PER_AXIS);
   const topMechanics = topPositiveKeys(mechanicVec, TOP_KEYS_PER_AXIS);
 
-  const sameSelect = {
-    id: games.id,
-    slug: games.slug,
-    title: games.title,
-    released: games.released,
-    coverUrl: games.coverUrl,
-    posterUrl: games.posterUrl,
-    genres: games.genres,
-    themes: games.themes,
-    mechanics: games.mechanics,
-    platforms: games.platforms,
-    playtimeAvgHours: games.playtimeAvgHours,
-    rawgRating: games.rawgRating,
-  };
-
   // Cold-start fallback: zero positive signal across all three axes →
   // popularity query so the user still gets candidates. Don't dot-product-
   // score these (every score is 0 against empty vectors); just hand them
@@ -172,21 +331,16 @@ export async function candidatePool(
   // here as a launch-blocker for tier-0 cold-start users.
   if (topGenres.length === 0 && topThemes.length === 0 && topMechanics.length === 0) {
     const popular = await db
-      .select(sameSelect)
+      .select(GAME_SELECT)
       .from(games)
       .orderBy(desc(games.rawgRating))
       .limit(PREFILTER_LIMIT);
     const out: CandidateGame[] = [];
     for (const g of popular) {
       if (loggedIds.has(g.id)) continue;
-      out.push({
-        ...g,
-        playtimeAvgHours: g.playtimeAvgHours != null ? Number(g.playtimeAvgHours) : null,
-        rawgRating: g.rawgRating != null ? Number(g.rawgRating) : null,
-        // No taste signal yet — score is 0 across the board. The slice at
-        // the end honors the caller's `limit` opt so we still cap output.
-        similarityScore: 0,
-      });
+      // No taste signal yet — score is 0 across the board. The slice at
+      // the end honors the caller's `limit` opt so we still cap output.
+      out.push(toCandidate(g, 0));
       if (out.length >= limit) break;
     }
     return out;
@@ -208,7 +362,7 @@ export async function candidatePool(
   const prefilter = or(...predicates)!;
 
   const allGames = await db
-    .select(sameSelect)
+    .select(GAME_SELECT)
     .from(games)
     .where(prefilter)
     .limit(PREFILTER_LIMIT);
@@ -216,18 +370,74 @@ export async function candidatePool(
   const scored: CandidateGame[] = [];
   for (const g of allGames) {
     if (loggedIds.has(g.id)) continue;
-    let s = 0;
-    for (const k of g.genres ?? []) s += genreVec[k] ?? 0;
-    for (const k of g.themes ?? []) s += themeVec[k] ?? 0;
-    for (const k of g.mechanics ?? []) s += mechanicVec[k] ?? 0;
+    const s = similarityFor(g, genreVec, themeVec, mechanicVec);
     if (s <= 0) continue; // skip games that the user's signal actively rejects or matches nothing
-    scored.push({
-      ...g,
-      playtimeAvgHours: g.playtimeAvgHours != null ? Number(g.playtimeAvgHours) : null,
-      rawgRating: g.rawgRating != null ? Number(g.rawgRating) : null,
-      similarityScore: s,
-    });
+    scored.push(toCandidate(g, s));
   }
   scored.sort((a, b) => b.similarityScore - a.similarityScore);
   return scored.slice(0, limit);
+}
+
+/**
+ * Backlog lane (play-next Backlog-bucket revival 2026-05-16).
+ *
+ * The discovery `candidatePool` is the catalog scan with EVERY logged game
+ * excluded, so the Backlog rail (`buckets.ts` requires `inLibrary` members)
+ * had nothing to select and silently demoted to a 4th Comfort card for all
+ * users. This is the second lane: the user's OWNED-BUT-UNPLAYED logs
+ * (`backlog`/`wishlist`/`on_hold` — see `BACKLOG_LANE_STATUSES`; done/active
+ * statuses are deliberately omitted so a finished/dropped/in-progress game
+ * never resurfaces), joined to `games`, scored with the EXACT same
+ * dot-product (`similarityFor`) the discovery overlap branch uses so the
+ * downstream composite (`server-actions.ts`) treats both lanes uniformly.
+ *
+ * Callers tag these `inLibrary: true` after merging into the candidate array
+ * (only the backlog lane is `inLibrary`, and only the Backlog slot consumes
+ * `inLibrary` — no leak into Comfort/Wildcard). Returned candidates are NOT
+ * `s <= 0`-filtered (unlike discovery): the rail's job is to surface owned
+ * games even when taste-neutral; the bucket floor + composite (with the now-
+ * live `libraryBonus`) decide whether one actually fills the slot.
+ *
+ * Deterministic: ordered by similarityScore desc then id asc so a tie can't
+ * fall to arbitrary DB scan order. No randomness.
+ */
+export async function backlogPool(
+  userId: string,
+  opts: { vectors?: VectorBundle } = {},
+): Promise<CandidateGame[]> {
+  if (!userId) return [];
+
+  const { genreVec, themeVec, mechanicVec } = await resolveVectors(
+    userId,
+    opts.vectors,
+  );
+
+  const rows = await db
+    .select(GAME_SELECT)
+    .from(logs)
+    .innerJoin(games, eq(games.id, logs.gameId))
+    .where(
+      and(
+        eq(logs.userId, userId),
+        inArray(logs.status, [...BACKLOG_LANE_STATUSES]),
+      ),
+    )
+    .limit(PREFILTER_LIMIT);
+
+  // A game can be logged more than once (e.g. re-logged); de-dupe by id so a
+  // single backlog game can't occupy multiple grid candidates. First row for
+  // an id wins — order is normalized below regardless.
+  const seen = new Set<number>();
+  const out: CandidateGame[] = [];
+  for (const g of rows) {
+    if (seen.has(g.id)) continue;
+    seen.add(g.id);
+    out.push(toCandidate(g, similarityFor(g, genreVec, themeVec, mechanicVec)));
+  }
+  out.sort((a, b) =>
+    b.similarityScore !== a.similarityScore
+      ? b.similarityScore - a.similarityScore
+      : a.id - b.id,
+  );
+  return out;
 }

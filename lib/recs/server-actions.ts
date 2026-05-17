@@ -18,7 +18,11 @@ import {
 import { ensureLog } from "@/lib/logs/server-actions";
 import { assignBuckets, GRID_SIZE, type ScoredCandidate } from "@/lib/recs/buckets";
 import { cacheKey, sha256Hex } from "@/lib/recs/cache";
-import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
+import {
+  backlogPool,
+  candidatePool,
+  type CandidateGame,
+} from "@/lib/recs/candidate-pool";
 import { applyMMR } from "@/lib/recs/diversity-mmr";
 import { isRecsV2Enabled } from "@/lib/recs/feature-flag";
 import { moodMatchScore } from "@/lib/recs/mood-affinity";
@@ -551,13 +555,38 @@ export async function getRecs(
   //    stratify into the 4 rails, then send the pre-scored shortlist to
   //    the rerank Edge Function. Pass live `fp.vectors` so the pool stays
   //    correct even when the persisted taste_fingerprints row is stale.
-  const candidates = await candidatePool(me.id, { vectors: fpReady.vectors });
+  // Two-lane sourcing (play-next Backlog-bucket revival 2026-05-16):
+  //   - DISCOVERY lane (`candidatePool`): catalog rows the user has NOT
+  //     logged at all. `inLibrary:false`.
+  //   - BACKLOG lane (`backlogPool`): the user's OWNED-BUT-UNPLAYED logs
+  //     (backlog/wishlist/on_hold). `inLibrary:true`.
+  // The lanes are disjoint by construction (candidatePool excludes EVERY
+  // logged game; the backlog lane only emits logged ones), so the
+  // `inLibrary` partition is exact: `inLibrary` is true iff the candidate
+  // came from the backlog lane, and ONLY the Backlog slot consumes
+  // `inLibrary` (`buckets.ts`) — no leak into Comfort/Wildcard. Pre-fix this
+  // used a single unconditional "all logged ids" query: `inLibrary` was
+  // ALWAYS false (the pool is exactly the non-logged set), so the Backlog
+  // rail + `libraryBonus` were both structurally dead.
+  const [discovery, backlog] = await Promise.all([
+    candidatePool(me.id, { vectors: fpReady.vectors }),
+    backlogPool(me.id, { vectors: fpReady.vectors }),
+  ]);
+  const backlogIds = new Set(backlog.map((c) => c.id));
+  // Merge, backlog entry winning for any shared id (defensive — the lanes
+  // are provably disjoint, but a future change to either query must not
+  // silently turn an owned game into an `inLibrary:false` discovery card).
+  const mergedById = new Map<number, CandidateGame>();
+  for (const c of discovery) mergedById.set(c.id, c);
+  for (const c of backlog) mergedById.set(c.id, c);
+  const candidates = [...mergedById.values()];
   if (candidates.length === 0) {
     return { ok: false, reason: "no-candidates" };
   }
 
   // Dismissal / snooze / never-again state for the candidate set (T1
-  // partial index covers this lookup).
+  // partial index covers this lookup). Covers BOTH lanes — a never-again /
+  // active-snooze on a backlog game still hard-excludes it from the rail.
   const candIds = candidates.map((c) => c.id);
   const negRows = await db
     .select({
@@ -611,14 +640,18 @@ export async function getRecs(
     return { ok: false, reason: "no-candidates" };
   }
 
-  // Library game ids + bulk social signals + lowercased explored-genre
-  // stats (T8/T9: games.genres is mixed-case; assignBuckets/pickWildcard
-  // require lowercased Set/Map members).
-  const libRows = await db
-    .select({ gameId: logs.gameId })
-    .from(logs)
-    .where(eq(logs.userId, me.id));
-  const libraryIds = new Set(libRows.map((r) => r.gameId));
+  // `libraryIds` is now the backlog-lane id set (computed above from
+  // `backlogPool`), NOT a fresh unconditional "all logged ids" query. The
+  // old query returned every logged game, but `candidates` is the merged
+  // (discovery ∪ backlog) set — discovery rows are never logged, so
+  // `libraryIds.has(c.id)` was ALWAYS false and `libraryBonus` was dead.
+  // Sourcing it from the backlog lane makes `inLibrary` true exactly for
+  // owned-but-unplayed candidates, which is what the Backlog slot +
+  // `libraryBonus` weight were designed to consume. Bulk social signals +
+  // lowercased explored-genre stats follow (T8/T9: games.genres is
+  // mixed-case; assignBuckets/pickWildcard require lowercased Set/Map
+  // members).
+  const libraryIds = backlogIds;
   const socialMap = await fetchSocialSignals(
     me.id,
     filtered.map((c) => c.id),

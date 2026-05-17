@@ -70,6 +70,11 @@ function makeCandidates() {
 }
 vi.mock("@/lib/recs/candidate-pool", () => ({
   candidatePool: vi.fn(async () => makeCandidates()),
+  // Backlog lane (play-next Backlog-bucket revival 2026-05-16): empty here —
+  // this suite exercises the AI-failure → metadataOnlyRecs cache-write
+  // resilience path, which doesn't depend on backlog content. Mocked → no
+  // db chain (the pre-fix `libRows` SELECT it replaced was removed).
+  backlogPool: vi.fn(async () => []),
 }));
 
 vi.mock("@/lib/recs/social-score", async () => {
@@ -139,13 +144,14 @@ const FILTERS: FilterParams = {
 
 describe("metadataOnlyRecs cache-write resilience (incident 2026-05-15)", () => {
   it("still returns ok+recs when the Edge fails AND the fallback cache-write throws", async () => {
-    // getRecs v2 (no refinements) SELECT order before the fallback insert:
-    //   1 cache  2 vectors  3 negRows  4 libRows  5 loggedGenreRows
+    // getRecs v2 (no refinements) SELECT order before the fallback insert
+    // (post Backlog-bucket revival — `libRows` removed; backlog lane mocked,
+    // consumes no chain):
+    //   1 cache  2 vectors  3 negRows  4 loggedGenreRows
     selectQueue.push(
       [], // cache miss
       [{ vectorsGeneratedAt: new Date(2000, 0, 1) }],
       [], // negRows
-      [], // libRows (logs)
       [], // loggedGenreRows (logs ⋈ games)
     );
 

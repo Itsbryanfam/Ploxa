@@ -120,6 +120,33 @@ describe("assignBuckets", () => {
     expect(out.some((c) => c.slot === "friends")).toBe(false);
   });
 
+  it("surfaces a high-scoring backlog-lane candidate (inLibrary) in slot:'backlog' over a discovery-only mix", () => {
+    // Models the post-merge candidate array (play-next Backlog-bucket
+    // revival): discovery candidates are all inLibrary:false; exactly one
+    // backlog-lane candidate is inLibrary:true and clears the 0.5 floor.
+    // It must NOT be consumed by the top-3 Comfort tier (lower composite
+    // than the discovery leaders) and must land in the Backlog slot —
+    // proving the rail is reachable once a real inLibrary member exists.
+    const cands = [
+      mkCand(1, 0.92), // discovery → comfort
+      mkCand(2, 0.88), // discovery → comfort
+      mkCand(3, 0.81), // discovery → comfort
+      mkCand(4, 0.7, { inLibrary: true }), // backlog lane → BACKLOG
+      mkCand(5, 0.6, { socialScore: 0.5 }), // discovery → friends
+      mkCand(6, 0.55, { genres: ["roguelike"] }), // discovery → wildcard
+    ];
+    const out = assignBuckets(cands, {
+      exploredGenres: new Set(["puzzle"]),
+      seed: 7,
+    });
+    const backlogCard = out.find((c) => c.slot === "backlog");
+    expect(backlogCard).toBeDefined();
+    expect(backlogCard?.gameId).toBe(4);
+    expect(backlogCard?.inLibrary).toBe(true);
+    // No inLibrary:false (discovery) candidate ever took the backlog slot.
+    expect(out.filter((c) => c.slot === "backlog")).toHaveLength(1);
+  });
+
   it("is deterministic: identical input + seed yields an identical grid", () => {
     const cands = [
       mkCand(1, 0.9),
