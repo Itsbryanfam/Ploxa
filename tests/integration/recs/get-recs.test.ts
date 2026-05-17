@@ -919,7 +919,7 @@ describe("getRecs v2 — refinements", () => {
     expect(card999?.slot).toBe("backlog");
   });
 
-  it("truncates each refinement to 120 chars before the Edge call (F-005)", async () => {
+  it("truncates each refinement to 140 chars before the Edge call (F-005)", async () => {
     queueFullRun({ refinements: true });
     const { getRecs } = await import("@/lib/recs/server-actions");
 
@@ -930,7 +930,9 @@ describe("getRecs v2 — refinements", () => {
     expect(result.ok).toBe(true);
     const refs = lastFetchBody?.userRefinements as string[];
     expect(refs).toHaveLength(1);
-    expect(refs[0].length).toBe(120);
+    // Canonical cap: UI (CHAR_CAP=140), Edge prompt (REFINEMENT_CHAR_CAP=140),
+    // and spec §"Input cap" all agree on 140. server-actions enforces the same.
+    expect(refs[0].length).toBe(140);
   });
 
   it("rate-limits the refinement path → { ok:false, reason:'rate-limited' }, no Edge call (F-005)", async () => {

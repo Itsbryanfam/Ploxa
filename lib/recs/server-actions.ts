@@ -496,12 +496,15 @@ export async function getRecs(
   // the snooze gate so a single call can't straddle a tick boundary.
   const now = new Date();
   // Sanitize free-text refinements at the boundary (wire-deserialized).
-  // Count-capped at 5; each string length-capped at 120 so a hostile caller
+  // Count-capped at 5; each string length-capped at 140 so a hostile caller
   // can't inflate the host-paid Edge prompt (F-005).
+  // 140 = canonical cap agreed by UI (CHAR_CAP in refinement-input.tsx),
+  // Edge prompt builder (REFINEMENT_CHAR_CAP in _shared/prompts.ts + lib/taste/prompts.ts),
+  // and spec §"Input cap" (docs/superpowers/specs/2026-05-15-play-next-redesign-design.md ~:313).
   const refinements = (options?.refinements ?? [])
     .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     .slice(0, 5)
-    .map((s) => s.trim().slice(0, 120));
+    .map((s) => s.trim().slice(0, 140));
 
   // F-005: a non-empty refinement set bypasses the cache and forces a
   // host-paid Edge rerank on every call. Gate it per-user (the no-refinement
