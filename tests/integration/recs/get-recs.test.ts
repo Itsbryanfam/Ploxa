@@ -978,3 +978,119 @@ describe("getRecs v2 — refinements", () => {
     expect(enforceRateLimitMock).not.toHaveBeenCalled();
   });
 });
+
+describe("getRecs v2 — rerank wall-clock budget (Task 12)", () => {
+  // Task 12 (Codex remediation): the rerank Edge `fetch` had NO overall
+  // wall-clock budget. ai-router.ts loops 4 providers at 30s each, so a
+  // slow-but-not-failed AI plumbing path made getRecs hang ~90s and the
+  // /play-next page sat on the pending mascot. Spec
+  // docs/superpowers/specs/2026-05-15-play-next-redesign-design.md :416:
+  // an Edge wall-clock budget breach (>8s) must fall back to the already-
+  // computed deterministic picks for the filter combo + a "took too long —
+  // showing your last set" banner — NOT keep blocking on AI plumbing, and
+  // NOT route through the metadataOnlyRecs hard-failure path (that path
+  // re-pulls a candidate pool & re-templates; the deterministic bucketed
+  // grid was already computed pre-Edge and is the correct, free fallback).
+  //
+  // Deterministic + non-vacuous: fake timers fire `AbortSignal.timeout`
+  // EXACTLY at the budget; the fetch mock is abort-aware (rejects with a
+  // DOMException named "TimeoutError" the instant its `signal` aborts —
+  // byte-identical to what a real `fetch()` does under `AbortSignal.timeout`).
+  // We assert getRecs resolves with the bucketed grid + the slow banner and
+  // that it did NOT consume the post-Edge re-read/hydrate DB chains (the
+  // Edge never wrote rows — there is nothing to re-read).
+  it("slow Edge (>8s budget) → deterministic bucketed picks + 'took too long' banner, ~within budget (NOT ~90s, NOT metadataOnlyRecs)", async () => {
+    vi.useFakeTimers();
+    try {
+      // An abort-aware fetch: never resolves on its own; rejects the moment
+      // its AbortSignal fires — exactly real fetch + AbortSignal.timeout.
+      const slowFetch = vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const sig = init?.signal;
+            if (sig) {
+              if (sig.aborted) {
+                reject(
+                  new DOMException("The operation timed out.", "TimeoutError"),
+                );
+                return;
+              }
+              sig.addEventListener(
+                "abort",
+                () =>
+                  reject(
+                    new DOMException(
+                      "The operation timed out.",
+                      "TimeoutError",
+                    ),
+                  ),
+                { once: true },
+              );
+            }
+            // Intentionally no resolve path: only the budget abort ends this.
+          }),
+      );
+      vi.stubGlobal("fetch", slowFetch);
+
+      // ONLY the pre-Edge DB chains are consumed on the timeout path:
+      // cache (miss), vectors, negRows. The post-Edge re-read + hydrate
+      // SELECTs (queueFullRun's chains 4 & 5) MUST NOT run — the Edge never
+      // wrote rows. We queue exactly the pre-Edge three; if the timeout path
+      // wrongly fell through to the re-read/hydrate (or to metadataOnlyRecs,
+      // which issues its OWN extra SELECTs), the chainQueue would underflow
+      // and throw "chainQueue empty" — making this assertion non-vacuous.
+      queue([]); // 1. cache SELECT — miss
+      queue([{ vectorsGeneratedAt: new Date(2000, 0, 1) }]); // 2. vectors
+      queue([]); // 3. negRows
+
+      const { getRecs } = await import("@/lib/recs/server-actions");
+
+      const resultPromise = getRecs(FILTERS);
+
+      // Drive the whole pipeline (all resolved-promise awaits flush as the
+      // fake clock advances) and fire AbortSignal.timeout exactly at the 8s
+      // budget. 7999ms: still pending (budget not yet breached).
+      await vi.advanceTimersByTimeAsync(7999);
+      await vi.advanceTimersByTimeAsync(2); // cross the 8000ms budget
+
+      const result = await resultPromise;
+
+      // Resolved with the DETERMINISTIC bucketed grid (not a hang, not the
+      // hard-failure metadata path). algorithm is the deterministic
+      // similarity/composite path — NOT "ai" (no AI rerank ran).
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected ok result");
+      expect(result.algorithm).not.toBe("ai");
+      expect(result.tier).toBe("full");
+
+      // The spec's slow banner (NOT the "AI ranking unavailable" hard-
+      // failure banner — that path was not taken).
+      expect(result.banner).toBeDefined();
+      expect(result.banner).toMatch(/took too long/i);
+      expect(result.banner).not.toMatch(/AI ranking unavailable/i);
+
+      // It's the freshly-computed stratified grid: 4..6 cards, each with the
+      // full RecCard contract (slot + fitChips + confidence) — same shape
+      // contract as the happy path, just sourced from `bucketed`.
+      expect(result.recs.length).toBeGreaterThanOrEqual(4);
+      expect(result.recs.length).toBeLessThanOrEqual(6);
+      for (const r of result.recs) {
+        expect(SLOTS.has(r.slot)).toBe(true);
+        expect(r.fitChips).toBeDefined();
+        expect(["perfect", "close", "loose"]).toContain(r.fitChips.timeFit);
+        expect(Array.isArray(r.fitChips.moodMatches)).toBe(true);
+        expect(typeof r.fitChips.inLibrary).toBe("boolean");
+        expect(typeof r.fitChips.friendsCount).toBe("number");
+        expect(["strong", "good", "worth-a-try"]).toContain(r.confidence);
+        expect(typeof r.id).toBe("string");
+        expect(r.id.length).toBeGreaterThan(0);
+      }
+
+      // The Edge was actually attempted (the budget wraps a REAL invocation,
+      // not a short-circuit) and aborted.
+      expect(slowFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

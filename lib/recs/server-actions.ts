@@ -386,6 +386,28 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
+ * Wall-clock budget for the rerank Edge call (Task 12 — Codex remediation).
+ *
+ * `supabase/functions/_shared/ai-router.ts` carries a 30s PER-PROVIDER
+ * timeout and loops all 4 providers sequentially with NO overall budget, so
+ * a slow-but-not-failed AI plumbing path can block the Edge response ~90s —
+ * /play-next then sits on the pending mascot. The shared 30s is intentional
+ * (other features depend on it) and the Edge isn't unit-testable, so the
+ * budget is enforced HERE, caller-side, exactly as the spec frames it
+ * ("Edge Function timeout (>8s wall-clock budget)" —
+ * docs/superpowers/specs/2026-05-15-play-next-redesign-design.md :416).
+ *
+ * On breach we serve the DETERMINISTIC bucketed grid already computed
+ * before the Edge call (free, correct for this exact filter combo) plus the
+ * spec's "took too long — showing your last set" banner — NOT the
+ * metadataOnlyRecs hard-failure path (that re-pulls a pool & re-templates;
+ * the grid is strictly better and already in hand). The happy path (Edge
+ * answers within budget) and the existing hard-failure path (provider
+ * failure / ai-bad-output → metadataOnlyRecs) are byte-unchanged.
+ */
+const RERANK_BUDGET_MS = 8000;
+
+/**
  * Primary recommendation entry point (v2 — play-next redesign Task 12).
  *
  * Preserves the original flow's steps 0-2 byte-for-behavior (auth →
@@ -828,11 +850,30 @@ export async function getRecs(
   const apikey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   let rerankOk = false;
+  // Task 12: distinguishes a >8s wall-clock budget breach (serve the
+  // deterministic grid + slow banner) from every OTHER fetch failure
+  // (provider 5xx surfaced as !resp.ok, network error, ai-bad-output →
+  // unchanged: fall through to the metadataOnlyRecs hard-failure path).
+  let rerankTimedOut = false;
   if (functionsUrl && apikey) {
+    // Own the AbortController so (a) the catch can attribute an abort
+    // SPECIFICALLY to our budget (`budgetController.signal.aborted`) rather
+    // than guessing from the error name — keeping the new path scoped to the
+    // timeout case only — and (b) we `clearTimeout` on the happy/hard-fail
+    // path so a settled fetch leaves no dangling timer. `setTimeout`-driven
+    // (NOT `AbortSignal.timeout`): functionally identical wall-clock abort,
+    // but Node's internal `AbortSignal.timeout` scheduler is invisible to
+    // test fake timers — a JS `setTimeout` is the unit-testable equivalent.
+    const budgetController = new AbortController();
+    const budgetTimer = setTimeout(
+      () => budgetController.abort(),
+      RERANK_BUDGET_MS,
+    );
     try {
       const resp = await fetch(`${functionsUrl}/rerank-recs`, {
         method: "POST",
         headers: { apikey, "Content-Type": "application/json" },
+        signal: budgetController.signal,
         body: JSON.stringify({
           userId: me.id,
           filters,
@@ -882,8 +923,110 @@ export async function getRecs(
         }
       }
     } catch (err) {
-      console.error("rerank-recs invoke failed:", err);
+      // Budget breach (Task 12): `budgetController` is local to THIS fetch
+      // and only aborts via its own `RERANK_BUDGET_MS` timer, so
+      // `budgetController.signal.aborted` in the catch unambiguously means
+      // the >8s wall-clock budget fired (not a network error, not an
+      // ai-bad-output). Flag it and DON'T log it as a generic invoke
+      // failure — the hard-failure path's log line + behavior stay
+      // byte-identical.
+      if (budgetController.signal.aborted) {
+        rerankTimedOut = true;
+      } else {
+        console.error("rerank-recs invoke failed:", err);
+      }
+    } finally {
+      // A settled fetch (happy OR hard-fail) must not leave the abort timer
+      // pending. No-op once the timer has already fired (the breach path).
+      clearTimeout(budgetTimer);
     }
+  }
+
+  // Task 12 — >8s wall-clock budget breach (spec
+  // docs/superpowers/specs/2026-05-15-play-next-redesign-design.md :416).
+  // The Edge took too long (a slow-but-not-failed AI plumbing path: the
+  // shared ai-router loops 4 providers at 30s each). Rather than keep
+  // blocking ~90s, serve the DETERMINISTIC bucketed grid we already
+  // computed before the Edge call (composite-scored → MMR → stratified
+  // into the 4 rails; correct for this exact filter combo, zero extra I/O,
+  // zero AI) plus the spec's "took too long — showing your last set"
+  // banner. This is intentionally distinct from the metadataOnlyRecs
+  // hard-failure fallback below (reached only when the Edge genuinely
+  // FAILED): that path re-pulls a candidate pool and re-templates reasons;
+  // the bucketed grid is strictly better content and already in hand.
+  //
+  // These rows were NEVER persisted (the Edge writes the cache rows; it
+  // never ran to completion), so — unlike the cache-hit / post-rerank
+  // branches — there is nothing to re-read. We hydrate straight from the
+  // in-scope `byId` (the CandidateGame the pool already fetched) and
+  // synthesize a stable client id + an honest templated reason. fitChips /
+  // confidence reuse the SAME in-scope scoring context (`scoredById`,
+  // `socialMap`, `byId`, `filters`) the happy-path enrich block uses, so a
+  // card from this path is shape-identical to a fresh-AI card. The picks
+  // are the already-deterministic bucketed grid — no randomness added.
+  if (rerankTimedOut) {
+    const slowRecs = bucketed
+      .map((b): RecCard | null => {
+        const cand = byId.get(b.gameId);
+        if (!cand) return null; // defensive: bucketed ⊆ filtered ⊆ byId
+        const sc = scoredById.get(b.gameId);
+        const sig = socialMap.get(b.gameId);
+        const tf = timeFitScore(cand.playtimeAvgHours, filters.time);
+        const moodMatches = filters.moods.filter(
+          (m) =>
+            moodMatchScore(m, {
+              genres: cand.genres,
+              mechanics: cand.mechanics,
+            }) >= 0.5,
+        );
+        const composite = sc?.composite ?? 0;
+        const overlap = moodMatches[0];
+        const reason = overlap
+          ? `A strong ${overlap} match for your time budget — picked while the full ranking caught up.`
+          : `A solid match for your time budget — picked while the full ranking caught up.`;
+        return {
+          id: randomUUID(),
+          gameId: cand.id,
+          slug: cand.slug,
+          title: cand.title,
+          releasedYear: cand.released ? cand.released.getFullYear() : null,
+          posterUrl: cand.posterUrl,
+          coverUrl: cand.coverUrl,
+          score: Math.min(1, Math.max(0, composite)),
+          reason,
+          platforms: cand.platforms,
+          // Deterministic composite/similarity path — NOT a fresh AI rerank.
+          algorithm: "similarity" as const,
+          slot: b.slot,
+          fitChips: {
+            timeFit: (tf >= 0.8
+              ? "perfect"
+              : tf >= 0.4
+                ? "close"
+                : "loose") as "perfect" | "close" | "loose",
+            moodMatches,
+            inLibrary: sc?.inLibrary ?? false,
+            friendsCount: sig ? sig.friendsPlayed + sig.friendsLiked : 0,
+          },
+          confidence: deriveConfidence(composite),
+        };
+      })
+      .filter((r): r is RecCard => r !== null);
+
+    // Defensive symmetry with the rerankOk / cache-hit branches: a fully
+    // empty grid (every bucketed game failed the byId lookup — provably
+    // impossible since bucketed ⊆ filtered ⊆ byId, but cheap to guard)
+    // returns the structured failure rather than an empty grid + banner.
+    if (slowRecs.length === 0) {
+      return { ok: false, reason: "no-candidates" };
+    }
+    return {
+      ok: true,
+      tier: fpReady.tier,
+      recs: slowRecs,
+      algorithm: "similarity",
+      banner: "Took too long — showing your last set.",
+    };
   }
 
   if (rerankOk) {
