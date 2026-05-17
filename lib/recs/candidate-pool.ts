@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, arrayOverlaps, desc, eq, inArray, or } from "drizzle-orm";
+import { and, arrayOverlaps, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { games, logs, tasteFingerprints } from "@/lib/db/schema";
@@ -393,10 +393,58 @@ export async function candidatePool(
   // SQLWrappers it's always SQL. We've just pushed at least one predicate.
   const prefilter = or(...predicates)!;
 
+  // Task 13: order the prefilter result by overlap STRENGTH before the
+  // PREFILTER_LIMIT cap. The `&&` predicate in `prefilter` is a boolean
+  // "touches at least one top key" filter — it does NOT rank by how
+  // strongly a row matches. With no ORDER BY, Postgres returns an
+  // arbitrary `LIMIT 1000` in plan/scan order, so a broad-tag power user
+  // (RPG/Action, thousands of overlapping games) can have their genuinely
+  // best matches fall entirely outside the 1000 that reach the JS scorer.
+  //
+  // Proxy = breadth: how many of the (genre/theme/mechanic) axes' top-key
+  // sets this row overlaps (0..3). We reuse the SAME `arrayOverlaps`
+  // predicates already in `prefilter` — i.e. the exact `"col" && $n`
+  // operator + array-literal parameter binding that has run in production
+  // since migration 0014. Each is wrapped in `CASE WHEN <pred> THEN 1 ELSE
+  // 0 END` (integer) and summed (integer); a higher sum = matches more of
+  // the user's taste axes = more relevant. This is a coarse-but-correct
+  // strength signal: precise intersection-cardinality would need an
+  // `ARRAY[...]::text[]` + `unnest`/`INTERSECT` construction, and Drizzle
+  // interpolates a JS array as a `($1, $2)` row-tuple (NOT a `text[]`),
+  // which casts invalidly — the mocked-Drizzle tests cannot catch that, so
+  // the safe choice is the already-proven `&&` binding.
+  //
+  // Tiebreak (makes the retained 1000 fully DETERMINISTIC across runs):
+  // `rawg_rating DESC NULLS LAST` (quality-within-breadth, same column +
+  // NULLS-LAST convention the cold-start branch and `games_rawg_rating_desc`
+  // index already use) then `games.id ASC` (unique PK → total order, no
+  // ties possible past id).
+  //
+  // Behavior contract: for users whose overlap set is <= PREFILTER_LIMIT,
+  // EVERY overlapping row still survives regardless of order and the JS
+  // scorer re-scores + re-sorts all of them, so the final recs are
+  // byte-unchanged. The ordering only changes WHICH 1000 survive when the
+  // overlap set EXCEEDS the limit (the intended improvement). Perf: this
+  // sorts the bounded prefilter result by a non-indexed scalar expression
+  // (the `&&` terms are GIN-served for the WHERE; the CASE sum + numeric/
+  // id sort run over only the WHERE-matched rows, then `LIMIT 1000`) —
+  // acceptable for a bounded prefilter, called out here as a tradeoff.
+  // Sum the per-axis 0/1 CASE terms. Built by left-folding the predicate
+  // list into one `sql` fragment (no `sql.join` — keep the emitted shape
+  // trivially `(c1) + (c2) + …` and avoid depending on helpers the unit
+  // mocks don't stub). `predicates` is non-empty here (cold-start handled
+  // the zero case above), so the seed is always the first CASE term.
+  let breadthSum = sql`(case when ${predicates[0]} then 1 else 0 end)`;
+  for (let i = 1; i < predicates.length; i++) {
+    breadthSum = sql`${breadthSum} + (case when ${predicates[i]} then 1 else 0 end)`;
+  }
+  const overlapStrengthOrder = sql`(${breadthSum}) desc, ${games.rawgRating} desc nulls last, ${games.id} asc`;
+
   const allGames = await db
     .select(GAME_SELECT)
     .from(games)
     .where(prefilter)
+    .orderBy(overlapStrengthOrder)
     .limit(PREFILTER_LIMIT);
 
   const scored: CandidateGame[] = [];

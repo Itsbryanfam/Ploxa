@@ -321,4 +321,129 @@ describe("candidatePool — DB-side prefilter", () => {
     // Did NOT issue any DB calls.
     expect(arrayOverlapsMock).not.toHaveBeenCalled();
   });
+
+  // ── Task 13: order the overlap prefilter by relevance BEFORE LIMIT ──────
+  //
+  // The main overlap branch caps at PREFILTER_LIMIT (1000) rows. With NO
+  // `ORDER BY`, Postgres returns an arbitrary 1000 in plan/scan order — a
+  // broad-tag power user (RPG/Action, thousands of overlapping games) can
+  // have their genuinely-best matches fall entirely outside that 1000 and
+  // never reach the JS scorer. The fix adds an SQL `ORDER BY` that proxies
+  // overlap STRENGTH (count of axes whose top-key set the row overlaps),
+  // with a fully-deterministic tiebreak (rawg_rating DESC NULLS LAST, then
+  // games.id ASC), applied BEFORE `.limit(PREFILTER_LIMIT)`.
+  //
+  // PREFILTER_LIMIT isn't injectable and the chain mock can't truncate, so
+  // (per the existing prefilter-test pattern) the genuine-RED assertion is
+  // on the emitted query SHAPE: the main overlap query must carry an
+  // `orderBy` whose composed fragment references the array-overlap
+  // predicates (relevance proxy) AND the rawg_rating + id stable tiebreak,
+  // and that `orderBy` must be recorded before the `limit`. The cold-start
+  // branch's principled `desc(rawgRating)` ordering must stay UNCHANGED.
+
+  // Deep-serialize a recorded arg (mocks are plain objects: sql fragments
+  // are { __sql, strings, values }, overlap preds { __overlap, col, vals },
+  // desc { __desc, col }, columns { __col }). JSON is enough to assert the
+  // fragment carries the relevance proxy + tiebreak references.
+  function ser(v: unknown): string {
+    return JSON.stringify(v, (_k, val) =>
+      typeof val === "function" ? "[fn]" : val,
+    );
+  }
+
+  it("orders the MAIN overlap query by an overlap-strength proxy + stable tiebreak BEFORE the LIMIT", async () => {
+    // Chain 1: logged rows (none).
+    queueResult([]);
+    // Chain 2: games overlap SELECT.
+    const gamesChain = queueResult([
+      {
+        id: 1,
+        slug: "g1",
+        title: "G1",
+        released: null,
+        coverUrl: null,
+        posterUrl: null,
+        genres: ["rpg"],
+        themes: ["fantasy"],
+        mechanics: ["turn_based"],
+        platforms: ["PC"],
+        playtimeAvgHours: null,
+        rawgRating: null,
+      },
+    ]);
+
+    const { candidatePool } = await import("@/lib/recs/candidate-pool");
+    await candidatePool("u1", {
+      vectors: {
+        genre: { rpg: 1, action: 0.5 },
+        theme: { fantasy: 1 },
+        mechanic: { turn_based: 1 },
+        gameMode: {},
+        playerPerspective: {},
+      },
+    });
+
+    const calls = gamesChain._calls;
+    const orderByIdx = calls.findIndex((c) => c.method === "orderBy");
+    const limitIdx = calls.findIndex((c) => c.method === "limit");
+
+    // (a) The main overlap query MUST have an orderBy …
+    expect(orderByIdx).toBeGreaterThanOrEqual(0);
+    // … applied BEFORE the limit (so the retained 1000 are the most-relevant).
+    expect(limitIdx).toBeGreaterThanOrEqual(0);
+    expect(orderByIdx).toBeLessThan(limitIdx);
+
+    // (b) The ordering fragment proxies overlap STRENGTH: it references the
+    // array-overlap predicates (the same `&&` predicates used in the WHERE).
+    const orderArg = ser(calls[orderByIdx]!.args);
+    expect(orderArg).toContain("__overlap");
+    // … and carries the deterministic tiebreak: rawg_rating + id columns.
+    expect(orderArg).toContain("games.rawg_rating");
+    expect(orderArg).toContain("games.id");
+  });
+
+  it("does NOT add the overlap-strength proxy to the cold-start branch (it keeps desc(rawgRating))", async () => {
+    // Chain 1: logged rows (none).
+    queueResult([]);
+    // Chain 2: cold-start popularity query.
+    const popChain = queueResult([
+      {
+        id: 99,
+        slug: "popular",
+        title: "Popular",
+        released: null,
+        coverUrl: null,
+        posterUrl: null,
+        genres: ["action"],
+        themes: ["sci_fi"],
+        mechanics: ["shooter"],
+        platforms: ["PC"],
+        playtimeAvgHours: null,
+        rawgRating: null,
+      },
+    ]);
+
+    const { candidatePool } = await import("@/lib/recs/candidate-pool");
+    await candidatePool("u1", {
+      vectors: {
+        genre: {},
+        theme: {},
+        mechanic: {},
+        gameMode: {},
+        playerPerspective: {},
+      },
+    });
+
+    // Cold-start MUST NOT use any array-overlap predicate at all (Task 13
+    // leaves this principled branch untouched).
+    expect(arrayOverlapsMock).not.toHaveBeenCalled();
+
+    const orderByCall = popChain._calls.find((c) => c.method === "orderBy");
+    expect(orderByCall).toBeDefined();
+    // It orders purely by desc(rawgRating) — no overlap-strength proxy.
+    const orderArg = ser(orderByCall!.args);
+    expect(orderArg).toContain("__desc");
+    expect(orderArg).not.toContain("__overlap");
+    expect(descMock).toHaveBeenCalled();
+  });
 });
