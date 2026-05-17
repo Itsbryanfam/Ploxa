@@ -35,6 +35,18 @@ const BACKING_FLOOR = 0.5;
  * Friends + Wildcard, with graceful demotion). Returned `BucketedCandidate`s
  * shallow-copy the input and SHARE the `genres` array by reference — callers
  * (Task 12) must treat returned candidates as read-only.
+ *
+ * INVARIANT: the Backlog slot is the ONLY slot that may hold an `inLibrary`
+ * candidate. Comfort, Friends, Wildcard, and demotion-fill select from the
+ * discovery set (`!inLibrary`) exclusively. This is load-bearing, not
+ * cosmetic: for a user whose logs are mostly `backlog`/`wishlist`/`on_hold`,
+ * the backlog lane feeds the SAME scored array as discovery, and those owned
+ * games dominate `composite` (they ARE the taste vector + the live
+ * libraryBonus). Without this guard the top-composite tail floods Comfort +
+ * Wildcard with games the user already owns (prod regression 2026-05-17 — a
+ * 176-backlog account saw entire 6-card grids of owned games). server-
+ * actions.ts documents this contract ("ONLY the Backlog slot consumes
+ * inLibrary — no leak into Comfort/Wildcard"); enforce it HERE.
  */
 export function assignBuckets(
   candidates: ScoredCandidate[],
@@ -58,19 +70,27 @@ export function assignBuckets(
     used.add(backlog.gameId);
   }
 
-  // 2. Friends — highest-scored social>0 candidate above floor.
-  // Reserved before Comfort for the same reason (Task 4 fix).
+  // 2. Friends — highest-scored social>0 DISCOVERY candidate above floor.
+  // Reserved before Comfort for the same reason (Task 4 fix). `!inLibrary`:
+  // an owned game with a friend signal belongs to the Backlog slot, not a
+  // second owned card here (see the INVARIANT in the doc comment).
   const friends = sorted.find(
-    (c) => !used.has(c.gameId) && c.socialScore > 0 && c.composite >= floor,
+    (c) =>
+      !used.has(c.gameId) &&
+      !c.inLibrary &&
+      c.socialScore > 0 &&
+      c.composite >= floor,
   );
   if (friends) {
     out.push({ ...friends, slot: "friends" });
     used.add(friends.gameId);
   }
 
-  // 3. Wildcard — unexplored cluster sample (reserved before Comfort fill)
+  // 3. Wildcard — unexplored cluster sample (reserved before Comfort fill).
+  // Discovery-only (`!inLibrary`): the wildcard is a "try something new"
+  // surprise, which a game already in the user's library can't be.
   const wcInput: WildcardCandidate[] = sorted
-    .filter((c) => !used.has(c.gameId))
+    .filter((c) => !used.has(c.gameId) && !c.inLibrary)
     .map((c) => ({ gameId: c.gameId, composite: c.composite, genres: c.genres }));
   const wcPick = pickWildcard(wcInput, {
     exploredGenres: opts.exploredGenres,
@@ -85,20 +105,28 @@ export function assignBuckets(
     }
   }
 
-  // 4. Comfort — top remaining candidates by composite (NOT floor-gated:
-  // Comfort is the guaranteed-fill tier for graceful fill even below floor).
+  // 4. Comfort — top remaining DISCOVERY candidates by composite (NOT
+  // floor-gated: Comfort is the guaranteed-fill tier for graceful fill even
+  // below floor). `!inLibrary`: owned games are confined to the Backlog slot
+  // (see the INVARIANT) — skip them here even though they may out-score every
+  // discovery row.
   let comfortCount = 0;
   for (const c of sorted) {
     if (comfortCount >= SLOT_TARGETS.comfort) break;
     if (used.has(c.gameId)) continue;
+    if (c.inLibrary) continue;
     out.push({ ...c, slot: "comfort" });
     used.add(c.gameId);
     comfortCount++;
   }
 
-  // 5. Demote empty slots to extra Comfort (fires when a special is absent)
+  // 5. Demote empty slots to extra Comfort (fires when a special is absent).
+  // Still discovery-only — demotion must not become an inLibrary backdoor
+  // (that is exactly how the 2026-05-17 flood filled the grid). If discovery
+  // is exhausted the grid legitimately returns <6 (by-design thin-pool
+  // degradation) rather than padding with owned games.
   while (out.length < GRID_SIZE) {
-    const next = sorted.find((c) => !used.has(c.gameId));
+    const next = sorted.find((c) => !used.has(c.gameId) && !c.inLibrary);
     if (!next) break;
     out.push({ ...next, slot: "comfort" });
     used.add(next.gameId);
