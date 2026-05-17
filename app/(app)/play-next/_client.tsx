@@ -172,17 +172,17 @@ export function PlayNextClient({
     // load and take the newest request id so a slow in-flight load can't
     // clobber the refill result.
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const myId = ++reqIdRef.current;
+    const gen = ++reqIdRef.current;
     startTransition(async () => {
       try {
         const next = await refillRecs({ time, moods, platforms });
-        if (myId !== reqIdRef.current) return;
+        if (gen !== reqIdRef.current) return;
         setRecsState(next);
         setDismissedIds(new Set());
       } catch {
         // Same dead-end guard as loadRecs: a thrown refill must not pin the
         // page on the pending mascot. Show the recoverable error state.
-        if (myId !== reqIdRef.current) return;
+        if (gen !== reqIdRef.current) return;
         setRecsState({ ok: false, reason: "error" });
         setDismissedIds(new Set());
       }
