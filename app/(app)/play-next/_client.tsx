@@ -161,6 +161,17 @@ export function PlayNextClient({
     });
   }, []);
 
+  // Symmetric inverse of onCardDismissed: called by RecCard when a save
+  // action *throws* (the card was optimistically hidden AND the save failed).
+  // Re-adds the rec to the visible list so the user can retry.
+  const onCardRestored = useCallback((recId: string) => {
+    setDismissedIds((s) => {
+      const next = new Set(s);
+      next.delete(recId);
+      return next;
+    });
+  }, []);
+
   // Refill = "Show me more like these →". refillRecs only accepts filters
   // (it wipes the non-dismissed cache rows for this filter key and re-runs
   // getRecs WITHOUT refinements — the cumulative dismissed history feeds the
@@ -352,6 +363,7 @@ export function PlayNextClient({
                         p === "steam" || p === "xbox" || p === "psn",
                     )}
                     onDismissed={onCardDismissed}
+                    onRestore={onCardRestored}
                   />
                 ))}
             </AnimatePresence>

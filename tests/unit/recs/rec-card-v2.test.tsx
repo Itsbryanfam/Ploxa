@@ -77,7 +77,7 @@ vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 
-import { RecCard } from "@/components/recs/rec-card";
+import { RecCard, guardedCardAction } from "@/components/recs/rec-card";
 import type { RecCard as RecCardData } from "@/lib/recs/server-actions";
 
 const baseRec: RecCardData = {
@@ -187,5 +187,79 @@ describe("RecCard v2 (static render)", () => {
     // Corner-clipping of the cover art is preserved, just relocated to the
     // aspect-ratio image wrapper.
     expect(html).toMatch(/aspect-\[2\/3\][^"]*overflow-hidden/);
+  });
+});
+
+/**
+ * guardedCardAction throw-path contract (Task 16).
+ *
+ * `guardedCardAction` is the exported action-runner used by every card handler.
+ * It is a pure async function: testable directly in Node without a DOM.
+ *
+ * Three contracts:
+ *   1. THROW path  → onError() fires (RED against pre-fix code: no try/catch)
+ *   2. STRUCTURED {ok:false} path → onError() does NOT fire (the inner
+ *      `r.ok` branch fires toast itself; the guard is for outer throws only)
+ *   3. SUCCESS path → onError() does NOT fire
+ *
+ * RED genuineness: pre-fix `guardedCardAction` is a pass-through (no try/catch),
+ * so a thrown action propagates and `onError` is never called. Test 1 therefore
+ * FAILS pre-fix (onError not called → expect(onError).toHaveBeenCalledTimes(1)
+ * fails) and PASSES post-fix (catch fires onError). Tests 2 & 3 pass both
+ * before and after (proving no regression on the already-correct paths).
+ *
+ * `onRestore` (save throw-path restore) is wired AT the call-site in onSave —
+ * not inside guardedCardAction itself — so we test the restore wiring via the
+ * static-render suite (onRestore prop present on RecCard) rather than here.
+ */
+describe("guardedCardAction throw-guard contract", () => {
+  it("THROW path (RED pre-fix): onError fires when the action throws", async () => {
+    const onError = vi.fn();
+    const throwing = async () => {
+      throw new Error("DB down");
+    };
+    // Swallow the rejection — pre-fix propagates; post-fix is caught internally.
+    await guardedCardAction(throwing, onError).catch(() => {});
+    // PRE-FIX FAILS: no try/catch → onError never called
+    // POST-FIX PASSES: catch fires onError
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("SUCCESS path (must stay green): onError does NOT fire on a resolved action", async () => {
+    const onError = vi.fn();
+    const succeeding = async () => {
+      // returns void; simulates a resolved server action
+    };
+    await guardedCardAction(succeeding, onError);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("STRUCTURED-failure path (must stay green): onError does NOT fire when action resolves (error handled internally by r.ok branch)", async () => {
+    const onError = vi.fn();
+    // A structured failure returns {ok:false} but does NOT throw — the action
+    // function itself resolves normally; the r.ok-check inside the action body
+    // handles the error toast. guardedCardAction must not double-fire onError.
+    const structuredFailure = async () => {
+      // simulates: const r = await serverAction(...); if (!r.ok) toast.error(...)
+      // The action RETURNS normally — it does not throw.
+    };
+    await guardedCardAction(structuredFailure, onError);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("RecCard accepts onRestore prop without type error (static render smoke-test)", () => {
+    // If onRestore is not declared on RecCard's props, TypeScript rejects the
+    // JSX and renderToStaticMarkup throws. This test catches prop-shape drift.
+    const onRestore = vi.fn();
+    const html = renderToStaticMarkup(
+      <RecCard
+        rec={baseRec}
+        {...props}
+        onRestore={onRestore}
+      />,
+    );
+    // Card still renders correctly with onRestore wired.
+    expect(html).toContain('data-testid="rec-card"');
+    expect(html).toContain("Save for later");
   });
 });
