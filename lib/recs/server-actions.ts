@@ -432,8 +432,10 @@ export async function getRecs(
   // host-paid Edge rerank on every call. Gate it per-user (the no-refinement
   // path is cached and unaffected). 10 / 60s matches the spec rate
   // (docs/superpowers/specs/2026-05-15-play-next-redesign-design.md §318:
-  // "10 refinement runs/min/user") and caps both scripted abuse and
-  // instantaneous burst at window start.
+  // "10 refinement runs/min/user"). enforceRateLimit is fixed-window, so a
+  // boundary straddle can still land ~2×limit reranks within a sub-window
+  // span; this caps sustained scripted abuse, not the worst-case burst.
+  // Tightening to sliding-window/token-bucket is the F-005 follow-up.
   if (refinements.length > 0) {
     try {
       await enforceRateLimit({
