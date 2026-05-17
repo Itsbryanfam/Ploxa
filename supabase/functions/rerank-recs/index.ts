@@ -270,6 +270,7 @@ Deno.serve(async (req) => {
     // directions; see pickTasteSignal). The SQL read above is intentionally
     // retained as that fallback.
     const taste = pickTasteSignal(body.vectors, body.narrative, fp);
+    console.error("rerank-recs: taste-signal source", { userId, ...taste.source });
 
     // 4. Render the prompt + call the AI router.
     const { system, user } = buildRerankPrompt({

@@ -849,8 +849,10 @@ export async function getRecs(
           // row the Edge would otherwise independently re-SELECT (that row
           // only updates on log milestones / the drift cron and is
           // documented as often-stale/missing). `narrative` is normalized to
-          // null (fp.narrative may be undefined for sparse/never-refreshed
-          // users) so the Edge gets an explicit "no live narrative → use
+          // null defensively — the real FingerprintSnapshot.narrative is
+          // already string|null; this guards a non-conforming caller / test
+          // mock that yields undefined — so the Edge gets an explicit "no live
+          // narrative → use
           // your SQL fallback" signal rather than an absent key. The Edge
           // retains its SQL read as a fallback, so this is forward/backward-
           // compatible across deploy ordering.
