@@ -96,15 +96,14 @@ export function PlayNextClient({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRecs = useCallback(
-    (t: TimeBudget, m: Mood[], p: Platform[], r: string[]) => {
-      const myId = ++reqIdRef.current;
+    (t: TimeBudget, m: Mood[], p: Platform[], r: string[], gen: number) => {
       startTransition(async () => {
         try {
           const result = await getRecs(
             { time: t, moods: m, platforms: p },
             { refinements: r },
           );
-          if (myId !== reqIdRef.current) return; // superseded by a newer load
+          if (gen !== reqIdRef.current) return; // superseded by a newer load
           setRecsState(result);
           setDismissedIds(new Set());
         } catch {
@@ -112,7 +111,7 @@ export function PlayNextClient({
           // serverless timeout, a DB race) must NOT leave the page pinned
           // on the pending mascot forever. Surface a recoverable error —
           // changing any filter/refinement re-invokes loadRecs.
-          if (myId !== reqIdRef.current) return;
+          if (gen !== reqIdRef.current) return;
           setRecsState({ ok: false, reason: "error" });
           setDismissedIds(new Set());
         }
@@ -128,12 +127,19 @@ export function PlayNextClient({
   // manual refresh (production report 2026-05-15). Collapse rapid changes
   // into ONE load for the settled selection. The chip relabel + URL sync stay
   // immediate (synchronous) — only the data fetch waits out the burst.
+  //
+  // Generation is bumped HERE at schedule time (not inside loadRecs) so that
+  // any in-flight load from a previous scheduleLoad call is immediately
+  // invalidated. Without this, an in-flight A could resolve and pass the
+  // `gen !== reqIdRef.current` guard while B's debounce is still counting
+  // down — causing a ≤350ms stale-card flash (production report 2026-05-16).
   const scheduleLoad = useCallback(
     (t: TimeBudget, m: Mood[], p: Platform[], r: string[]) => {
+      const gen = ++reqIdRef.current;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
-        loadRecs(t, m, p, r);
+        loadRecs(t, m, p, r, gen);
       }, LOAD_DEBOUNCE_MS);
     },
     [loadRecs],
@@ -155,6 +161,17 @@ export function PlayNextClient({
     });
   }, []);
 
+  // Symmetric inverse of onCardDismissed: called by RecCard when a save
+  // action *throws* (the card was optimistically hidden AND the save failed).
+  // Re-adds the rec to the visible list so the user can retry.
+  const onCardRestored = useCallback((recId: string) => {
+    setDismissedIds((s) => {
+      const next = new Set(s);
+      next.delete(recId);
+      return next;
+    });
+  }, []);
+
   // Refill = "Show me more like these →". refillRecs only accepts filters
   // (it wipes the non-dismissed cache rows for this filter key and re-runs
   // getRecs WITHOUT refinements — the cumulative dismissed history feeds the
@@ -166,17 +183,17 @@ export function PlayNextClient({
     // load and take the newest request id so a slow in-flight load can't
     // clobber the refill result.
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const myId = ++reqIdRef.current;
+    const gen = ++reqIdRef.current;
     startTransition(async () => {
       try {
         const next = await refillRecs({ time, moods, platforms });
-        if (myId !== reqIdRef.current) return;
+        if (gen !== reqIdRef.current) return;
         setRecsState(next);
         setDismissedIds(new Set());
       } catch {
         // Same dead-end guard as loadRecs: a thrown refill must not pin the
         // page on the pending mascot. Show the recoverable error state.
-        if (myId !== reqIdRef.current) return;
+        if (gen !== reqIdRef.current) return;
         setRecsState({ ok: false, reason: "error" });
         setDismissedIds(new Set());
       }
@@ -187,9 +204,13 @@ export function PlayNextClient({
   // old deep-link gate this always fires once. The exhaustive-deps rule
   // wants every dep but we intentionally fire-once here; subsequent
   // refreshes happen via the filter-chip / refinement onChange handlers.
+  // Bump the generation at initiation (same scheme as scheduleLoad/onRefill)
+  // so a fast user-initiated scheduleLoad right after mount correctly
+  // supersedes the in-flight mount fetch.
   useEffect(() => {
     if (time && moods.length > 0 && platforms.length > 0) {
-      loadRecs(time, moods, platforms, refinements);
+      const gen = ++reqIdRef.current;
+      loadRecs(time, moods, platforms, refinements, gen);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -342,6 +363,7 @@ export function PlayNextClient({
                         p === "steam" || p === "xbox" || p === "psn",
                     )}
                     onDismissed={onCardDismissed}
+                    onRestore={onCardRestored}
                   />
                 ))}
             </AnimatePresence>

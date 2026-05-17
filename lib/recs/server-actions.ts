@@ -5,7 +5,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -17,17 +17,25 @@ import {
 } from "@/lib/db/schema";
 import { ensureLog } from "@/lib/logs/server-actions";
 import { assignBuckets, GRID_SIZE, type ScoredCandidate } from "@/lib/recs/buckets";
-import { cacheKey } from "@/lib/recs/cache";
-import { candidatePool, type CandidateGame } from "@/lib/recs/candidate-pool";
+import { cacheKey, sha256Hex } from "@/lib/recs/cache";
+import {
+  backlogPool,
+  candidatePool,
+  type CandidateGame,
+} from "@/lib/recs/candidate-pool";
 import { applyMMR } from "@/lib/recs/diversity-mmr";
 import { isRecsV2Enabled } from "@/lib/recs/feature-flag";
 import { moodMatchScore } from "@/lib/recs/mood-affinity";
 import { filterSchema, type FilterParams, type TimeBudget } from "@/lib/recs/moods";
 import { gamePlatformsMatchUserFilter } from "@/lib/recs/platform-match";
 import { composeScore } from "@/lib/recs/scoring";
-import { computeSocialScore, fetchSocialSignals } from "@/lib/recs/social-score";
+import {
+  computeSocialScore,
+  fetchSocialSignals,
+  type SocialSignals,
+} from "@/lib/recs/social-score";
 import { softNegativePenalty } from "@/lib/recs/soft-negative";
-import { timeFitScore } from "@/lib/recs/time-fit";
+import { isTimeFeasible, timeFitScore } from "@/lib/recs/time-fit";
 import { enforceRateLimit, RateLimitedError } from "@/lib/security/rate-limit";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
@@ -101,7 +109,7 @@ export type RecResult =
         | "error";
     };
 
-/** Map a TimeBudget to a [minHours, maxHours] window for filtering candidates. */
+/** Map a TimeBudget to a [minHours, maxHours] window. Legacy-only: the v2 path uses isTimeFeasible(); retained solely for getRecsLegacy (recsv2-OFF rollback). */
 function timeWindow(time: TimeBudget): [number, number] {
   switch (time) {
     case "15min":
@@ -221,10 +229,13 @@ async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
   //    Pass live `fp.vectors` so the pool stays correct even when the
   //    persisted taste_fingerprints row hasn't been written yet (the
   //    refresh-fingerprint Edge Function only fires on milestone counts
-  //    and depends on AI providers being healthy).
+  //    and depends on AI providers being healthy). `loggedGameIds` is
+  //    threaded from the live fingerprint so candidatePool reuses the
+  //    aggregation's scan instead of its own `SELECT logs.gameId` (Task 11).
   const candidates = await candidatePool(me.id, {
     limit: 50,
     vectors: fpReady.vectors,
+    loggedGameIds: fpReady.loggedGameIds,
   });
   if (candidates.length === 0) {
     return { ok: false, reason: "no-candidates" };
@@ -269,6 +280,14 @@ async function getRecsLegacy(rawFilters: FilterParams): Promise<RecResult> {
           filters,
           candidateIds: filtered.map((c) => c.id),
           cacheKey: key,
+          // LIVE taste signal (Task 5 — Codex remediation). Same rationale
+          // as the v2 path: the legacy candidate pool already used
+          // `fpReady.vectors`; pass the SAME live values so the Edge rerank
+          // ordering + reasoning use live taste rather than the stale/missing
+          // persisted taste_fingerprints row. The Edge keeps its SQL read as
+          // a fallback (deploy-order safe).
+          vectors: fpReady.vectors,
+          narrative: fpReady.narrative ?? null,
         }),
       });
       if (resp.ok) {
@@ -371,6 +390,74 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
+ * Shared by the happy-path enrich and the Task-12 timeout fallback so chip
+ * thresholds can't drift between the two call sites.
+ *
+ * `composite` is caller-specific: the happy path passes `sc?.composite ?? r.score`
+ * (persisted DB score); the timeout fallback passes `sc?.composite ?? 0`
+ * (in-memory composite). All other inputs are identical in-scope maps/filters.
+ */
+function liveFitChips(
+  gameId: number,
+  composite: number,
+  ctx: {
+    byId: Map<number, CandidateGame>;
+    scoredById: Map<number, ScoredCandidate>;
+    socialMap: Map<number, SocialSignals>;
+    filters: FilterParams;
+  },
+): { fitChips: RecCard["fitChips"]; confidence: RecCard["confidence"] } {
+  const cand = ctx.byId.get(gameId);
+  const sc = ctx.scoredById.get(gameId);
+  const sig = ctx.socialMap.get(gameId);
+  const tf = cand ? timeFitScore(cand.playtimeAvgHours, ctx.filters.time) : 0.5;
+  const moodMatches = cand
+    ? ctx.filters.moods.filter(
+        (m) =>
+          moodMatchScore(m, {
+            genres: cand.genres,
+            mechanics: cand.mechanics,
+          }) >= 0.5,
+      )
+    : [];
+  return {
+    fitChips: {
+      timeFit: (tf >= 0.8
+        ? "perfect"
+        : tf >= 0.4
+          ? "close"
+          : "loose") as "perfect" | "close" | "loose",
+      moodMatches,
+      inLibrary: sc?.inLibrary ?? false,
+      friendsCount: sig ? sig.friendsPlayed + sig.friendsLiked : 0,
+    },
+    confidence: deriveConfidence(composite),
+  };
+}
+
+/**
+ * Wall-clock budget for the rerank Edge call (Task 12 — Codex remediation).
+ *
+ * `supabase/functions/_shared/ai-router.ts` carries a 30s PER-PROVIDER
+ * timeout and loops all 4 providers sequentially with NO overall budget, so
+ * a slow-but-not-failed AI plumbing path can block the Edge response ~90s —
+ * /play-next then sits on the pending mascot. The shared 30s is intentional
+ * (other features depend on it) and the Edge isn't unit-testable, so the
+ * budget is enforced HERE, caller-side, exactly as the spec frames it
+ * ("Edge Function timeout (>8s wall-clock budget)" —
+ * docs/superpowers/specs/2026-05-15-play-next-redesign-design.md :416).
+ *
+ * On breach we serve the DETERMINISTIC bucketed grid already computed
+ * before the Edge call (free, correct for this exact filter combo) plus the
+ * spec's "took too long — showing your last set" banner — NOT the
+ * metadataOnlyRecs hard-failure path (that re-pulls a pool & re-templates;
+ * the grid is strictly better and already in hand). The happy path (Edge
+ * answers within budget) and the existing hard-failure path (provider
+ * failure / ai-bad-output → metadataOnlyRecs) are byte-unchanged.
+ */
+const RERANK_BUDGET_MS = 8000;
+
+/**
  * Primary recommendation entry point (v2 — play-next redesign Task 12).
  *
  * Preserves the original flow's steps 0-2 byte-for-behavior (auth →
@@ -409,24 +496,31 @@ export async function getRecs(
   // the snooze gate so a single call can't straddle a tick boundary.
   const now = new Date();
   // Sanitize free-text refinements at the boundary (wire-deserialized).
-  // Count-capped at 5; each string length-capped at 120 so a hostile caller
+  // Count-capped at 5; each string length-capped at 140 so a hostile caller
   // can't inflate the host-paid Edge prompt (F-005).
+  // 140 = canonical cap agreed by UI (CHAR_CAP in refinement-input.tsx),
+  // Edge prompt builder (REFINEMENT_CHAR_CAP in _shared/prompts.ts + lib/taste/prompts.ts),
+  // and spec §"Input cap" (docs/superpowers/specs/2026-05-15-play-next-redesign-design.md ~:313).
   const refinements = (options?.refinements ?? [])
     .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     .slice(0, 5)
-    .map((s) => s.trim().slice(0, 120));
+    .map((s) => s.trim().slice(0, 140));
 
   // F-005: a non-empty refinement set bypasses the cache and forces a
   // host-paid Edge rerank on every call. Gate it per-user (the no-refinement
-  // path is cached and unaffected). 20 / 10min is far above any human tweak
-  // cadence but caps scripted abuse.
+  // path is cached and unaffected). 10 / 60s matches the spec rate
+  // (docs/superpowers/specs/2026-05-15-play-next-redesign-design.md §318:
+  // "10 refinement runs/min/user"). enforceRateLimit is fixed-window, so a
+  // boundary straddle can still land ~2×limit reranks within a sub-window
+  // span; this caps sustained scripted abuse, not the worst-case burst.
+  // Tightening to sliding-window/token-bucket is the F-005 follow-up.
   if (refinements.length > 0) {
     try {
       await enforceRateLimit({
         scope: "recs:refine",
         identifier: me.id,
-        limit: 20,
-        windowSeconds: 600,
+        limit: 10,
+        windowSeconds: 60,
       });
     } catch (e) {
       if (e instanceof RateLimitedError) {
@@ -466,6 +560,26 @@ export async function getRecs(
     time: filters.time,
     platforms: filters.platforms,
   });
+
+  // Refinement *session* cache key. A refinement run ("less grindy") is
+  // session-only by spec ("Refined results session-only, not persisted")
+  // and MUST NOT overwrite the user's unrefined cached set for this filter
+  // tuple: the rerank Edge function unconditionally DELETEs+INSERTs rows
+  // under the cacheKey it's handed (regardless of `mode` — `mode` only
+  // selects the prompt), so reusing the bare base `key` on a refinement
+  // run poisons the base cache until vectors re-aggregate. Derive a
+  // distinct, DETERMINISTIC key from the base key + a hash of the sorted
+  // refinements so (i) the base cache is isolated, (ii) the same
+  // refinements reuse the same session slot, and (iii) per-row actions
+  // still work because the rec rows still exist (just under this key —
+  // dismiss/save/play resolve a rec by primary id, not by cache_key).
+  // No refinements ⇒ `writeKey === key`, so the no-refinement path is
+  // byte-unchanged (Edge payload + slot UPDATE + re-read all use bare
+  // `key`). Same `sha256Hex` primitive as `cacheKey` — one hash scheme.
+  const writeKey =
+    refinements.length > 0
+      ? `${key}:r:${sha256Hex(JSON.stringify([...refinements].sort())).slice(0, 8)}`
+      : key;
 
   // 1. Cache check — non-dismissed rows for this key, ordered by score desc.
   //    Refinements bypass the cache entirely: a user nudging the results
@@ -519,10 +633,20 @@ export async function getRecs(
   }
 
   // 2. Sparse tier — skip AI, use metadataOnlyRecs (T9 templated path +
-  //    T10 popularity fallback for thin vectors). Refinements don't apply
-  //    to the sparse path (no AI rerank there) — acceptable per dispatch.
+  //    T10 popularity fallback for thin vectors). The sparse path returns
+  //    early WITHOUT any refinement-aware re-rank logic, so a refinement
+  //    run does not change the sparse OUTPUT. But the WRITE must still use
+  //    `writeKey`, not bare `key`: metadataOnlyRecs unconditionally persists
+  //    "similarity" rows under the key it's handed, so a sparse-tier user
+  //    who applies a refinement would otherwise poison their unrefined base
+  //    cache (a later plain same-filter call would cache-hit those
+  //    refinement-run rows) — the exact B1 poisoning mechanism Task 2 was
+  //    created to eliminate. Same isolation + reasoning as the AI-failure
+  //    fallback sibling below (~`metadataOnlyRecs(..., writeKey)` at the
+  //    "AI failure → metadata fallback" comment). `writeKey === key` with
+  //    no refinements, so the plain sparse path is byte-unchanged.
   if (fpReady.tier === "sparse") {
-    return metadataOnlyRecs(me.id, fpReady, filters, key);
+    return metadataOnlyRecs(me.id, fpReady, filters, writeKey);
   }
 
   // 3. Sharpening / full — v2 pipeline. Pull a candidate pool (T10: 100
@@ -531,20 +655,65 @@ export async function getRecs(
   //    stratify into the 4 rails, then send the pre-scored shortlist to
   //    the rerank Edge Function. Pass live `fp.vectors` so the pool stays
   //    correct even when the persisted taste_fingerprints row is stale.
-  const candidates = await candidatePool(me.id, { vectors: fpReady.vectors });
+  // Two-lane sourcing (play-next Backlog-bucket revival 2026-05-16):
+  //   - DISCOVERY lane (`candidatePool`): catalog rows the user has NOT
+  //     logged at all. `inLibrary:false`.
+  //   - BACKLOG lane (`backlogPool`): the user's OWNED-BUT-UNPLAYED logs
+  //     (backlog/wishlist/on_hold). `inLibrary:true`.
+  // The lanes are disjoint by construction (candidatePool excludes EVERY
+  // logged game; the backlog lane only emits logged ones), so the
+  // `inLibrary` partition is exact: `inLibrary` is true iff the candidate
+  // came from the backlog lane, and ONLY the Backlog slot consumes
+  // `inLibrary` (`buckets.ts`) — no leak into Comfort/Wildcard. Pre-fix this
+  // used a single unconditional "all logged ids" query: `inLibrary` was
+  // ALWAYS false (the pool is exactly the non-logged set), so the Backlog
+  // rail + `libraryBonus` were both structurally dead.
+  // `candidatePool` reuses the live fingerprint's logged-id set (Task 11)
+  // instead of issuing its own `SELECT logs.gameId` exclusion scan — the
+  // `getFingerprint` call above already paid for the `logs⋈games` read.
+  // `backlogPool` keeps its OWN status-filtered + scored `logs⋈games` query
+  // (Task 3 lane); its result set is not derivable from the aggregation, so
+  // it is intentionally NOT folded into this dedupe.
+  const [discovery, backlog] = await Promise.all([
+    candidatePool(me.id, {
+      vectors: fpReady.vectors,
+      loggedGameIds: fpReady.loggedGameIds,
+    }),
+    backlogPool(me.id, { vectors: fpReady.vectors }),
+  ]);
+  const backlogIds = new Set(backlog.map((c) => c.id));
+  // Merge, backlog entry winning for any shared id (defensive — the lanes
+  // are provably disjoint, but a future change to either query must not
+  // silently turn an owned game into an `inLibrary:false` discovery card).
+  const mergedById = new Map<number, CandidateGame>();
+  for (const c of discovery) mergedById.set(c.id, c);
+  for (const c of backlog) mergedById.set(c.id, c);
+  const candidates = [...mergedById.values()];
   if (candidates.length === 0) {
     return { ok: false, reason: "no-candidates" };
   }
 
   // Dismissal / snooze / never-again state for the candidate set (T1
-  // partial index covers this lookup).
+  // partial index covers this lookup). Covers BOTH lanes — a never-again /
+  // active-snooze on a backlog game still hard-excludes it from the rail.
   const candIds = candidates.map((c) => c.id);
+  // Dismissal/snooze/never-again state — one deterministic row per gameId via
+  // SQL aggregation (Task 14). `max(snoozed_until)` is order-independent: the
+  // latest (most-future) snooze always wins regardless of DB row return order,
+  // so an active snooze can never be masked by an older expired one.
+  // `bool_or(never_again)` is equivalent to the old `||` collapse. `max(
+  // dismissed_at)` is kept because softNegativePenalty consumes it for its
+  // time-decayed soft-negative score. GROUP BY game_id guarantees exactly one
+  // row per candidate, so the JS-side map is a simple 1:1 population — no
+  // reduce needed. SQL validity: max(timestamptz)→timestamptz, bool_or(boolean)
+  // →boolean, GROUP BY game_id with only aggregates + grouped column in SELECT
+  // — no bare non-grouped column, no Postgres "must appear in GROUP BY" error.
   const negRows = await db
     .select({
       gameId: recommendations.gameId,
-      dismissedAt: recommendations.dismissedAt,
-      snoozedUntil: recommendations.snoozedUntil,
-      neverAgain: recommendations.neverAgain,
+      snoozedUntil: max(recommendations.snoozedUntil),
+      neverAgain: sql<boolean>`bool_or(${recommendations.neverAgain})`,
+      dismissedAt: max(recommendations.dismissedAt),
     })
     .from(recommendations)
     .where(
@@ -552,27 +721,16 @@ export async function getRecs(
         eq(recommendations.userId, me.id),
         inArray(recommendations.gameId, candIds),
       ),
-    );
-  // Collapse to one state per gameId (most-recent non-null wins; any
-  // never-again / active snooze sticks across rows).
+    )
+    .groupBy(recommendations.gameId);
+  // One row per gameId from the aggregate — direct population, no reduce.
   const negMap = new Map<
     number,
     { dismissedAt: Date | null; snoozedUntil: Date | null; neverAgain: boolean }
-  >();
-  for (const r of negRows) {
-    const prev = negMap.get(r.gameId);
-    negMap.set(r.gameId, {
-      dismissedAt: r.dismissedAt ?? prev?.dismissedAt ?? null,
-      snoozedUntil: r.snoozedUntil ?? prev?.snoozedUntil ?? null,
-      neverAgain: r.neverAgain || prev?.neverAgain || false,
-    });
-  }
+  >(negRows.map((r) => [r.gameId, r]));
 
-  const [minH, maxH] = timeWindow(filters.time);
   const filtered: CandidateGame[] = candidates.filter((g) => {
-    if (g.playtimeAvgHours != null) {
-      if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
-    }
+    if (!isTimeFeasible(g.playtimeAvgHours, filters.time)) return false;
     // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
     // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
     // bridges via lib/games/platform-mapping.ts and treats PC as Steam.
@@ -591,32 +749,29 @@ export async function getRecs(
     return { ok: false, reason: "no-candidates" };
   }
 
-  // Library game ids + bulk social signals + lowercased explored-genre
-  // stats (T8/T9: games.genres is mixed-case; assignBuckets/pickWildcard
-  // require lowercased Set/Map members).
-  const libRows = await db
-    .select({ gameId: logs.gameId })
-    .from(logs)
-    .where(eq(logs.userId, me.id));
-  const libraryIds = new Set(libRows.map((r) => r.gameId));
+  // `libraryIds` is now the backlog-lane id set (computed above from
+  // `backlogPool`), NOT a fresh unconditional "all logged ids" query. The
+  // old query returned every logged game, but `candidates` is the merged
+  // (discovery ∪ backlog) set — discovery rows are never logged, so
+  // `libraryIds.has(c.id)` was ALWAYS false and `libraryBonus` was dead.
+  // Sourcing it from the backlog lane makes `inLibrary` true exactly for
+  // owned-but-unplayed candidates, which is what the Backlog slot +
+  // `libraryBonus` weight were designed to consume.
+  const libraryIds = backlogIds;
   const socialMap = await fetchSocialSignals(
     me.id,
     filtered.map((c) => c.id),
   );
-  const exploredGenres = new Set<string>();
-  const genreFrequency = new Map<string, number>();
-  const loggedGenreRows = await db
-    .select({ genres: games.genres })
-    .from(logs)
-    .innerJoin(games, eq(games.id, logs.gameId))
-    .where(eq(logs.userId, me.id));
-  for (const row of loggedGenreRows) {
-    for (const raw of row.genres ?? []) {
-      const g = raw.toLowerCase();
-      exploredGenres.add(g);
-      genreFrequency.set(g, (genreFrequency.get(g) ?? 0) + 1);
-    }
-  }
+  // Explored-genre stats for assignBuckets/pickWildcard. Task 11: these are
+  // taken from the live fingerprint snapshot — which already lowercased
+  // them from the SAME `logs⋈games` aggregation `getFingerprint` ran for
+  // `fp.vectors` — instead of issuing a SECOND `logs⋈games` scan of the
+  // same user's logged genres here. Byte-equivalent to the old inline scan:
+  // identical join, identical per-row `games.genres` lowercase + frequency
+  // tally; the precondition that members be lowercased (mixed-case
+  // RAWG/IGDB genres break the wildcard slot) is satisfied at the source.
+  const exploredGenres = fpReady.exploredGenres;
+  const genreFrequency = fpReady.genreFrequency;
 
   const byId = new Map(filtered.map((c) => [c.id, c]));
   const scored: ScoredCandidate[] = filtered.map((c) => {
@@ -761,11 +916,30 @@ export async function getRecs(
   const apikey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   let rerankOk = false;
+  // Task 12: distinguishes a >8s wall-clock budget breach (serve the
+  // deterministic grid + slow banner) from every OTHER fetch failure
+  // (provider 5xx surfaced as !resp.ok, network error, ai-bad-output →
+  // unchanged: fall through to the metadataOnlyRecs hard-failure path).
+  let rerankTimedOut = false;
   if (functionsUrl && apikey) {
+    // Own the AbortController so (a) the catch can attribute an abort
+    // SPECIFICALLY to our budget (`budgetController.signal.aborted`) rather
+    // than guessing from the error name — keeping the new path scoped to the
+    // timeout case only — and (b) we `clearTimeout` on the happy/hard-fail
+    // path so a settled fetch leaves no dangling timer. `setTimeout`-driven
+    // (NOT `AbortSignal.timeout`): functionally identical wall-clock abort,
+    // but Node's internal `AbortSignal.timeout` scheduler is invisible to
+    // test fake timers — a JS `setTimeout` is the unit-testable equivalent.
+    const budgetController = new AbortController();
+    const budgetTimer = setTimeout(
+      () => budgetController.abort(),
+      RERANK_BUDGET_MS,
+    );
     try {
       const resp = await fetch(`${functionsUrl}/rerank-recs`, {
         method: "POST",
         headers: { apikey, "Content-Type": "application/json" },
+        signal: budgetController.signal,
         body: JSON.stringify({
           userId: me.id,
           filters,
@@ -774,9 +948,29 @@ export async function getRecs(
           // grid) so the refinement text can actually change the picks; see
           // `edgeCandidateIds` above.
           candidateIds: edgeCandidateIds,
-          cacheKey: key,
+          // `writeKey` === bare `key` on the no-refinement path (byte-
+          // unchanged); a distinct session key when refinements are active
+          // so the Edge's DELETE+INSERT can't clobber the base cache.
+          cacheKey: writeKey,
           mode: refinements.length > 0 ? "rerank-only" : "full",
           userRefinements: refinements,
+          // LIVE taste signal (Task 5 — Codex remediation). The
+          // deterministic pool/score/MMR/bucket stages above already used
+          // `fpReady.vectors`; feed the SAME live values to the Edge so its
+          // AI rerank ORDERING + user-facing "why we picked this" reasoning
+          // match the live taste — not the persisted `taste_fingerprints`
+          // row the Edge would otherwise independently re-SELECT (that row
+          // only updates on log milestones / the drift cron and is
+          // documented as often-stale/missing). `narrative` is normalized to
+          // null defensively — the real FingerprintSnapshot.narrative is
+          // already string|null; this guards a non-conforming caller / test
+          // mock that yields undefined — so the Edge gets an explicit "no live
+          // narrative → use
+          // your SQL fallback" signal rather than an absent key. The Edge
+          // retains its SQL read as a fallback, so this is forward/backward-
+          // compatible across deploy ordering.
+          vectors: fpReady.vectors,
+          narrative: fpReady.narrative ?? null,
         }),
       });
       if (resp.ok) {
@@ -795,56 +989,255 @@ export async function getRecs(
         }
       }
     } catch (err) {
-      console.error("rerank-recs invoke failed:", err);
+      // Budget breach (Task 12): `budgetController` is local to THIS fetch
+      // and only aborts via its own `RERANK_BUDGET_MS` timer, so
+      // `budgetController.signal.aborted` in the catch unambiguously means
+      // the >8s wall-clock budget fired (not a network error, not an
+      // ai-bad-output). Flag it and DON'T log it as a generic invoke
+      // failure — the hard-failure path's log line + behavior stay
+      // byte-identical.
+      if (budgetController.signal.aborted) {
+        rerankTimedOut = true;
+      } else {
+        console.error("rerank-recs invoke failed:", err);
+      }
+    } finally {
+      // A settled fetch (happy OR hard-fail) must not leave the abort timer
+      // pending. No-op once the timer has already fired (the breach path).
+      clearTimeout(budgetTimer);
     }
   }
 
-  if (rerankOk) {
-    // The Edge wrote rows with slot defaulting to 'comfort'. Persist the
-    // real bucket assignment (user decision A: getRecs post-rerank UPDATE)
-    // so the cache-hit path serves correct slots. One UPDATE per slot
-    // value (≤4 slots) keyed by gameId list — bounded, no N+1.
-    const bySlot = new Map<string, number[]>();
-    for (const [gid, slot] of slotByGameId) {
-      const arr = bySlot.get(slot) ?? [];
-      arr.push(gid);
-      bySlot.set(slot, arr);
-    }
-    await Promise.all(
-      [...bySlot.entries()].map(([slot, gids]) =>
-        db
-          .update(recommendations)
-          .set({ slot: slot as "comfort" | "backlog" | "friends" | "wildcard" })
-          .where(
-            and(
-              eq(recommendations.userId, me.id),
-              eq(recommendations.cacheKey, key),
-              eq(recommendations.dismissed, false),
-              inArray(recommendations.gameId, gids),
-            ),
-          ),
-      ),
-    );
-
-    // Re-read the rows the Edge Function just wrote atomically under cacheKey.
-    const fresh = await db
-      .select({
-        id: recommendations.id,
-        gameId: recommendations.gameId,
-        score: recommendations.score,
-        reason: recommendations.reason,
-        algorithm: recommendations.algorithm,
-        slot: recommendations.slot,
+  // Task 12 — >8s wall-clock budget breach (spec
+  // docs/superpowers/specs/2026-05-15-play-next-redesign-design.md :416).
+  // The Edge took too long (a slow-but-not-failed AI plumbing path: the
+  // shared ai-router loops 4 providers at 30s each). Rather than keep
+  // blocking ~90s, serve the DETERMINISTIC bucketed grid we already
+  // computed before the Edge call (composite-scored → MMR → stratified
+  // into the 4 rails; correct for this exact filter combo, zero extra I/O,
+  // zero AI) plus the spec's "took too long — showing your last set"
+  // banner. This is intentionally distinct from the metadataOnlyRecs
+  // hard-failure fallback below (reached only when the Edge genuinely
+  // FAILED): that path re-pulls a candidate pool and re-templates reasons;
+  // the bucketed grid is strictly better content and already in hand.
+  //
+  // These rows were NEVER persisted (the Edge writes the cache rows; it
+  // never ran to completion), so — unlike the cache-hit / post-rerank
+  // branches — there is nothing to re-read. We hydrate straight from the
+  // in-scope `byId` (the CandidateGame the pool already fetched) and
+  // synthesize a stable client id + an honest templated reason. fitChips /
+  // confidence reuse the SAME in-scope scoring context (`scoredById`,
+  // `socialMap`, `byId`, `filters`) the happy-path enrich block uses, so a
+  // card from this path is shape-identical to a fresh-AI card. The picks
+  // are the already-deterministic bucketed grid — no randomness added.
+  if (rerankTimedOut) {
+    const slowRecs = bucketed
+      .map((b): RecCard | null => {
+        const cand = byId.get(b.gameId);
+        if (!cand) return null; // defensive: bucketed ⊆ filtered ⊆ byId
+        const sc = scoredById.get(b.gameId);
+        const composite = sc?.composite ?? 0;
+        const chips = liveFitChips(b.gameId, composite, {
+          byId,
+          scoredById,
+          socialMap,
+          filters,
+        });
+        const overlap = chips.fitChips.moodMatches[0];
+        const reason = overlap
+          ? `A strong ${overlap} match for your time budget — picked while the full ranking caught up.`
+          : `A solid match for your time budget — picked while the full ranking caught up.`;
+        return {
+          id: randomUUID(),
+          gameId: cand.id,
+          slug: cand.slug,
+          title: cand.title,
+          releasedYear: cand.released ? cand.released.getFullYear() : null,
+          posterUrl: cand.posterUrl,
+          coverUrl: cand.coverUrl,
+          score: Math.min(1, Math.max(0, composite)),
+          reason,
+          platforms: cand.platforms,
+          // Deterministic composite/similarity path — NOT a fresh AI rerank.
+          algorithm: "similarity" as const,
+          slot: b.slot,
+          ...chips,
+        };
       })
-      .from(recommendations)
-      .where(
-        and(
-          eq(recommendations.userId, me.id),
-          eq(recommendations.cacheKey, key),
-          eq(recommendations.dismissed, false),
+      .filter((r): r is RecCard => r !== null);
+
+    // Defensive symmetry with the rerankOk / cache-hit branches: a fully
+    // empty grid (every bucketed game failed the byId lookup — provably
+    // impossible since bucketed ⊆ filtered ⊆ byId, but cheap to guard)
+    // returns the structured failure rather than an empty grid + banner.
+    if (slowRecs.length === 0) {
+      return { ok: false, reason: "no-candidates" };
+    }
+    return {
+      ok: true,
+      tier: fpReady.tier,
+      recs: slowRecs,
+      algorithm: "similarity",
+      banner: "Took too long — showing your last set.",
+    };
+  }
+
+  if (rerankOk) {
+    // Persist the real bucket assignment over the rows the Edge wrote (they
+    // default to slot='comfort') so the cache-hit path serves correct rails
+    // (user decision A: getRecs post-rerank UPDATE). One UPDATE per slot
+    // value (≤4 slots) keyed by gameId list — bounded, no N+1.
+    //
+    // Which gameIds get which slot differs by path:
+    //
+    //   NO-REFINEMENT (byte-unchanged): the Edge received EXACTLY the
+    //   stratified 6 (`bucketed`), so the slot universe is the base-6
+    //   `slotByGameId`. We persist those slots and re-read the DB rows
+    //   (UPDATE → re-read order preserved); hydrate uses the DB slot. The
+    //   partition-contract integration test pins this exact behavior.
+    //
+    //   REFINEMENT (Task 6 fix): the Edge received a WIDE MMR pool (≈40
+    //   ids), so its final picks can include games OUTSIDE the base 6.
+    //   Those are absent from `slotByGameId`, so before this fix they kept
+    //   the schema DEFAULT 'comfort' — collapsing refined grids toward
+    //   all-Comfort and destroying the Backlog/Friends/Wildcard rails. We
+    //   instead read the Edge's final picks first, then run the SAME
+    //   canonical `assignBuckets` (Tasks 3/4) over JUST those picks —
+    //   threading each pick's already-computed ScoredCandidate via
+    //   `scoredById` (no recompute) — and persist THOSE slots. The slot
+    //   re-read for hydration is the same SELECT either way (poison
+    //   contract (c): it queries under `writeKey`, never the base key).
+    let fresh: {
+      id: string;
+      gameId: number;
+      score: string;
+      reason: string | null;
+      algorithm: "similarity" | "ai" | "hybrid";
+      slot: "comfort" | "backlog" | "friends" | "wildcard";
+    }[];
+
+    // Shared reader: both branches SELECT the same six columns from the rows
+    // the Edge wrote under `writeKey` (dismissed===false, desc score). Declared
+    // once here so the two branches can't drift apart.
+    const readSessionRows = () =>
+      db
+        .select({
+          id: recommendations.id,
+          gameId: recommendations.gameId,
+          score: recommendations.score,
+          reason: recommendations.reason,
+          algorithm: recommendations.algorithm,
+          slot: recommendations.slot,
+        })
+        .from(recommendations)
+        .where(
+          and(
+            eq(recommendations.userId, me.id),
+            eq(recommendations.cacheKey, writeKey),
+            eq(recommendations.dismissed, false),
+          ),
+        )
+        .orderBy(desc(recommendations.score));
+
+    if (refinements.length === 0) {
+      // ── NO-REFINEMENT PATH — BYTE-UNCHANGED ──────────────────────────
+      const bySlot = new Map<string, number[]>();
+      for (const [gid, slot] of slotByGameId) {
+        const arr = bySlot.get(slot) ?? [];
+        arr.push(gid);
+        bySlot.set(slot, arr);
+      }
+      await Promise.all(
+        [...bySlot.entries()].map(([slot, gids]) =>
+          db
+            .update(recommendations)
+            .set({
+              slot: slot as "comfort" | "backlog" | "friends" | "wildcard",
+            })
+            .where(
+              and(
+                eq(recommendations.userId, me.id),
+                // Match the key the Edge actually wrote under: bare `key`
+                // on the no-refinement path.
+                eq(recommendations.cacheKey, writeKey),
+                eq(recommendations.dismissed, false),
+                inArray(recommendations.gameId, gids),
+              ),
+            ),
         ),
-      )
-      .orderBy(desc(recommendations.score));
+      );
+
+      // Re-read the rows the Edge Function just wrote atomically under
+      // `writeKey` (=== bare `key` with no refinements).
+      fresh = await readSessionRows();
+    } else {
+      // ── REFINEMENT PATH — slot over the FINAL rerank picks ───────────
+      // Read the Edge's final picks FIRST (under the session `writeKey` —
+      // never the base key; satisfies poison contract (c)). This is the
+      // SAME slot re-read SELECT the no-refinement path runs, just ordered
+      // before the UPDATE because the wide-pool picks are only knowable
+      // from what the Edge persisted.
+      const picked = await readSessionRows();
+
+      // Re-run the canonical assigner (Tasks 3/4) over JUST the final
+      // picks, carrying each pick's already-computed composite / inLibrary
+      // / socialScore / genres from `scoredById` (every Edge candidate id
+      // came from the scored pool, so it is present; defensively skip any
+      // that somehow are not rather than fabricating a score). Same
+      // `exploredGenres` / `genreFrequency` / minute-bucketed `seed` as the
+      // base `assignBuckets` call so slotting stays deterministic.
+      const finalScored: ScoredCandidate[] = [];
+      for (const p of picked) {
+        const sc = scoredById.get(p.gameId);
+        if (sc) finalScored.push(sc);
+      }
+      const finalBucketed = assignBuckets(finalScored, {
+        exploredGenres,
+        genreFrequency,
+        seed: Math.floor(now.getTime() / 60000),
+      });
+      const slotByFinalPick = new Map(
+        finalBucketed.map((b) => [b.gameId, b.slot]),
+      );
+
+      const bySlot = new Map<string, number[]>();
+      for (const [gid, slot] of slotByFinalPick) {
+        const arr = bySlot.get(slot) ?? [];
+        arr.push(gid);
+        bySlot.set(slot, arr);
+      }
+      await Promise.all(
+        [...bySlot.entries()].map(([slot, gids]) =>
+          db
+            .update(recommendations)
+            .set({
+              slot: slot as "comfort" | "backlog" | "friends" | "wildcard",
+            })
+            .where(
+              and(
+                eq(recommendations.userId, me.id),
+                // The session key on a refinement run, so we update the
+                // session rows, not the user's unrefined base-cache rows.
+                eq(recommendations.cacheKey, writeKey),
+                eq(recommendations.dismissed, false),
+                inArray(recommendations.gameId, gids),
+              ),
+            ),
+        ),
+      );
+
+      // Hydrate from the rows we already read, overriding each row's slot
+      // with the freshly-computed assignment (the DB value we read was the
+      // pre-UPDATE default; the UPDATE above persisted the correct slot for
+      // the cache-hit path, but we don't pay for a second SELECT here —
+      // unknown picks (not bucketed) fall back to the row's own pre-UPDATE
+      // value (the schema default)).
+      fresh = picked.map((p) => ({
+        ...p,
+        slot: slotByFinalPick.get(p.gameId) ?? p.slot,
+      }));
+    }
+
     const recs = await hydrateRecs(fresh);
     // Symmetry with the cache-hit branch: if a catalog race deleted every
     // game between the Edge Function's INSERT and this re-read, return a
@@ -857,31 +1250,14 @@ export async function getRecs(
     // scoredById / byId / filters here).
     const enriched = recs.map((r): RecCard => {
       const sc = scoredById.get(r.gameId);
-      const cand = byId.get(r.gameId);
-      const sig = socialMap.get(r.gameId);
-      const tf = cand ? timeFitScore(cand.playtimeAvgHours, filters.time) : 0.5;
-      const moodMatches = cand
-        ? filters.moods.filter(
-            (m) =>
-              moodMatchScore(m, {
-                genres: cand.genres,
-                mechanics: cand.mechanics,
-              }) >= 0.5,
-          )
-        : [];
       return {
         ...r,
-        fitChips: {
-          timeFit: (tf >= 0.8
-            ? "perfect"
-            : tf >= 0.4
-              ? "close"
-              : "loose") as "perfect" | "close" | "loose",
-          moodMatches,
-          inLibrary: sc?.inLibrary ?? false,
-          friendsCount: sig ? sig.friendsPlayed + sig.friendsLiked : 0,
-        },
-        confidence: deriveConfidence(sc?.composite ?? r.score),
+        ...liveFitChips(r.gameId, sc?.composite ?? r.score, {
+          byId,
+          scoredById,
+          socialMap,
+          filters,
+        }),
       };
     });
     return { ok: true, tier: fpReady.tier, recs: enriched, algorithm: "ai" };
@@ -890,7 +1266,13 @@ export async function getRecs(
   // 4. AI failure → metadata fallback with banner. Set the banner after the
   //    helper returns so we don't duplicate the helper's "sparse banner"
   //    logic; AI failure on sharpening/full overrides any inner banner.
-  const fallback = await metadataOnlyRecs(me.id, fpReady, filters, key);
+  //    Pass `writeKey`, not bare `key`: metadataOnlyRecs persists
+  //    "similarity" rows under the key it's handed, so on a refinement run
+  //    whose Edge rerank failed, using bare `key` here would poison the
+  //    user's unrefined base cache exactly like the Edge path would —
+  //    the same isolation must cover the fallback write. `writeKey === key`
+  //    with no refinements, so the no-refinement fallback is byte-unchanged.
+  const fallback = await metadataOnlyRecs(me.id, fpReady, filters, writeKey);
   if (fallback.ok) {
     fallback.banner = "AI ranking unavailable — basic matching shown.";
   }
@@ -1011,10 +1393,13 @@ async function metadataOnlyRecs(
   // Pass live `fp.vectors` (same rationale as the sharpening/full branch
   // in getRecs above): decouple the recs pipeline from the persisted
   // taste_fingerprints row so a missing/stale row doesn't return an
-  // empty pool when the user actually has plenty of signal.
+  // empty pool when the user actually has plenty of signal. `loggedGameIds`
+  // threaded from the live fingerprint so candidatePool reuses the
+  // aggregation's scan instead of its own `SELECT logs.gameId` (Task 11).
   let candidates = await candidatePool(userId, {
     limit: 50,
     vectors: fp.vectors,
+    loggedGameIds: fp.loggedGameIds,
   });
   const useFallback =
     fp.tier === "sparse" && (vectorMass < 2.0 || candidates.length === 0);
@@ -1070,11 +1455,8 @@ async function metadataOnlyRecs(
       );
   }
 
-  const [minH, maxH] = timeWindow(filters.time);
   const filtered: CandidateGame[] = candidates.filter((g) => {
-    if (g.playtimeAvgHours != null) {
-      if (g.playtimeAvgHours < minH || g.playtimeAvgHours > maxH) return false;
-    }
+    if (!isTimeFeasible(g.playtimeAvgHours, filters.time)) return false;
     // games.platforms holds RAWG names ("PC", "PlayStation 4", …); the picker
     // emits platform_kind enum values ("steam", "xbox", "psn"). The helper
     // bridges via lib/games/platform-mapping.ts and treats PC as Steam.

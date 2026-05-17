@@ -34,6 +34,144 @@ function safeParseJson(text: string): unknown {
   }
 }
 
+type RerankItem = { gameId: number; score: number; reason: string };
+
+/**
+ * Post-parse output STRUCTURAL validation (Task 10 — Codex remediation).
+ *
+ * `safeParseJson` only guarantees the model emitted *some* JSON. This gates
+ * the STRUCTURAL / prompt-injection contract a poisoned or refinement-tainted
+ * response would violate at the whole-response level:
+ *   - `parsed` is a non-null, non-array object;
+ *   - `parsed.recs` is a NON-EMPTY array;
+ *   - EVERY element of `recs` is a non-null, non-array object.
+ * On any of those it returns `null` and the caller routes into the EXISTING
+ * `ai-bad-output` 502 fallback (the very same path the pre-existing "recs not
+ * a non-empty array" check already used — no new failure branch).
+ *
+ * It deliberately does NOT validate per-item `gameId` / `score` / `reason`
+ * VALUES. Those are intentionally delegated to the pre-existing downstream
+ * coercion loop, which is per-item TOLERANT and was unchanged by Task 10: it
+ * `continue`s past an item whose `gameId` is non-integer or not in the
+ * candidate pool, coerces a non-finite `score` to `0`, coerces a missing /
+ * non-string `reason` via `String(r.reason ?? "").slice(0, 280)`, and only
+ * yields `no-valid-recs` if ZERO items survive. Re-checking those values here
+ * with a whole-batch `return null` would turn one sloppy item (e.g. a 6-item
+ * response where item #4 has `"score": null` or no `reason`) into a full 502
+ * — a resilience regression vs the pre-Task-10 behavior, which produced the
+ * other 5 recs. Scoping this gate to structure/shape preserves that exact
+ * per-item tolerance while still rejecting the structural/poisoned whole
+ * responses Task 10 targets.
+ *
+ * Rejects: not an object · `recs` absent / not an array / empty · any element
+ *   not an object.
+ * Lets through (for the downstream loop to coerce/skip per-item): a
+ *   non-integer or out-of-pool `gameId`, a non-finite/absent `score`, a
+ *   non-string/absent `reason` on individual items.
+ */
+function validateRerankSchema(
+  parsed: unknown,
+): { recs: RerankItem[] } | null {
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const recs = (parsed as { recs?: unknown }).recs;
+  if (!Array.isArray(recs) || recs.length === 0) return null;
+  for (const item of recs) {
+    if (item == null || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+  }
+  // Per-item gameId/score/reason VALUES are intentionally NOT validated here
+  // (see JSDoc). The cast carries the structural guarantee (recs is a
+  // non-empty array of objects) forward; the unchanged downstream loop does
+  // the per-item Number()/clamp/String() coercion exactly as pre-Task-10.
+  return { recs: recs as RerankItem[] };
+}
+
+/**
+ * Coerce one untrusted body vector map into a clean Record<string, number>,
+ * dropping any non-finite numeric entries. Returns `{}` for anything that
+ * isn't a plain object — the caller treats an empty map as "no body signal"
+ * and falls back to the persisted SQL value.
+ */
+function cleanVector(v: unknown): Record<string, number> {
+  if (v == null || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, raw] of Object.entries(v as Record<string, unknown>)) {
+    const n = Number(raw);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
+}
+
+/**
+ * Body-vs-SQL selection (Task 5 — Codex remediation).
+ *
+ * Prefer the LIVE values the Next-side getRecs forwarded in the request
+ * body; fall back to the persisted `taste_fingerprints` row this function
+ * SELECTs ONLY when the body value is absent/empty. This keeps the deploy
+ * ordering non-fragile in BOTH directions:
+ *   - an un-redeployed Edge ignores the new body fields and uses SQL (old
+ *     behavior, still correct);
+ *   - a redeployed Edge called by a caller that doesn't send them still
+ *     works via the SQL fallback.
+ *
+ * "Empty" for a vector = no usable numeric entries (the live fingerprint of
+ * a brand-new user can be all-empty; that's a genuine "no signal" and the
+ * persisted row, if any, is the better source). "Empty" for narrative =
+ * null / blank string.
+ */
+function pickTasteSignal(
+  bodyVectors:
+    | { genre?: unknown; theme?: unknown; mechanic?: unknown }
+    | null
+    | undefined,
+  bodyNarrative: string | null | undefined,
+  sql: {
+    narrative: string | null;
+    genre: Record<string, number>;
+    theme: Record<string, number>;
+    mechanic: Record<string, number>;
+  } | undefined,
+): {
+  narrative: string | null;
+  vectors: {
+    genre: Record<string, number>;
+    theme: Record<string, number>;
+    mechanic: Record<string, number>;
+  };
+  source: { narrative: "body" | "sql"; vectors: "body" | "sql" };
+} {
+  const bGenre = cleanVector(bodyVectors?.genre);
+  const bTheme = cleanVector(bodyVectors?.theme);
+  const bMechanic = cleanVector(bodyVectors?.mechanic);
+  const bodyHasVectors =
+    Object.keys(bGenre).length > 0 ||
+    Object.keys(bTheme).length > 0 ||
+    Object.keys(bMechanic).length > 0;
+
+  const bNarr =
+    typeof bodyNarrative === "string" && bodyNarrative.trim().length > 0
+      ? bodyNarrative
+      : null;
+
+  return {
+    narrative: bNarr ?? sql?.narrative ?? null,
+    vectors: bodyHasVectors
+      ? { genre: bGenre, theme: bTheme, mechanic: bMechanic }
+      : {
+          genre: sql?.genre ?? {},
+          theme: sql?.theme ?? {},
+          mechanic: sql?.mechanic ?? {},
+        },
+    source: {
+      narrative: bNarr != null ? "body" : "sql",
+      vectors: bodyHasVectors ? "body" : "sql",
+    },
+  };
+}
+
 Deno.serve(async (req) => {
   // Auth: service-role key via `apikey` header. See _shared/auth.ts.
   // Same internal-service pattern as refresh-fingerprint (T4) — callers
@@ -49,6 +187,24 @@ Deno.serve(async (req) => {
     cacheKey?: string;
     mode?: string;
     userRefinements?: string[];
+    // LIVE taste signal forwarded by the Next-side getRecs (Task 5 — Codex
+    // remediation). The deterministic pool/score/MMR/bucket pipeline already
+    // computed these from a live getFingerprint() call; when present we
+    // prefer them over the persisted taste_fingerprints row this function
+    // independently SELECTs below (that row only updates on log milestones /
+    // the drift cron and is documented as often-stale/missing). Both fields
+    // are OPTIONAL: an un-redeployed Next caller (or any caller that doesn't
+    // send them) still works via the SQL fallback — deploy-order safe.
+    vectors?: {
+      genre?: Record<string, number>;
+      theme?: Record<string, number>;
+      mechanic?: Record<string, number>;
+      // The live VectorBundle also carries game_mode/player_perspective;
+      // the rerank prompt only consumes genre/theme/mechanic so we ignore
+      // the rest here (do not over-read untrusted JSON).
+      [k: string]: unknown;
+    } | null;
+    narrative?: string | null;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -163,13 +319,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Prefer the LIVE taste signal the Next side forwarded; fall back to the
+    // persisted `taste_fingerprints` row (`fp`, SELECTed above) ONLY when the
+    // body value is absent/empty (Task 5 — deploy-order-safe in both
+    // directions; see pickTasteSignal). The SQL read above is intentionally
+    // retained as that fallback.
+    const taste = pickTasteSignal(body.vectors, body.narrative, fp);
+    console.error("rerank-recs: taste-signal source", { userId, ...taste.source });
+
     // 4. Render the prompt + call the AI router.
     const { system, user } = buildRerankPrompt({
-      narrative: fp?.narrative ?? null,
+      narrative: taste.narrative,
       vectors: {
-        genre: fp?.genre ?? {},
-        theme: fp?.theme ?? {},
-        mechanic: fp?.mechanic ?? {},
+        genre: taste.vectors.genre,
+        theme: taste.vectors.theme,
+        mechanic: taste.vectors.mechanic,
       },
       filters,
       candidates: candidates.map((c) => ({
@@ -210,18 +374,23 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, reason: "ai-router-failed" }, { status: 502 });
     }
 
-    // 5. Parse + validate. The candidateIdSet guard rejects hallucinated
-    //    gameIds (model invents an ID not in the candidate pool) and
-    //    duplicates (model picks the same game twice). Score is clamped
-    //    to [0,1] because the DB column is numeric(5,4) and we trust no
-    //    AI output. Reason is truncated to 280 chars to bound the column.
-    const parsed = safeParseJson(aiResult.text) as
-      | { recs?: Array<{ gameId?: unknown; score?: unknown; reason?: unknown }> }
-      | null;
+    // 5. Parse + SCHEMA-validate + sanitize. `safeParseJson` only proves the
+    //    model emitted some JSON; `validateRerankSchema` then asserts the
+    //    parsed value structurally matches the required
+    //    `{ recs: [{ gameId:<int>, score:<number>, reason:<string> }, …] }`
+    //    contract (Task 10). A schema violation routes into the SAME
+    //    pre-existing `ai-bad-output` 502 fallback the loose shape-check
+    //    used — no new failure branch. The candidateIdSet guard below then
+    //    rejects hallucinated gameIds (model invents an ID not in the
+    //    candidate pool) and duplicates (model picks the same game twice).
+    //    Score is clamped to [0,1] because the DB column is numeric(5,4)
+    //    and we trust no AI output. Reason is truncated to 280 chars to
+    //    bound the column.
+    const parsed = validateRerankSchema(safeParseJson(aiResult.text));
 
-    if (!parsed || !Array.isArray(parsed.recs) || parsed.recs.length === 0) {
+    if (!parsed) {
       console.error(
-        "rerank-recs: AI returned unparseable response",
+        "rerank-recs: AI returned unparseable or schema-invalid response",
         aiResult.text.slice(0, 300),
       );
       return Response.json({ ok: false, reason: "ai-bad-output" }, { status: 502 });

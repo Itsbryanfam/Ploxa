@@ -78,4 +78,22 @@ describe("isTimeFeasible", () => {
     expect(isTimeFeasible(2.0, "15min")).toBe(true); // === upperCap, > is strict
     expect(isTimeFeasible(2.0, "3hr+")).toBe(true); // === lowerCap, < is strict
   });
+
+  // Task 7 acceptance-criteria regression guards — v2 hard time-filter contract.
+  // These cases were wrong with the old loose timeWindow() approach:
+  //   - timeWindow("1hr") returned [0,12] → 12h games passed.
+  //   - timeWindow("multi-session") returned [10,Infinity] → 6h games were dropped.
+  it("v2 filter contract: 12h game is EXCLUDED for '1hr' budget (upperCap 8.0)", () => {
+    expect(isTimeFeasible(12, "1hr")).toBe(false);
+  });
+
+  it("v2 filter contract: 6h game is INCLUDED for 'multi-session' budget (lowerCap 4.0)", () => {
+    expect(isTimeFeasible(6, "multi-session")).toBe(true);
+  });
+
+  it("v2 filter contract: null playtime stays ELIGIBLE for every budget (null-passthrough)", () => {
+    for (const b of ["15min", "1hr", "3hr+", "multi-session"] as const) {
+      expect(isTimeFeasible(null, b)).toBe(true);
+    }
+  });
 });

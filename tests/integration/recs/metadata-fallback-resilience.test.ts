@@ -40,8 +40,20 @@ const VECTORS = {
   gameMode: {},
   playerPerspective: {},
 };
+// Task 11: getFingerprint now also surfaces loggedGameIds / exploredGenres /
+// genreFrequency from its single aggregation. EMPTY here — byte-equivalent
+// to the pre-T11 fixture (the removed standalone `loggedGenreRows` SELECT
+// was queued as `[]`); this suite exercises the AI-failure cache-write
+// resilience path, which doesn't depend on those facts. candidatePool is
+// mocked so `loggedGameIds` is inert here.
 vi.mock("@/lib/taste/server-actions", () => ({
-  getFingerprint: vi.fn(async () => ({ tier: "full" as const, vectors: VECTORS })),
+  getFingerprint: vi.fn(async () => ({
+    tier: "full" as const,
+    vectors: VECTORS,
+    loggedGameIds: new Set<number>(),
+    exploredGenres: new Set<string>(),
+    genreFrequency: new Map<string, number>(),
+  })),
 }));
 
 function makeCandidates() {
@@ -70,6 +82,11 @@ function makeCandidates() {
 }
 vi.mock("@/lib/recs/candidate-pool", () => ({
   candidatePool: vi.fn(async () => makeCandidates()),
+  // Backlog lane (play-next Backlog-bucket revival 2026-05-16): empty here —
+  // this suite exercises the AI-failure → metadataOnlyRecs cache-write
+  // resilience path, which doesn't depend on backlog content. Mocked → no
+  // db chain (the pre-fix `libRows` SELECT it replaced was removed).
+  backlogPool: vi.fn(async () => []),
 }));
 
 vi.mock("@/lib/recs/social-score", async () => {
@@ -88,7 +105,7 @@ vi.mock("@/lib/recs/social-score", async () => {
 const selectQueue: unknown[][] = [];
 function selectChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "from", "where", "orderBy", "limit", "innerJoin"]) {
+  for (const m of ["select", "from", "where", "orderBy", "limit", "innerJoin", "groupBy"]) {
     chain[m] = vi.fn(() => chain);
   }
   chain.then = (ok: (r: unknown[]) => unknown) => Promise.resolve(ok(rows));
@@ -139,14 +156,17 @@ const FILTERS: FilterParams = {
 
 describe("metadataOnlyRecs cache-write resilience (incident 2026-05-15)", () => {
   it("still returns ok+recs when the Edge fails AND the fallback cache-write throws", async () => {
-    // getRecs v2 (no refinements) SELECT order before the fallback insert:
-    //   1 cache  2 vectors  3 negRows  4 libRows  5 loggedGenreRows
+    // getRecs v2 (no refinements) SELECT order before the fallback insert
+    // (post Backlog-bucket revival — `libRows` removed, backlog lane mocked,
+    // no chain — AND post Task 11 — `loggedGenreRows` removed, exploredGenres
+    // now from the mocked getFingerprint snapshot, no chain):
+    //   1 cache  2 vectors  3 negRows
+    // metadataOnlyRecs runs with tier "full" → useFallback is false → it
+    // consumes NO further select before the (rejecting) cache-write insert.
     selectQueue.push(
       [], // cache miss
       [{ vectorsGeneratedAt: new Date(2000, 0, 1) }],
       [], // negRows
-      [], // libRows (logs)
-      [], // loggedGenreRows (logs ⋈ games)
     );
 
     const { getRecs } = await import("@/lib/recs/server-actions");

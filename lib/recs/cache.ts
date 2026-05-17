@@ -10,6 +10,18 @@ export type CacheKeyInput = {
 };
 
 /**
+ * sha256 of `input`, hex-encoded. The single hashing primitive used for
+ * every cache-key derivation in the recs subsystem — `cacheKey` below and
+ * the refinement *session* key suffix in `getRecs` both go through this so
+ * there is exactly ONE hashing algorithm/encoding in play. Callers slice
+ * to the width they need (24 hex chars for the base key, 8 for the
+ * session-key suffix).
+ */
+export function sha256Hex(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+/**
  * Stable hash for the (user, filter) tuple.
  *
  * Moods + platforms are deduped and sorted before hashing so the key
@@ -31,5 +43,5 @@ export function cacheKey(input: CacheKeyInput): string {
     t: input.time,
     p: sortedPlatforms,
   });
-  return createHash("sha256").update(canonical).digest("hex").slice(0, 24);
+  return sha256Hex(canonical).slice(0, 24);
 }

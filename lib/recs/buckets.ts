@@ -46,17 +46,10 @@ export function assignBuckets(
   const used = new Set<number>();
   const out: BucketedCandidate[] = [];
 
-  // 1. Comfort — top 3 by composite. Intentionally NOT floor-gated:
-  // Comfort is the guaranteed-fill tier (graceful fill even below floor).
-  let comfortCount = 0;
-  for (const c of sorted) {
-    if (comfortCount >= SLOT_TARGETS.comfort) break;
-    out.push({ ...c, slot: "comfort" });
-    used.add(c.gameId);
-    comfortCount++;
-  }
-
-  // 2. Backlog — highest-scored library candidate above floor
+  // 1. Backlog — highest-scored library candidate above floor.
+  // Reserved FIRST so a top-composite inLibrary game wins its special slot
+  // instead of being consumed by the Comfort tier (Task 4 fix).
+  // Backlog before Friends: an inLibrary+social game prefers its Backlog rail.
   const backlog = sorted.find(
     (c) => !used.has(c.gameId) && c.inLibrary && c.composite >= floor,
   );
@@ -65,7 +58,8 @@ export function assignBuckets(
     used.add(backlog.gameId);
   }
 
-  // 3. Friends — highest-scored social>0 candidate above floor
+  // 2. Friends — highest-scored social>0 candidate above floor.
+  // Reserved before Comfort for the same reason (Task 4 fix).
   const friends = sorted.find(
     (c) => !used.has(c.gameId) && c.socialScore > 0 && c.composite >= floor,
   );
@@ -74,7 +68,7 @@ export function assignBuckets(
     used.add(friends.gameId);
   }
 
-  // 4. Wildcard — unexplored cluster sample
+  // 3. Wildcard — unexplored cluster sample (reserved before Comfort fill)
   const wcInput: WildcardCandidate[] = sorted
     .filter((c) => !used.has(c.gameId))
     .map((c) => ({ gameId: c.gameId, composite: c.composite, genres: c.genres }));
@@ -91,7 +85,18 @@ export function assignBuckets(
     }
   }
 
-  // 5. Demote empty slots to extra Comfort
+  // 4. Comfort — top remaining candidates by composite (NOT floor-gated:
+  // Comfort is the guaranteed-fill tier for graceful fill even below floor).
+  let comfortCount = 0;
+  for (const c of sorted) {
+    if (comfortCount >= SLOT_TARGETS.comfort) break;
+    if (used.has(c.gameId)) continue;
+    out.push({ ...c, slot: "comfort" });
+    used.add(c.gameId);
+    comfortCount++;
+  }
+
+  // 5. Demote empty slots to extra Comfort (fires when a special is absent)
   while (out.length < GRID_SIZE) {
     const next = sorted.find((c) => !used.has(c.gameId));
     if (!next) break;

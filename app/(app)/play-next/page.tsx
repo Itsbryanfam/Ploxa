@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
 import { listConnections } from "@/lib/imports/server-actions";
-import { isRecsV2Enabled } from "@/lib/recs/feature-flag";
 import { getCachedUser } from "@/lib/supabase/auth-cache";
 import { getFingerprint } from "@/lib/taste/server-actions";
 
@@ -21,19 +20,6 @@ export default async function PlayNextPage({
 }) {
   const me = await getCachedUser();
   if (!me) redirect("/login?next=/play-next");
-
-  if (!isRecsV2Enabled(me.id)) {
-    return (
-      <main className="mx-auto max-w-3xl px-4 py-8">
-        <header className="mb-8">
-          <h1 className="font-mono text-2xl">Play next is being upgraded</h1>
-        </header>
-        <p className="text-sm text-[var(--text-dim)]">
-          Check back soon — this feature is rolling out gradually.
-        </p>
-      </main>
-    );
-  }
 
   const [fp, connections, params] = await Promise.all([
     getFingerprint(me.id),

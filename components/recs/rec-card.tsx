@@ -21,6 +21,54 @@ import { cn } from "@/lib/utils";
 type Platform = "steam" | "xbox" | "psn";
 
 /**
+ * Exported action-runner used by every card handler.
+ *
+ * Wraps an async card action with a throw-guard: if the server action rejects
+ * (DB error, network failure, etc.) instead of returning a structured
+ * `{ok:false}`, the rejection is caught here and `onError` is called.
+ *
+ * The structured `{ok:false}` path is handled INSIDE each action body (the
+ * `r.ok` / `toast.error` branches) and is BYTE-UNCHANGED — those paths
+ * resolve normally and never reach this catch.
+ *
+ * Exported so the throw-guard contract can be tested directly in Node without
+ * a DOM (see tests/unit/recs/rec-card-v2.test.tsx guardedCardAction suite).
+ */
+export async function guardedCardAction(
+  action: () => Promise<void>,
+  onError: () => void,
+): Promise<void> {
+  try {
+    await action();
+  } catch {
+    onError();
+  }
+}
+
+/**
+ * Builds the `onError` callback that `doDismiss` hands to `guardedCardAction`.
+ *
+ * This is NOT a test-only parallel copy — `doDismiss` itself CALLS this
+ * builder (see `doDismiss` below: `guardedCardAction(action,
+ * buildCardActionOnError(onThrow))`). Extracting the lambda to a single
+ * exported function gives the test a REAL production call edge: a regression
+ * in this callback IS a regression in the function the component runs, so the
+ * equivalence is enforced by the call graph, not by a hand-maintained
+ * duplicate that a docstring claims is equivalent.
+ *
+ * Returned callback: shows the generic throw toast, then runs `onThrow` (if
+ * supplied). The save path supplies `onThrow = () => onRestore?.(rec.id)` so
+ * a thrown save both toasts and restores the optimistically-hidden card;
+ * snooze/neverAgain/play pass no `onThrow` (they stay hidden on throw).
+ */
+export function buildCardActionOnError(onThrow?: () => void): () => void {
+  return () => {
+    toast.error("Something went wrong — try again.");
+    onThrow?.();
+  };
+}
+
+/**
  * Interactive rec card for the /play-next results grid.
  *
  * Play-next redesign (T15): the card now surfaces the stratified-rail
@@ -55,11 +103,14 @@ export function RecCard({
   connectedPlatforms,
   gamePlatforms,
   onDismissed,
+  onRestore,
 }: {
   rec: RecCardData;
   connectedPlatforms: Platform[];
   gamePlatforms: Platform[];
   onDismissed: (recId: string) => void;
+  /** Called on save-throw only: re-adds the card to the visible list */
+  onRestore?: (recId: string) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -71,9 +122,18 @@ export function RecCard({
   // AnimatePresence exit) and run the server action in the background. The
   // parent has already removed the rec from `visibleRecs` by the time the
   // server action resolves, so toast is the only post-resolution signal.
-  function doDismiss(action: () => Promise<void>) {
+  //
+  // Each action body is wrapped with guardedCardAction so a THROWN server
+  // action (DB error, network failure) triggers a generic toast instead of
+  // disappearing silently. The structured {ok:false} r.ok branches inside
+  // each body are BYTE-UNCHANGED — they resolve normally and never reach
+  // the catch. Only onSave also calls onRestore on throw (the card vanished
+  // AND the save failed — restore it so the user can retry).
+  function doDismiss(action: () => Promise<void>, onThrow?: () => void) {
     onDismissed(rec.id);
-    startTransition(action);
+    startTransition(() =>
+      guardedCardAction(action, buildCardActionOnError(onThrow)),
+    );
   }
 
   function onSnooze() {
@@ -95,11 +155,15 @@ export function RecCard({
   }
 
   function onSave() {
-    doDismiss(async () => {
-      const r = await saveRecForLater(rec.id);
-      if (r.ok) toast.success(r.message);
-      else toast.error("Couldn't save this one.");
-    });
+    doDismiss(
+      async () => {
+        const r = await saveRecForLater(rec.id);
+        if (r.ok) toast.success(r.message);
+        else toast.error("Couldn't save this one.");
+      },
+      // Restore the card on throw: it vanished optimistically AND wasn't saved.
+      () => onRestore?.(rec.id),
+    );
   }
 
   function onPlayWithPlatform(p?: Platform) {

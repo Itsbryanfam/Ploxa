@@ -1,3 +1,7 @@
+import {
+  canonicalizeGenreTerm,
+  canonicalizeMechanicTerm,
+} from "@/lib/igdb/vocabulary";
 import type { Mood } from "@/lib/recs/moods";
 
 type AffinityEntry = {
@@ -6,10 +10,13 @@ type AffinityEntry = {
   penalizeMechanics: string[];
 };
 
-// Fixed table — hand-maintained. Strings should match the canonical
-// IGDB/RAWG vocabulary used in `games.genres` / `games.mechanics`.
-// During implementation, audit these against actual DB values and
-// reconcile any drift.
+// Fixed table — hand-maintained. Tokens are hyphenated / abbreviated and
+// do NOT literally equal the curated catalog vocabulary. They are bridged
+// to the real `games.genres` (RAWG names) / `games.mechanics` (IGDB set)
+// values at match time via the canonicalizers in `lib/igdb/vocabulary.ts`
+// (Task 8). Add a new token's real-term mapping THERE, not a parallel map
+// here. Tokens with no genuine catalog equivalent are intentionally left
+// unmapped (they stay inert rather than mis-matching).
 export const MOOD_AFFINITY: Record<Mood, AffinityEntry> = {
   chill: {
     boostGenres: ["puzzle", "life-sim", "casual", "indie"],
@@ -45,12 +52,24 @@ type CandidateForMood = {
 
 export function moodMatchScore(mood: Mood, c: CandidateForMood): number {
   const entry = MOOD_AFFINITY[mood];
-  const genres = new Set((c.genres ?? []).map((g) => g.toLowerCase()));
-  const mechanics = new Set((c.mechanics ?? []).map((m) => m.toLowerCase()));
+  // Canonicalize BOTH sides through the shared vocabulary bridge so the
+  // hyphenated affinity tokens compare equal to the real catalog terms.
+  // Genres use the RAWG-name map; mechanics use the IGDB-set map. Terms
+  // with no alias canonicalize to their own lowercased self, so the
+  // single-word IGDB matches that already worked (permadeath/exploration/
+  // competitive/pvp/…) are preserved.
+  const genres = new Set((c.genres ?? []).map(canonicalizeGenreTerm));
+  const mechanics = new Set((c.mechanics ?? []).map(canonicalizeMechanicTerm));
 
-  const genreHits = entry.boostGenres.filter((g) => genres.has(g.toLowerCase())).length;
-  const mechBoostHits = entry.boostMechanics.filter((m) => mechanics.has(m.toLowerCase())).length;
-  const mechPenaltyHits = entry.penalizeMechanics.filter((m) => mechanics.has(m.toLowerCase())).length;
+  const genreHits = entry.boostGenres.filter((g) =>
+    genres.has(canonicalizeGenreTerm(g)),
+  ).length;
+  const mechBoostHits = entry.boostMechanics.filter((m) =>
+    mechanics.has(canonicalizeMechanicTerm(m)),
+  ).length;
+  const mechPenaltyHits = entry.penalizeMechanics.filter((m) =>
+    mechanics.has(canonicalizeMechanicTerm(m)),
+  ).length;
 
   const budget = entry.boostGenres.length + entry.boostMechanics.length;
   if (budget === 0) return 0;
