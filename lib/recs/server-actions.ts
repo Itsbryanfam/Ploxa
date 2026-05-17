@@ -105,7 +105,7 @@ export type RecResult =
         | "error";
     };
 
-/** Map a TimeBudget to a [minHours, maxHours] window for filtering candidates. */
+/** Map a TimeBudget to a [minHours, maxHours] window. Legacy-only: the v2 path uses isTimeFeasible(); retained solely for getRecsLegacy (recsv2-OFF rollback). */
 function timeWindow(time: TimeBudget): [number, number] {
   switch (time) {
     case "15min":
