@@ -37,20 +37,37 @@ function safeParseJson(text: string): unknown {
 type RerankItem = { gameId: number; score: number; reason: string };
 
 /**
- * Post-parse output SCHEMA validation (Task 10 — Codex remediation).
+ * Post-parse output STRUCTURAL validation (Task 10 — Codex remediation).
  *
- * `safeParseJson` only guarantees the model emitted *some* JSON. This asserts
- * the parsed value structurally matches the contract the system prompt
- * demands: `{ recs: [{ gameId:<int>, score:<number>, reason:<string> }, …] }`
- * with a non-empty `recs` array whose EVERY element is a well-typed object.
+ * `safeParseJson` only guarantees the model emitted *some* JSON. This gates
+ * the STRUCTURAL / prompt-injection contract a poisoned or refinement-tainted
+ * response would violate at the whole-response level:
+ *   - `parsed` is a non-null, non-array object;
+ *   - `parsed.recs` is a NON-EMPTY array;
+ *   - EVERY element of `recs` is a non-null, non-array object.
+ * On any of those it returns `null` and the caller routes into the EXISTING
+ * `ai-bad-output` 502 fallback (the very same path the pre-existing "recs not
+ * a non-empty array" check already used — no new failure branch).
  *
- * On any violation the caller routes into the EXISTING `ai-bad-output` 502
- * fallback (same path the pre-existing "recs not a non-empty array" check
- * already used) — no new failure branch is introduced. This hardens the
- * gate from "recs is a non-empty array" to "recs is a non-empty array AND
- * every item is schema-valid", so a refinement-poisoned or otherwise
- * malformed model response can't slip partially-typed rows into the
- * downstream coercion loop / DB write.
+ * It deliberately does NOT validate per-item `gameId` / `score` / `reason`
+ * VALUES. Those are intentionally delegated to the pre-existing downstream
+ * coercion loop, which is per-item TOLERANT and was unchanged by Task 10: it
+ * `continue`s past an item whose `gameId` is non-integer or not in the
+ * candidate pool, coerces a non-finite `score` to `0`, coerces a missing /
+ * non-string `reason` via `String(r.reason ?? "").slice(0, 280)`, and only
+ * yields `no-valid-recs` if ZERO items survive. Re-checking those values here
+ * with a whole-batch `return null` would turn one sloppy item (e.g. a 6-item
+ * response where item #4 has `"score": null` or no `reason`) into a full 502
+ * — a resilience regression vs the pre-Task-10 behavior, which produced the
+ * other 5 recs. Scoping this gate to structure/shape preserves that exact
+ * per-item tolerance while still rejecting the structural/poisoned whole
+ * responses Task 10 targets.
+ *
+ * Rejects: not an object · `recs` absent / not an array / empty · any element
+ *   not an object.
+ * Lets through (for the downstream loop to coerce/skip per-item): a
+ *   non-integer or out-of-pool `gameId`, a non-finite/absent `score`, a
+ *   non-string/absent `reason` on individual items.
  */
 function validateRerankSchema(
   parsed: unknown,
@@ -60,18 +77,16 @@ function validateRerankSchema(
   }
   const recs = (parsed as { recs?: unknown }).recs;
   if (!Array.isArray(recs) || recs.length === 0) return null;
-  const out: RerankItem[] = [];
   for (const item of recs) {
     if (item == null || typeof item !== "object" || Array.isArray(item)) {
       return null;
     }
-    const { gameId, score, reason } = item as Record<string, unknown>;
-    if (typeof gameId !== "number" || !Number.isInteger(gameId)) return null;
-    if (typeof score !== "number" || !Number.isFinite(score)) return null;
-    if (typeof reason !== "string") return null;
-    out.push({ gameId, score, reason });
   }
-  return { recs: out };
+  // Per-item gameId/score/reason VALUES are intentionally NOT validated here
+  // (see JSDoc). The cast carries the structural guarantee (recs is a
+  // non-empty array of objects) forward; the unchanged downstream loop does
+  // the per-item Number()/clamp/String() coercion exactly as pre-Task-10.
+  return { recs: recs as RerankItem[] };
 }
 
 /**
