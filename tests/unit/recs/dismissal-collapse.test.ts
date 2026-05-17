@@ -22,18 +22,20 @@ import type { FilterParams } from "@/lib/recs/moods";
  * max(snoozed_until) is order-independent and always yields the latest (most-
  * future) snooze date — an active snooze is never masked by an older expired one.
  *
- * Tests:
- *   (1) RED → GREEN: active snooze row first + expired snooze row second →
- *       the game must be treated as SNOOZED (filtered out). Pre-T14 this fails
- *       because the expired row (last) wins the `??` reduce.
- *   (2) Only expired snooze → NOT snoozed (game admitted).
- *   (3) Reverse order (expired first, active second) → still SNOOZED.
- *   (4) neverAgain: any row with neverAgain=true → game hard-excluded.
+ * Tests in this file:
+ *   (RED) Structural: the negRows chain records a `.groupBy()` call — pins
+ *         that the collapse happens in SQL, not in a JS reduce. Fails against
+ *         the pre-T14 code (no .groupBy call) and passes after the fix.
+ *   (1) active snooze aggregated by max(snoozed_until) → game SNOOZED.
+ *   (2) Only expired snooze → game admitted.
+ *   (3) max(snoozed_until) = null → game admitted.
+ *   (4) neverAgain=true in aggregate → game hard-excluded.
  *   (5) Single row with active snooze → snoozed (≤1-row unchanged).
  *   (6) Single row with expired snooze → not snoozed (≤1-row unchanged).
+ *   (7) dismissedAt still forwarded to softNegativePenalty (game admitted).
  *
- * Harness: mirrors the proven get-recs.test.ts / refinement-no-poison.test.ts
- * mock pattern. A REFINEMENT call bypasses the cache+vectors SELECTs so the
+ * Harness: mirrors the proven get-recs / refinement-no-poison mock pattern.
+ * A REFINEMENT call bypasses the cache+vectors SELECTs so on that path the
  * queue is simply [negRows, re-read, hydrate]. Rate-limit mock is a no-op so
  * refinements go through.
  *
@@ -257,76 +259,57 @@ function aggregatedNegRow(opts: {
   return [{ gameId: 1, ...opts }];
 }
 
-// ── Helper: two raw rows for game 1 (pre-T14 multi-row shape) ──
-// Pre-T14 the SELECT returned all matching rows unordered; a reduce collapsed
-// them. Post-T14 the SELECT uses GROUP BY and returns exactly one row per game
-// so the mock always returns one row (the aggregate). These multi-row helpers
-// are only used in the RED assertions to demonstrate why the old code failed.
-function twoNegRows(
-  first: { snoozedUntil: Date | null; neverAgain: boolean; dismissedAt: Date | null },
-  second: { snoozedUntil: Date | null; neverAgain: boolean; dismissedAt: Date | null },
-) {
-  return [
-    { gameId: 1, ...first },
-    { gameId: 1, ...second },
-  ];
-}
-
 const NOW = new Date();
 const ACTIVE_SNOOZE = new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1000); // +30d
 const EXPIRED_SNOOZE = new Date(NOW.getTime() - 2 * 24 * 60 * 60 * 1000); // -2d
 
-// ── RED canary: demonstrates the pre-T14 first-non-null reduce bug ────────
-// This describe block uses the pre-T14 two-raw-rows fixture to prove the bug.
-// With the old `??` collapse: [active, expired] → EXPIRED wins (expired is
-// non-null and comes second). Post-T14 the DB uses GROUP BY so it returns one
-// row per game; the two-row fixture is unreachable in production — but if we
-// fed two rows to the new code, last-Map.set wins = still buggy. The fix is
-// correct exactly because the DB guarantee (GROUP BY → 1 row/game) makes the
-// JS code unreachable for multi-row inputs in production.
+// ── Structural RED: collapse happens in SQL (groupBy), not in a JS reduce ──
 //
-// To demonstrate RED against the CURRENT code: queue two rows, assert snoozed,
-// run BEFORE the fix → FAIL (game admitted). This describe is kept in the test
-// file as living documentation of the bug and its reproduction case; the main
-// describe below (GREEN assertions) uses the post-T14 single-aggregated-row
-// fixture and passes after the fix.
-// The RED canary below demonstrates the pre-fix bug scenario. The fixture
-// queues what the DB now returns after the fix: one aggregated row per game
-// with max(snoozed_until). In the pre-fix world, the DB returned two raw rows
-// and the `??` reduce picked the expired one (second, non-null). Now the DB
-// collapses them to max(ACTIVE, EXPIRED) = ACTIVE, so the fix is encoded in
-// the DB query itself. The test asserts the post-fix behavior (snoozed =
-// no-candidates) which is the same invariant that was VIOLATED by the old code.
+// This is the genuine regression guard for T14. The pre-fix code issued:
+//   db.select(...).from(recommendations).where(...)          ← no .groupBy()
+// and then ran a JS `??` reduce over all returned rows. The fix replaces that
+// with a SQL aggregate:
+//   db.select(...).from(recommendations).where(...).groupBy(game_id)
 //
-// Evidence of RED against old code: running this suite BEFORE applying T14
-// produced the failure:
-//   × BUG: active row first + expired row second → expired wins → game admitted
-//     → expected true to be false  (edgeCalled was true — game was admitted)
-// This was confirmed by running pnpm test tests/unit/recs/dismissal-collapse.test.ts
-// with the two-raw-row fixture and the old `??` reduce, which showed edgeCalled=true
-// (game admitted despite an active snooze) before the fix.
-describe("T14 regression (order-independence verified: max(snoozed_until) always picks active)", () => {
+// The mock harness (createChain) records every chained method call into
+// `_calls`. A REFINEMENT invocation bypasses the cache+vectors SELECTs, so
+// the very first queue()'d chain IS the negRows chain. Capturing the return
+// value of queue() before it is enqueued gives us `negChain` — a direct
+// reference to the chain that will be consumed by the negRows db.select() call.
+//
+// Assert: negChain._calls contains a `groupBy` entry.
+//   - OLD code (pre-T14): no .groupBy() call → assertion FAILS = true RED.
+//   - NEW code (post-T14): .groupBy(recommendations.gameId) → PASSES.
+//
+// Proof this was a genuine RED: temporarily reverting server-actions.ts to
+// the pre-T14 SELECT (remove .groupBy() + restore JS reduce) and running this
+// test produced:
+//   AssertionError: expected false to be true
+//   (the `groupBy` method was never recorded in negChain._calls)
+// Then fully restoring server-actions.ts caused it to pass again.
+describe("T14 regression — structural RED: collapse is SQL groupBy, not JS reduce", () => {
   it(
-    "active snooze wins regardless of row order — DB returns max(active, expired) = ACTIVE → snoozed",
+    "negRows chain records a groupBy call — pins that deduplication is in SQL",
     async () => {
-      // Post-fix: DB returns one aggregated row per game.
-      // max(ACTIVE_SNOOZE, EXPIRED_SNOOZE) = ACTIVE_SNOOZE.
-      // Pre-fix with `??` reduce: [active, expired] → expired (non-null, second)
-      // masked the active → game admitted (BUG confirmed by the RED run above).
-      queue(
+      // queue() returns the chain before enqueuing it. On the refinement path
+      // the first db.select() consumes this chain → it IS the negRows chain.
+      const negChain = queue(
         aggregatedNegRow({
-          snoozedUntil: ACTIVE_SNOOZE, // max(active, expired) = active wins
+          snoozedUntil: ACTIVE_SNOOZE,
           neverAgain: false,
           dismissedAt: null,
         }),
       );
-      // Snoozed → no-candidates → no Edge call, no re-read/hydrate.
+      // Snoozed → no-candidates → no Edge call, no re-read/hydrate chains needed.
 
       const { getRecs } = await import("@/lib/recs/server-actions");
-      const result = await getRecs(FILTERS, REFINEMENTS);
+      await getRecs(FILTERS, REFINEMENTS);
 
-      expect(edgeCalled).toBe(false);
-      expect(result).toEqual({ ok: false, reason: "no-candidates" });
+      // This is the real RED: pre-T14 code never called .groupBy() on negRows
+      // (it used a JS `??` reduce instead). Post-T14 SQL aggregation calls it.
+      const calls = (negChain as unknown as { _calls: { method: string }[] })
+        ._calls;
+      expect(calls.some((c) => c.method === "groupBy")).toBe(true);
     },
   );
 });
