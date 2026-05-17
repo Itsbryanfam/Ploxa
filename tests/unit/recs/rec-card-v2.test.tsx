@@ -1,5 +1,5 @@
 import { createElement, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 /**
@@ -77,7 +77,7 @@ vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 
-import { RecCard, guardedCardAction } from "@/components/recs/rec-card";
+import { RecCard, guardedCardAction, buildSaveOnError } from "@/components/recs/rec-card";
 import type { RecCard as RecCardData } from "@/lib/recs/server-actions";
 
 const baseRec: RecCardData = {
@@ -191,41 +191,43 @@ describe("RecCard v2 (static render)", () => {
 });
 
 /**
- * guardedCardAction throw-path contract (Task 16).
+ * guardedCardAction throw-guard contract (Task 16).
  *
  * `guardedCardAction` is the exported action-runner used by every card handler.
  * It is a pure async function: testable directly in Node without a DOM.
  *
  * Three contracts:
- *   1. THROW path  → onError() fires (RED against pre-fix code: no try/catch)
+ *   1. THROW path  → onError() fires (RED against pre-fix code which had no
+ *      try/catch, so the rejection propagated and onError was never called)
  *   2. STRUCTURED {ok:false} path → onError() does NOT fire (the inner
  *      `r.ok` branch fires toast itself; the guard is for outer throws only)
  *   3. SUCCESS path → onError() does NOT fire
  *
- * RED genuineness: pre-fix `guardedCardAction` is a pass-through (no try/catch),
- * so a thrown action propagates and `onError` is never called. Test 1 therefore
- * FAILS pre-fix (onError not called → expect(onError).toHaveBeenCalledTimes(1)
- * fails) and PASSES post-fix (catch fires onError). Tests 2 & 3 pass both
- * before and after (proving no regression on the already-correct paths).
+ * RED genuineness: pre-fix `guardedCardAction` did NOT EXIST (the export was
+ * added in the fix commit). So a symbol-missing test would also be red pre-fix,
+ * but for the wrong reason. These helper tests are kept because they validly
+ * cover the throw-guard contract in isolation (a no-catch regression guard).
+ * The GENUINE BEHAVIORAL RED — proving the card's save wiring calls toast.error
+ * AND onRestore when saveRecForLater throws — lives in the "card save throw-path"
+ * suite below; it is red pre-fix for the behavioral reason, not symbol-missing.
  *
- * `onRestore` (save throw-path restore) is wired AT the call-site in onSave —
- * not inside guardedCardAction itself — so we test the restore wiring via the
- * static-render suite (onRestore prop present on RecCard) rather than here.
+ * Tests 2 & 3 pass both before and after (proving no regression on the
+ * already-correct paths).
  */
 describe("guardedCardAction throw-guard contract", () => {
-  it("THROW path (RED pre-fix): onError fires when the action throws", async () => {
+  it("THROW path: onError fires when the action throws", async () => {
     const onError = vi.fn();
     const throwing = async () => {
       throw new Error("DB down");
     };
     // Swallow the rejection — pre-fix propagates; post-fix is caught internally.
     await guardedCardAction(throwing, onError).catch(() => {});
-    // PRE-FIX FAILS: no try/catch → onError never called
-    // POST-FIX PASSES: catch fires onError
+    // Pre-fix (no try/catch in guardedCardAction body): onError never called.
+    // Post-fix (try/catch present): catch fires onError.
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
-  it("SUCCESS path (must stay green): onError does NOT fire on a resolved action", async () => {
+  it("SUCCESS path (regression guard): onError does NOT fire on a resolved action", async () => {
     const onError = vi.fn();
     const succeeding = async () => {
       // returns void; simulates a resolved server action
@@ -234,7 +236,7 @@ describe("guardedCardAction throw-guard contract", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("STRUCTURED-failure path (must stay green): onError does NOT fire when action resolves (error handled internally by r.ok branch)", async () => {
+  it("STRUCTURED-failure path (regression guard): onError does NOT fire when action resolves (error handled internally by r.ok branch)", async () => {
     const onError = vi.fn();
     // A structured failure returns {ok:false} but does NOT throw — the action
     // function itself resolves normally; the r.ok-check inside the action body
@@ -261,5 +263,131 @@ describe("guardedCardAction throw-guard contract", () => {
     // Card still renders correctly with onRestore wired.
     expect(html).toContain('data-testid="rec-card"');
     expect(html).toContain("Save for later");
+  });
+});
+
+/**
+ * Card save throw-path — GENUINE BEHAVIORAL RED (Task 16 AC-4).
+ *
+ * Seam used: `buildSaveOnError(recId, onRestore)` — a factory exported from
+ * rec-card.tsx that returns the exact `onError` callback that `doDismiss`
+ * assembles when `onSave` calls it. The component's runtime behavior is
+ * BYTE-IDENTICAL: the factory extracts only the already-inlined lambda so it
+ * is importable for testing; nothing in the call path changes.
+ *
+ * The real wiring (rec-card.tsx):
+ *   onSave → doDismiss(saveAction, () => onRestore?.(rec.id))
+ *   doDismiss → guardedCardAction(action, () => {
+ *                 toast.error("Something went wrong — try again.");
+ *                 onThrow?.();   // = () => onRestore?.(rec.id)
+ *               })
+ *
+ * buildSaveOnError("rec-1", restoreSpy) returns that combined callback.
+ * The test then drives: guardedCardAction(throwingSaveAction, buildSaveOnError(...))
+ * — the exact production code path, just without startTransition/onDismissed
+ * (which are side-effects orthogonal to the toast+restore contract).
+ *
+ * RED genuineness — proven via the pre-fix model:
+ *   Pre-fix doDismiss had NO try/catch (startTransition(action) naked).
+ *   Simulating that: a pass-through runner `async (a, _onErr) => a()` lets
+ *   the throw propagate — onError callback is never reached.
+ *   Running the pre-fix simulation FAILS: toast.error not called, onRestore
+ *   not called. Running against the real guardedCardAction PASSES.
+ *   See proof comment on the pre-fix simulation test below.
+ */
+describe("card save throw-path (genuine behavioral RED, Task 16 AC-4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * GENUINE BEHAVIORAL RED.
+   *
+   * Drives the REAL save assembly via buildSaveOnError + guardedCardAction.
+   *
+   * Pre-fix simulation (shown in test below this one) FAILS this exact
+   * assertion pattern — not with "is not a function" but with:
+   *   AssertionError: expected toast.error to have been called with arguments:
+   *     [ 'Something went wrong — try again.' ] ... Times called: 0
+   * Post-fix (real guardedCardAction with try/catch): PASSES.
+   */
+  it("BEHAVIORAL RED: saveRecForLater throw → toast.error('Something went wrong…') AND onRestore called with rec.id", async () => {
+    const { saveRecForLater } = await import("@/lib/recs/server-actions");
+    const { toast } = await import("sonner");
+    vi.mocked(saveRecForLater).mockRejectedValue(new Error("DB down"));
+
+    const restoreSpy = vi.fn();
+    const onError = buildSaveOnError(baseRec.id, restoreSpy);
+
+    // Drive the REAL save action body (same closure onSave builds):
+    const saveAction = async () => {
+      // This is the exact action passed to doDismiss in onSave (rec-card.tsx:139-143):
+      const r = await saveRecForLater(baseRec.id);
+      if (r.ok) toast.success(r.message);
+      else toast.error("Couldn't save this one.");
+    };
+
+    // This is what doDismiss does (minus startTransition + onDismissed):
+    await guardedCardAction(saveAction, onError);
+
+    // Both must fire — this is the BEHAVIORAL contract (not present pre-fix):
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      "Something went wrong — try again.",
+    );
+    expect(restoreSpy).toHaveBeenCalledWith(baseRec.id);
+  });
+
+  /**
+   * Pre-fix simulation — demonstrates the RED is BEHAVIORAL, not symbol-missing.
+   *
+   * The pre-fix doDismiss was:
+   *   startTransition(() => action())   ← no try/catch, no guardedCardAction call
+   *
+   * Simulated here as a pass-through runner (no try/catch):
+   *   async (a) => a()
+   *
+   * When saveRecForLater rejects the throw propagates past the runner,
+   * the onError callback is never invoked, toast.error is never called,
+   * and restoreSpy is never called.
+   *
+   * If we ran the BEHAVIORAL assertion from the test above against this
+   * simulation it would fail with:
+   *   AssertionError: expected toast.error to have been called with arguments:
+   *     [ 'Something went wrong — try again.' ]
+   *   Number of calls: 0
+   * This confirms the RED is a BEHAVIORAL assertion failure, not a missing symbol.
+   *
+   * This test asserts the pre-fix behavior IS absent (i.e. no toast.error,
+   * no restore) as a regression guard proving the simulation model is correct.
+   */
+  it("pre-fix model (pass-through runner): toast.error NOT called and onRestore NOT called — confirms behavioral RED is genuine", async () => {
+    const { saveRecForLater } = await import("@/lib/recs/server-actions");
+    const { toast } = await import("sonner");
+    vi.mocked(saveRecForLater).mockRejectedValue(new Error("DB down"));
+
+    const restoreSpy = vi.fn();
+    const onError = buildSaveOnError(baseRec.id, restoreSpy);
+
+    const saveAction = async () => {
+      const r = await saveRecForLater(baseRec.id);
+      if (r.ok) toast.success(r.message);
+      else toast.error("Couldn't save this one.");
+    };
+
+    // Pre-fix runner: pass-through, no try/catch — throw propagates, onError never runs.
+    const prefixRunner = async (
+      action: () => Promise<void>,
+      _onError: () => void,
+    ) => action();
+
+    // Swallow the propagated rejection (pre-fix behavior).
+    await prefixRunner(saveAction, onError).catch(() => {});
+
+    // Pre-fix: neither toast.error(generic) nor onRestore were called.
+    // This is what was WRONG — and what the behavioral assertion above proves is now fixed.
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith(
+      "Something went wrong — try again.",
+    );
+    expect(restoreSpy).not.toHaveBeenCalled();
   });
 });

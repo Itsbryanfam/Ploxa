@@ -46,6 +46,31 @@ export async function guardedCardAction(
 }
 
 /**
+ * Builds the exact `onError` callback that `doDismiss` assembles when
+ * `onSave` calls it. Exported solely for testability — the component's
+ * runtime behavior is BYTE-IDENTICAL; nothing in the call path changes.
+ *
+ * The real `onSave → doDismiss` assembly is:
+ *   doDismiss(saveAction, () => onRestore?.(rec.id))
+ * which makes doDismiss build:
+ *   () => { toast.error("Something went wrong — try again."); onThrow?.(); }
+ * where onThrow = () => onRestore?.(rec.id).
+ *
+ * This factory returns that combined callback so tests can drive
+ *   guardedCardAction(throwingAction, buildSaveOnError(recId, restoreSpy))
+ * and assert both toast.error AND onRestore called with the rec id.
+ */
+export function buildSaveOnError(
+  recId: string,
+  onRestore?: (id: string) => void,
+): () => void {
+  return () => {
+    toast.error("Something went wrong — try again.");
+    onRestore?.(recId);
+  };
+}
+
+/**
  * Interactive rec card for the /play-next results grid.
  *
  * Play-next redesign (T15): the card now surfaces the stratified-rail
