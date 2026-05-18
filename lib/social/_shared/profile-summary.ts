@@ -37,7 +37,7 @@ export type ProfileSummary = {
     gameSlug: string;
     gameCoverUrl: string | null;
   }>;
-  libraryTruncated: LibraryItem[]; // first 12 most recently updated
+  libraryTruncated: LibraryItem[]; // first 24 most recently updated (2 full shelf rows)
   // Up to 3 most-recently-updated logs with status='playing'. Drives the
   // "Currently playing" section on the profile overview. Empty array when
   // no in-flight games (most casual users).
@@ -105,8 +105,10 @@ export async function getProfileSummary(
   // T13 (2026-05-14): split the old single "load every log + game join"
   // query into two bounded queries:
   //   1. Stats via SQL aggregates (count + count(*) FILTER per status + avg).
-  //   2. libraryTruncated via LIMIT 12 (top-12 covers shown on the profile).
-  // Pre-T13 a 1000-log user shipped 1000 cover URLs over the wire to render 12.
+  //   2. libraryTruncated via LIMIT 24 (enough to fill 2 complete shelf
+  //      rows at every responsive column count up to the cols=12 / 1920px
+  //      breakpoint; the shelf preview trims to whole rows client-side).
+  // Pre-T13 a 1000-log user shipped 1000 cover URLs over the wire.
   const [
     rawStats,
     rawLibrary,
@@ -137,15 +139,17 @@ export async function getProfileSummary(
       .from(logs)
       .where(visibilityWhere),
 
-    // Library top-12 (the most-recently-updated covers shown on the profile).
-    // Ordered by updated_at DESC so it matches what the user just touched.
+    // Library top-24 (the most-recently-updated covers shown on the
+    // profile shelf preview). Ordered by updated_at DESC so it matches
+    // what the user just touched. 24 = 2 complete shelf rows at the
+    // widest column count; LibraryShelf trims to whole rows per viewport.
     db
       .select(LOG_GAME_SELECT)
       .from(logs)
       .innerJoin(schema.games, eq(logs.gameId, schema.games.id))
       .where(visibilityWhere)
       .orderBy(desc(logs.updatedAt))
-      .limit(12),
+      .limit(24),
 
     // Recent reviews (top 3, must be published + public unless owner).
     db

@@ -8,11 +8,18 @@ import { LibraryPoster } from "./library-poster";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ShelfPlank } from "@/components/pixel/shelf-frame";
 import { copy } from "@/lib/mascot/copy";
+import { shelfVisibleCount } from "@/lib/library/shelf-rows";
 import type { LogStatus } from "@/lib/db/schema-types";
 
 interface Props {
   items: LibraryItem[];
   filter: LogStatus | "all";
+  /**
+   * Render only whole rows, capped at this many — for the profile shelf
+   * *preview* so its decorative planks never end ragged. Omitted on the
+   * full-library callsites, which must render the entire collection.
+   */
+  maxRows?: number;
 }
 
 /**
@@ -43,7 +50,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-export function LibraryShelf({ items, filter }: Props) {
+export function LibraryShelf({ items, filter, maxRows }: Props) {
   // SSR defaults to the desktop column count. The post-mount effect
   // re-evaluates against the actual viewport and re-renders if needed;
   // brief mobile reflow is acceptable and matches the rest of the app.
@@ -78,7 +85,10 @@ export function LibraryShelf({ items, filter }: Props) {
     );
   }
 
-  const rows = chunk(items, cols);
+  // Trim a capped preview to whole rows so the shelf never ends on a
+  // half-empty plank; uncapped callsites render every item unchanged.
+  const visible = items.slice(0, shelfVisibleCount(items.length, cols, maxRows));
+  const rows = chunk(visible, cols);
 
   return (
     <div className="flex flex-col gap-3">
