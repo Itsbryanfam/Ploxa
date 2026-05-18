@@ -1,9 +1,11 @@
 import "server-only";
-import { sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 
-import { db } from "@/lib/db";
+import { db, schema } from "@/lib/db";
 import { drift } from "@/lib/taste/vectors";
 import { tierForUser } from "@/lib/taste/tier";
+
+const { follows } = schema;
 
 export type SimilarUser = {
   userId: string;
@@ -182,22 +184,36 @@ export async function getSimilarUsers(
 
   const candidateIds = scored.map((c) => c.userId);
   // Single OR'd lookup pulls both directions in one round-trip. Each returned
-  // row carries the directed edge (follower_id → followed_id); we partition
+  // row carries the directed edge (followerId → followedId); we partition
   // into "viewer follows candidate" vs "candidate follows viewer" by checking
   // which side is the viewer.
-  const rawFollows = await db.execute<{ follower_id: string; followed_id: string }>(sql`
-    SELECT follower_id, followed_id
-    FROM follows
-    WHERE
-      (follower_id = ${viewerId} AND followed_id = ANY(${candidateIds}::uuid[]))
-      OR (followed_id = ${viewerId} AND follower_id = ANY(${candidateIds}::uuid[]))
-  `);
-  const followRows = rawFollows as unknown as Array<{ follower_id: string; followed_id: string }>;
+  //
+  // Bound through the query builder, NOT a raw `sql` template: Drizzle
+  // stringifies a JS array interpolated into `sql\`\`` into one param, so
+  // `= ANY($n)` gets a bare UUID and Postgres raises "malformed array
+  // literal" under postgres-js `prepare: false`. `inArray` binds each id
+  // individually — same fix as getBlockedPairs (visibility.ts) and the
+  // documented gotcha in imports/server-actions.ts.
+  const followRows = await db
+    .select({ followerId: follows.followerId, followedId: follows.followedId })
+    .from(follows)
+    .where(
+      or(
+        and(
+          eq(follows.followerId, viewerId),
+          inArray(follows.followedId, candidateIds),
+        ),
+        and(
+          eq(follows.followedId, viewerId),
+          inArray(follows.followerId, candidateIds),
+        ),
+      ),
+    );
   const viewerFollowsSet = new Set<string>();
   const followsViewerSet = new Set<string>();
   for (const row of followRows) {
-    if (row.follower_id === viewerId) viewerFollowsSet.add(row.followed_id);
-    if (row.followed_id === viewerId) followsViewerSet.add(row.follower_id);
+    if (row.followerId === viewerId) viewerFollowsSet.add(row.followedId);
+    if (row.followedId === viewerId) followsViewerSet.add(row.followerId);
   }
 
   return scored.map((c) => ({
