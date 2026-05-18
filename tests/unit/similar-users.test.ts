@@ -1,84 +1,112 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 /**
- * getSimilarUsers payload pins (T08 of audit-fixes-2026-05-14).
+ * getSimilarUsers payload + binding contract.
  *
- * Before this fix, SimilarUsersRow always rendered "Follow" because the
- * discovery query both hard-excluded already-followed users AND the
- * component hardcoded `initialIsFollowing={false}`. The audit removes the
- * SQL exclusion (so already-followed users CAN appear in the candidate
- * pool, e.g. for "people whose taste lines up with yours" — useful even
- * for accounts you already follow) and pipes a real `viewerFollows`
- * boolean through the row payload via a single batched lookup.
+ * Behavioural pins:
+ *  - viewerFollows / followsViewer are stamped correctly from the single
+ *    batched directed-follows lookup (T08 of audit-fixes-2026-05-14).
+ *  - That follows lookup is ONE round-trip, not N-per-candidate.
  *
- * `getSimilarUsers` issues raw `db.execute(sql\`...\`)` queries through
- * postgres-js. We mock `db.execute` directly and stub `drift` so the
- * scoring math is deterministic.
+ * Binding contract (regression lock for the /discover outage 2026-05-17):
+ * the follows-batch lookup MUST bind candidate IDs per-element through the
+ * Drizzle query builder (`db.select().from(follows).where(...inArray...)`).
+ * It must NOT interpolate the JS array into a raw `db.execute(sql\`...
+ * ANY(${ids}::uuid[])\`)` template — postgres-js with `prepare: false`
+ * (Supabase pooler) stringifies the array into a single param, so Postgres
+ * receives a bare UUID where it expects an array literal and raises
+ * `malformed array literal`. Same gotcha documented at
+ * lib/imports/server-actions.ts; same builder fix as the structural twin
+ * getBlockedPairs in lib/social/_shared/visibility.ts.
+ *
+ * Mock strategy: calls 1 (viewer fingerprint) and 2 (candidate pool) stay
+ * raw `db.execute` (scalar binds only — safe). The follows lookup is the
+ * builder chain, mocked like visibility-batch.test.ts.
  */
 
-// Three execute calls happen in order:
-//   1. viewer fingerprint lookup
-//   2. candidate pool SELECT
-//   3. batched follows lookup (the new one, viewerFollows)
+// db.execute drives calls 1 & 2 only (fingerprint, candidate pool).
 const executeMock = vi.fn();
+// The batched follows lookup resolves through the select/from/where chain.
+// Module-scope so beforeEach can clear call counts (the chain mock is
+// shared across tests — mirrors visibility-batch.test.ts).
+const selectMock = vi.fn();
+const fromMock = vi.fn();
+const whereMock = vi.fn();
+const followsResolveMock = vi.fn();
 
-vi.mock("@/lib/db", () => ({
-  db: { execute: executeMock },
-}));
+vi.mock("@/lib/db", () => {
+  const mockSchema = {
+    follows: {
+      followerId: { name: "follower_id" },
+      followedId: { name: "followed_id" },
+    },
+  };
+  const mockDb = {
+    execute: executeMock,
+    select: selectMock,
+    from: fromMock,
+    where: whereMock,
+  };
+  selectMock.mockImplementation(() => mockDb);
+  fromMock.mockImplementation(() => mockDb);
+  // getSimilarUsers awaits `.where(...)` directly — a thenable here lets
+  // it await our synthetic directed-follows rows.
+  whereMock.mockImplementation(() => Promise.resolve(followsResolveMock()));
+  return { db: mockDb, schema: mockSchema };
+});
 
-// `drift` returns 0 for two identical bundles and 1 for maximally
-// dissimilar; stub so similarity = 1 for u2 (returned first) and
-// similarity = 0 for u3 (returned second). This pins ordering for the
-// test that checks viewerFollows is preserved through sort.
+// drift = 0 → similarity 1 for every candidate; deterministic ordering.
 vi.mock("@/lib/taste/vectors", () => ({
   drift: vi.fn((_a: unknown, _b: unknown) => 0),
 }));
 
-describe("getSimilarUsers — viewerFollows", () => {
-  beforeEach(() => {
-    executeMock.mockReset();
-    vi.resetModules();
-  });
+beforeEach(() => {
+  executeMock.mockReset();
+  followsResolveMock.mockReset();
+  followsResolveMock.mockReturnValue([]);
+  // mockClear (not mockReset) — keep the chain implementations set in the
+  // vi.mock factory (it runs once); only wipe accumulated call counts.
+  selectMock.mockClear();
+  fromMock.mockClear();
+  whereMock.mockClear();
+  vi.resetModules();
+});
 
-  it("stamps viewerFollows + followsViewer correctly from the batched directed-follows lookup", async () => {
-    // Call 1: viewer fingerprint (sparse-or-better tier so we don't short-circuit).
+function viewerFp(totalLogs: number) {
+  return [
+    {
+      genre_vector: { rpg: 1 },
+      theme_vector: { fantasy: 1 },
+      mechanic_vector: { turn_based: 1 },
+      total_logs_at_generation: totalLogs,
+    },
+  ];
+}
+
+function candidate(userId: string, username: string) {
+  return {
+    user_id: userId,
+    username,
+    display_name: username,
+    profile_picture_url: null,
+    genre_vector: {},
+    theme_vector: {},
+    mechanic_vector: {},
+    total_logs_at_generation: 20,
+  };
+}
+
+describe("getSimilarUsers — viewerFollows / followsViewer stamping", () => {
+  it("stamps both directions correctly from the batched directed-follows lookup", async () => {
+    executeMock.mockResolvedValueOnce(viewerFp(25)); // call 1: viewer fp
     executeMock.mockResolvedValueOnce([
-      {
-        genre_vector: { rpg: 1 },
-        theme_vector: { fantasy: 1 },
-        mechanic_vector: { turn_based: 1 },
-        total_logs_at_generation: 25,
-      },
-    ]);
-    // Call 2: candidate pool — u2 + u3, both eligible.
-    executeMock.mockResolvedValueOnce([
-      {
-        user_id: "u2",
-        username: "alice",
-        display_name: "Alice",
-        profile_picture_url: null,
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 20,
-      },
-      {
-        user_id: "u3",
-        username: "bob",
-        display_name: "Bob",
-        profile_picture_url: null,
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 15,
-      },
-    ]);
-    // Call 3: combined directed-follows lookup.
-    //   - u1 → u2: viewer follows u2 (viewerFollows on u2)
-    //   - u3 → u1: u3 follows viewer (followsViewer on u3)
-    executeMock.mockResolvedValueOnce([
-      { follower_id: "u1", followed_id: "u2" },
-      { follower_id: "u3", followed_id: "u1" },
+      candidate("u2", "alice"),
+      candidate("u3", "bob"),
+    ]); // call 2: candidate pool
+    // Builder follows lookup: u1→u2 (viewer follows u2), u3→u1 (u3 follows viewer).
+    followsResolveMock.mockReturnValueOnce([
+      { followerId: "u1", followedId: "u2" },
+      { followerId: "u3", followedId: "u1" },
     ]);
 
     const { getSimilarUsers } = await import(
@@ -93,99 +121,67 @@ describe("getSimilarUsers — viewerFollows", () => {
     expect(byId.get("u3")?.viewerFollows).toBe(false);
     expect(byId.get("u3")?.followsViewer).toBe(true);
   });
+});
 
-  it("issues exactly one batched follows query (not N per candidate)", async () => {
+describe("getSimilarUsers — follows lookup binding contract", () => {
+  it("routes the batched follows lookup through the Drizzle builder, never a raw array-bind db.execute", async () => {
+    executeMock.mockResolvedValueOnce(viewerFp(25));
     executeMock.mockResolvedValueOnce([
-      {
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 25,
-      },
+      candidate("u2", "a"),
+      candidate("u3", "b"),
+      candidate("u4", "c"),
     ]);
-    executeMock.mockResolvedValueOnce([
-      {
-        user_id: "u2",
-        username: "a",
-        display_name: null,
-        profile_picture_url: null,
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 20,
-      },
-      {
-        user_id: "u3",
-        username: "b",
-        display_name: null,
-        profile_picture_url: null,
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 20,
-      },
-      {
-        user_id: "u4",
-        username: "c",
-        display_name: null,
-        profile_picture_url: null,
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 20,
-      },
-    ]);
-    executeMock.mockResolvedValueOnce([]); // no follow edges in either direction
+    followsResolveMock.mockReturnValueOnce([]);
 
     const { getSimilarUsers } = await import(
       "@/lib/social/discovery/similar-users"
     );
+    const { db } = (await import("@/lib/db")) as unknown as {
+      db: { select: ReturnType<typeof vi.fn>; where: ReturnType<typeof vi.fn> };
+    };
     await getSimilarUsers("u1", 12);
 
-    // 3 calls total: viewer-fp + candidates + ONE OR'd directed-follows lookup.
-    // If a regression split the bidirectional check into two queries (or N+1
-    // per-row lookups) we'd see >= 4 calls.
-    expect(executeMock).toHaveBeenCalledTimes(3);
+    // Exactly 2 raw db.execute calls: viewer-fp + candidate pool. The
+    // follows lookup is NOT a third db.execute — a regression to the
+    // `db.execute(sql\`...ANY(${ids}::uuid[])\`)` shape would make this 3
+    // and crash /discover with `malformed array literal` in production.
+    expect(executeMock).toHaveBeenCalledTimes(2);
+    // It goes through the parameterised builder instead — exactly one
+    // batched round-trip (not N-per-candidate).
+    expect(db.select).toHaveBeenCalledTimes(1);
+    expect(db.where).toHaveBeenCalledTimes(1);
   });
 
   it("skips the follows lookup entirely when there are no candidates", async () => {
-    executeMock.mockResolvedValueOnce([
-      {
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 25,
-      },
-    ]);
+    executeMock.mockResolvedValueOnce(viewerFp(25));
     executeMock.mockResolvedValueOnce([]); // empty candidate pool
 
     const { getSimilarUsers } = await import(
       "@/lib/social/discovery/similar-users"
     );
+    const { db } = (await import("@/lib/db")) as unknown as {
+      db: { select: ReturnType<typeof vi.fn> };
+    };
     const rows = await getSimilarUsers("u1", 12);
+
     expect(rows).toEqual([]);
-    // Viewer-fp + candidates = 2 — no third roundtrip when there's
-    // nothing to look up.
-    expect(executeMock).toHaveBeenCalledTimes(2);
+    expect(executeMock).toHaveBeenCalledTimes(2); // fp + candidates only
+    expect(db.select).not.toHaveBeenCalled();
   });
 
-  it("returns [] without firing follows lookup when viewer fingerprint is empty-tier", async () => {
-    // Viewer has 0 logs → tierForUser returns "empty" → short-circuit.
-    executeMock.mockResolvedValueOnce([
-      {
-        genre_vector: {},
-        theme_vector: {},
-        mechanic_vector: {},
-        total_logs_at_generation: 0,
-      },
-    ]);
+  it("returns [] without any candidate or follows query when viewer fingerprint is empty-tier", async () => {
+    executeMock.mockResolvedValueOnce(viewerFp(0)); // 0 logs → "empty" tier
 
     const { getSimilarUsers } = await import(
       "@/lib/social/discovery/similar-users"
     );
+    const { db } = (await import("@/lib/db")) as unknown as {
+      db: { select: ReturnType<typeof vi.fn> };
+    };
     const rows = await getSimilarUsers("u1", 12);
+
     expect(rows).toEqual([]);
-    // Only the viewer-fp call fired.
-    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock).toHaveBeenCalledTimes(1); // viewer-fp only
+    expect(db.select).not.toHaveBeenCalled();
   });
 });
