@@ -9,7 +9,9 @@ import { describe, expect, it, vi } from "vitest";
  *
  * Post-T13:
  *   1. Stats come from a single SQL aggregate (no row hydration).
- *   2. libraryTruncated comes from a separate SELECT … LIMIT 12.
+ *   2. libraryTruncated comes from a separate SELECT … LIMIT 24
+ *      (24 = enough to fill 2 complete shelf rows at every responsive
+ *      column count up to the 1920px cols=12 breakpoint).
  *   3. The two run in parallel.
  *
  * These tests pin both invariants by counting the rows the library mock
@@ -246,7 +248,7 @@ const { getProfileSummary } = await import(
 const mockMod = (await import("@/lib/db")) as any;
 
 describe("getProfileSummary — bounded fetch (T13 perf)", () => {
-  it("library query is bounded to LIMIT 12 even for a 1000-log user", async () => {
+  it("library query is bounded to LIMIT 24 even for a 1000-log user", async () => {
     // Simulate a power user with 1000 logs — but the mock will only
     // return what .limit(N) asks for, replicating real DB behaviour.
     const thousandRows = Array.from({ length: 1000 }, (_, i) => ({
@@ -296,12 +298,12 @@ describe("getProfileSummary — bounded fetch (T13 perf)", () => {
     const result = await getProfileSummary("power-user", "owner-id");
 
     expect(result).not.toBeNull();
-    // libraryTruncated must be ≤ 12 — proves the LIMIT 12 fired.
-    expect(result?.libraryTruncated.length).toBeLessThanOrEqual(12);
-    expect(result?.libraryTruncated.length).toBe(12);
-    // The .limit() call list must contain a 12 (library) — not just 3
+    // libraryTruncated must be ≤ 24 — proves the LIMIT 24 fired.
+    expect(result?.libraryTruncated.length).toBeLessThanOrEqual(24);
+    expect(result?.libraryTruncated.length).toBe(24);
+    // The .limit() call list must contain a 24 (library) — not just 3
     // (recentReviews) or 3 (topLists).
-    expect(mockMod.__testHelpers.limitCalls).toContain(12);
+    expect(mockMod.__testHelpers.limitCalls).toContain(24);
   });
 
   it("stats come from the SQL aggregate row, not from hydrated logs", async () => {

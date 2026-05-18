@@ -215,7 +215,7 @@ export default async function ProfilePage({
       <section>
         <SectionHeader title="Library" href={`/u/${username}/library`} />
         <ShelfFrame>
-          <LibraryShelf items={libraryTruncated} filter="all" />
+          <LibraryShelf items={libraryTruncated} filter="all" maxRows={2} />
         </ShelfFrame>
       </section>
     </div>
